@@ -1,0 +1,65 @@
+{
+  "$comment": "Startup contract for JanetHome. See DESIGN-NOTES.md section 1. Every entry either resolves or startup fails loudly. Do not soften onMissing.",
+  "version": 1,
+  "base": "JanetBase",
+  "order": "sequential",
+  "onMissing": "fail",
+
+  "read": [
+    {
+      "path": "README.md",
+      "why": "Orientation: layout, which scripts matter, the boundary rule"
+    },
+    {
+      "path": "DESIGN-NOTES.md",
+      "why": "The transferable patterns. Operating rules live here, not in a system prompt"
+    },
+    {
+      "path": "PROVENANCE.md",
+      "why": "What is in scope and what was deliberately left out. Read before adding anything"
+    }
+  ],
+
+  "run": [
+    {
+      "cmd": "scripts\\Show-ThreadStack.ps1",
+      "captureAs": "threadStack",
+      "why": "Unfinished investigations from the last session. Small, stateful, and useless if fetched late -- so it runs at startup rather than on demand"
+    }
+  ],
+
+  "$comment.retrieval": "The tool inventory is deliberately NOT loaded here. research.json holds every script, pattern, note, and file as a node; startup carries only the pointer below and the session pulls the two or three nodes it needs. See DESIGN-NOTES section 2.",
+  "retrieval": {
+    "graph": "research.json",
+    "via": "scripts\\Get-Research.ps1",
+    "$comment.json": "These scripts emit compressed JSON by default -- the consumer is a model, not a terminal. Node boundaries are unambiguous, new schema fields arrive without a formatter change, and nothing is spent on alignment no reader uses. -Text opts into the formatted view; -Pretty indents the JSON for debugging.",
+    "usage": [
+      "Get-Research.ps1                          -- kinds and tag index only (cheap orientation)",
+      "Get-Research.ps1 -Query 'thread stack'    -- scored top 5. -First N / -All to widen",
+      "Get-Research.ps1 -Tag thread-stack        -- by tag (never truncated)",
+      "Get-Research.ps1 -Id pattern.thread-stack -Expand  -- a node plus its linked neighbours",
+      "Get-Research.ps1 -Kind script             -- every node of a kind",
+      "Add -Text for a human-readable form at the terminal; -Pretty to indent the JSON."
+    ],
+    "envelope": "Queries return { returned, totalMatches, truncated, nodes[] } -- check 'truncated' before concluding you have seen everything. An empty result uses the same shape, so never special-case it.",
+    "add": "scripts\\Add-ResearchNode.ps1 -Id <kind>.<slug> -Kind <kind> -NodePath <path> -Summary '<one line>' -Tags a,b -Links id1,id2 -Caveats 'what bites you'. Validates and splices; never hand-edit research.json. -DryRun to preview.",
+    "update": "scripts\\Update-ResearchNode.ps1 -Id <id> [-Summary|-Tags|-Links|-Caveats|-ScriptParams ...] [-Append] [-Remove field]. Preserves every field you do not name, including ones it has never heard of. Returns the before/after of each change. -DryRun to preview.",
+    "caveats": "Nodes may carry a 'caveats' array -- missing dependencies, external services, platform limits, outright breakage. Retrieval always prints them prefixed with '!'. Read them before relying on a node; several scripts in this repo are known-broken and say so.",
+    "fallback": "scripts\\Get-ScriptCatalog.ps1 scans the script directory directly, for when a lookup misses or research.json is stale"
+  },
+
+  "$comment.rules": "ENFORCED rules are backed by a mechanism that fails: startup validation, a hook that denies the tool call, or a linter that exits 1. ADVISORY rules hold only as long as the agent chooses to honour them -- they are marked so, because a rule claiming enforcement it does not have is worse than an honest suggestion. Do not rationalise past an advisory rule on the grounds that this particular case is small; that is the exact failure these were written after.",
+
+  "rules": [
+    "ENFORCED: research.json is never edited directly. Use Add-ResearchNode.ps1 / Update-ResearchNode.ps1. A PreToolUse hook denies Write and Edit against it.",
+    "ENFORCED: every .ps1 you write or edit is linted against the house rules immediately, by a PostToolUse hook. Fix what it reports before moving on.",
+    "ENFORCED: startup fails if any manifest entry does not resolve. A broken contract stops the session rather than degrading it.",
+    "ADVISORY: Graph first, narrative second. Query a semantic model for the narrowest slice that answers the question; read source only to spot-check claims that matter (DESIGN-NOTES section 4).",
+    "ADVISORY: Before any expensive query, answer two questions: what exactly am I trying to learn, and what is the cheapest query that distinguishes the hypotheses (section 7).",
+    "ADVISORY: Push a thread before descending into a side investigation; pop it when done (section 3).",
+    "ADVISORY: For multi-file mechanical edits, emit a JSON plan and run Invoke-SurgicalEdit.ps1 rather than hand-editing (section 5).",
+    "ADVISORY: Wrap known-flaky external tools in an explicit timeout and fallback. A hung call is indistinguishable from thinking (section 8).",
+    "ADVISORY, AND THE ONE THAT MATTERS MOST: no employer source, internal architecture, production telemetry, security-posture detail, or personal data about former colleagues enters this repo (PROVENANCE.md). There is no mechanism behind this one and there cannot easily be -- the identifier list that would enforce it is itself employer information and must not live here. It rests entirely on judgement. Treat it as the hardest rule, not the softest.",
+    "ADVISORY: scripts target PowerShell 7 (pwsh). Add -Target Ps51 when a script may run on stock Windows 5.1 -- the hook lints at the Ps7 default. Rules and rationale: notes\\powershell-house-rules.md."
+  ]
+}

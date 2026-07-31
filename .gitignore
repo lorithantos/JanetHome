@@ -1,0 +1,5 @@
+# Machine-local Claude Code permissions; not shared state.
+.claude/settings.local.json
+
+# The thread stack lives in %TEMP%, not here -- but guard against a stray copy.
+thread-stack.json

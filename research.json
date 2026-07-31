@@ -1,0 +1,541 @@
+{
+  "$comment": "Node graph of everything in this repo worth retrieving. Startup does NOT load this -- it loads only the pointer to Get-Research.ps1, which queries it on demand. Progressive disclosure, DESIGN-NOTES section 2. Keep summaries one line: they are what retrieval matches against.",
+  "$comment.caveats": "The 'caveats' array is what bites you: missing dependencies, external services contacted, platform assumptions, outright breakage. Shown on every retrieval, never hidden behind a flag. In ranking they DEMOTE and never select -- a term appearing in a node's problems is weaker evidence than the same term in its purpose, and a node should not surface merely for describing its own breakage. Add them via Add-ResearchNode.ps1 -Caveats.",
+  "version": 1,
+
+  "nodes": [
+    {
+      "id": "pattern.manifest-startup",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "1",
+      "summary": "Manifest-driven startup: an explicit checkable contract of files to read and commands to run, instead of a prose context file that drifts silently.",
+      "tags": ["startup", "contract", "agent", "validation"],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest"]
+    },
+    {
+      "id": "pattern.progressive-disclosure",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "2",
+      "summary": "Capability lives in per-topic skill files loaded on match, not one monolithic prompt; context is the scarce resource and instructions interfere.",
+      "tags": ["skills", "context", "agent", "retrieval"],
+      "links": ["script.get-research", "file.research"]
+    },
+    {
+      "id": "pattern.thread-stack",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "3",
+      "summary": "Push/pop stack of investigation topics: debugging is depth-first search and working memory is not, so make the descent explicit and give it an unwind path.",
+      "tags": ["debugging", "session", "thread-stack", "highest-value"],
+      "links": ["script.push-thread-stack", "script.pop-thread-stack", "script.show-thread-stack"]
+    },
+    {
+      "id": "pattern.graph-first-analysis",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "4",
+      "summary": "Give the agent a compiler's semantic model rather than text search; query the narrowest slice first and read source only to spot-check. Rebuilt clean-room as RazorGraph.Mcp in D:\\Repos\\RazorGraphTool.",
+      "caveats": [
+        "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
+      ],
+      "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server"]
+    },
+    {
+      "id": "pattern.deterministic-edits",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "5",
+      "summary": "Model emits a reviewable JSON plan of exact edit operations; a script executes it. Judgment from the model, mechanical execution from code.",
+      "tags": ["editing", "agent", "determinism"],
+      "links": ["script.invoke-surgical-edit"]
+    },
+    {
+      "id": "pattern.reviewer-principles",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "6",
+      "summary": "Depersonalized review principles: capture why in comments, tests must be able to fail, move/rename PRs owe evidence, warning fixes must not change runtime defaults, runbooks never route to a named person.",
+      "tags": ["review", "testing", "ethics", "process"],
+      "links": ["script.test-pre-commit", "pattern.handoff-corpus"]
+    },
+    {
+      "id": "pattern.two-question-routing",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "7",
+      "summary": "Before an expensive query, force two questions: what am I trying to learn, and what is the cheapest query that distinguishes the hypotheses. Converts flailing into bisection.",
+      "tags": ["telemetry", "queries", "agent", "discipline"],
+      "links": ["pattern.graph-first-analysis"]
+    },
+    {
+      "id": "pattern.circuit-breakers",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "8",
+      "summary": "Catch known-flaky tools inside the agent loop with explicit timeout and fallback; a hung call is indistinguishable from thinking, which is the worst failure mode.",
+      "tags": ["reliability", "agent", "failure-modes"],
+      "links": ["script.invoke-janet-startup"]
+    },
+    {
+      "id": "pattern.per-scope-storage",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "9",
+      "summary": "Per-user/per-scope containers with scoped credentials rather than one shared store; centralized convenience is centralized failure and shared rate limits.",
+      "tags": ["storage", "architecture", "scaling"],
+      "links": ["note.meta-second-brain-vs-janet"]
+    },
+    {
+      "id": "pattern.handoff-corpus",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "10",
+      "summary": "Handoff corpus format: one note per file, topic-prefixed filenames as the index, H1 plus one-sentence summary, cross-reference without deduplicating, machine-readable manifest as source of truth, density over polish, written for an LLM reader.",
+      "tags": ["documentation", "retrieval", "handoff", "format"],
+      "links": ["pattern.progressive-disclosure", "file.provenance"]
+    },
+    {
+      "id": "pattern.lessons-learned",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "11",
+      "summary": "What to do differently: classify files portable/confidential/personal at authoring time, keep personal tooling in a personal repo from day one, never profile named colleagues durably, write operational discipline down early.",
+      "tags": ["retrospective", "process", "ethics"],
+      "links": ["file.provenance", "pattern.handoff-corpus"]
+    },
+
+    {
+      "id": "script.invoke-janet-startup",
+      "kind": "script",
+      "path": "scripts\\Invoke-JanetStartup.ps1",
+      "summary": "Executes startup-manifest.json: sets $env:JanetBase, validates every entry resolves before running anything, executes startup commands, emits a session brief.",
+      "params": ["ManifestPath", "Text", "Pretty", "IncludeContent", "SkipRun"],
+      "tags": ["startup", "session", "validation", "entrypoint"],
+      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers"]
+    },
+    {
+      "id": "script.get-research",
+      "kind": "script",
+      "path": "scripts\\Get-Research.ps1",
+      "summary": "Queries research.json by id, tag, kind, or scored free text, returning a ranked top-N shortlist; the single retrieval entry point so startup never loads the full inventory.",
+      "params": ["Id", "Tag", "Kind", "Query", "First", "All", "Expand", "Depth", "Full", "Text", "Pretty", "Path"],
+      "tags": ["retrieval", "research", "index", "entrypoint"],
+      "links": ["file.research", "pattern.progressive-disclosure"]
+    },
+    {
+      "id": "script.push-thread-stack",
+      "kind": "script",
+      "path": "scripts\\Push-ThreadStack.ps1",
+      "summary": "Push a topic onto the thread stack, parking whatever was active.",
+      "params": ["Topic", "Notes", "Path", "Text"],
+      "tags": ["thread-stack", "session", "debugging"],
+      "links": ["script.pop-thread-stack", "script.show-thread-stack", "pattern.thread-stack"]
+    },
+    {
+      "id": "script.pop-thread-stack",
+      "kind": "script",
+      "path": "scripts\\Pop-ThreadStack.ps1",
+      "summary": "Pop the active topic and activate the next parked one; -Keep retains done items.",
+      "params": ["Path", "Keep", "Text"],
+      "tags": ["thread-stack", "session", "debugging"],
+      "links": ["script.push-thread-stack", "script.show-thread-stack", "pattern.thread-stack"]
+    },
+    {
+      "id": "script.show-thread-stack",
+      "kind": "script",
+      "path": "scripts\\Show-ThreadStack.ps1",
+      "summary": "Show the current thread stack as { depth, active, items[] }; -All includes completed items.",
+      "params": ["Path", "All", "Text", "Pretty"],
+      "tags": ["thread-stack", "session", "debugging"],
+      "links": ["script.push-thread-stack", "script.pop-thread-stack", "pattern.thread-stack"]
+    },
+    {
+      "id": "script.new-text-file",
+      "kind": "script",
+      "path": "scripts\\New-TextFile.ps1",
+      "summary": "Create or overwrite a text file without PowerShell here-string, escaping, or BOM pain; Base64 input mode sidesteps quoting entirely.",
+      "params": ["Path", "Text", "Base64", "Clipboard", "Force", "Unicode"],
+      "tags": ["files", "encoding", "authoring", "escaping"],
+      "links": ["script.convertto-base64file", "script.read-text-file"]
+    },
+    {
+      "id": "script.read-text-file",
+      "kind": "script",
+      "path": "scripts\\Read-TextFile.ps1",
+      "summary": "Read a text file with automatic encoding detection.",
+      "params": ["Path"],
+      "tags": ["files", "encoding"],
+      "links": ["script.new-text-file", "script.test-file-encoding"]
+    },
+    {
+      "id": "script.convertto-base64file",
+      "kind": "script",
+      "path": "scripts\\ConvertTo-Base64File.ps1",
+      "summary": "Encode a file's content as Base64 for use with New-TextFile.ps1 -Base64.",
+      "params": ["Path", "LineWidth"],
+      "tags": ["files", "encoding", "escaping"],
+      "links": ["script.new-text-file"]
+    },
+    {
+      "id": "script.fix-file-encoding",
+      "kind": "script",
+      "path": "scripts\\Fix-FileEncoding.ps1",
+      "summary": "Two-pass non-ASCII to ASCII cleanup; handles raw Windows-1252 bytes in 0x80-0x9F that .NET's UTF-8 decoder silently destroys.",
+      "params": ["Path", "WhatIf"],
+      "tags": ["encoding", "files", "repair"],
+      "links": ["script.test-file-encoding"]
+    },
+    {
+      "id": "script.test-file-encoding",
+      "kind": "script",
+      "path": "scripts\\Test-FileEncoding.ps1",
+      "summary": "Pre-push audit: scans files for non-ASCII bytes and line ending issues.",
+      "params": ["Path", "ExpectCrlf"],
+      "tags": ["encoding", "files", "audit", "pre-commit"],
+      "links": ["script.fix-file-encoding", "script.test-pre-commit"]
+    },
+    {
+      "id": "script.invoke-surgical-edit",
+      "kind": "script",
+      "path": "scripts\\Invoke-SurgicalEdit.ps1",
+      "summary": "Applies a batch of surgical code edits from a JSON plan file; supports dry run and skipping build/test.",
+      "params": ["PlanFile", "DryRun", "NoBuild", "NoTest"],
+      "tags": ["editing", "agent", "determinism", "refactor"],
+      "links": ["pattern.deterministic-edits"]
+    },
+    {
+      "id": "script.invoke-namespace-migration",
+      "kind": "script",
+      "path": "scripts\\Invoke-NamespaceMigration.ps1",
+      "summary": "Bulk namespace rename across csproj Using directives and .cs using statements.",
+      "params": ["ConfigFile", "Mappings", "Path", "WhatIf", "TypeMappings", "RemoveUsings", "Format"],
+      "tags": ["csharp", "refactor", "namespaces", "bulk-edit"],
+      "links": ["script.get-namespace-map", "script.get-using-map"]
+    },
+    {
+      "id": "script.get-namespace-map",
+      "kind": "script",
+      "path": "scripts\\Get-NamespaceMap.ps1",
+      "summary": "Namespace inventory for a C# tree.",
+      "params": ["Path", "OutFile"],
+      "tags": ["csharp", "namespaces", "survey"],
+      "links": ["script.invoke-namespace-migration", "script.get-using-map"]
+    },
+    {
+      "id": "script.get-using-map",
+      "kind": "script",
+      "path": "scripts\\Get-UsingMap.ps1",
+      "summary": "Maps Using Include directives across csproj files.",
+      "params": ["Path", "OutFile"],
+      "tags": ["csharp", "namespaces", "msbuild", "survey"],
+      "links": ["script.get-namespace-map", "script.invoke-namespace-migration"]
+    },
+    {
+      "id": "script.get-lsp-references",
+      "kind": "script",
+      "path": "scripts\\Get-LspReferences.ps1",
+      "summary": "LSP client that starts csharp-ls, indexes a solution, and finds all references for types and extension methods.",
+      "params": ["Solution", "ScanPaths", "OutFile"],
+      "tags": ["csharp", "lsp", "references", "code-analysis"],
+      "caveats": [
+        "Requires csharp-ls on PATH (not currently installed). Install with: dotnet tool install --global csharp-ls",
+        "Indexing a large solution is slow and the script has no timeout, so a hung language server presents as a stalled session -- see pattern.circuit-breakers."
+      ],
+      "links": ["pattern.graph-first-analysis", "script.get-type-overlap", "pattern.circuit-breakers"]
+    },
+    {
+      "id": "script.get-type-overlap",
+      "kind": "script",
+      "path": "scripts\\Get-TypeOverlap.ps1",
+      "summary": "Reports types that share a short name across two C# codebases.",
+      "params": ["LocalPath", "OtherPath", "OutFile"],
+      "tags": ["csharp", "code-analysis", "collision", "survey"],
+      "links": ["pattern.graph-first-analysis", "script.get-namespace-map"]
+    },
+    {
+      "id": "script.get-project-survey",
+      "kind": "script",
+      "path": "scripts\\Get-ProjectSurvey.ps1",
+      "summary": "Scans a repo for .csproj files and produces a markdown summary of each project.",
+      "params": ["Path", "OutFile", "Exclude", "MaxDepth"],
+      "tags": ["csharp", "survey", "msbuild", "orientation"],
+      "links": ["script.get-config-inventory", "script.get-using-map"]
+    },
+    {
+      "id": "script.get-config-inventory",
+      "kind": "script",
+      "path": "scripts\\Get-ConfigInventory.ps1",
+      "summary": "Inventories configuration files (JSON, YAML, XML) under a directory, with optional key sampling.",
+      "params": ["Path", "OutFile", "Include", "Exclude", "SampleKeys", "ListFiles", "MaxPatternFiles"],
+      "tags": ["config", "survey", "orientation"],
+      "links": ["script.get-project-survey"]
+    },
+    {
+      "id": "script.convertto-mermaid-embed",
+      "kind": "script",
+      "path": "scripts\\ConvertTo-MermaidEmbed.ps1",
+      "summary": "Converts Mermaid diagram source to an inline HTML img tag via mermaid.ink; can process whole markdown files.",
+      "params": ["Text", "File", "Clipboard", "MarkdownFile", "OutFile", "Alt", "KeepSource", "Link"],
+      "tags": ["diagrams", "markdown", "mermaid", "docs", "network"],
+      "caveats": [
+        "Sends diagram source to mermaid.ink, a third-party service, encoded in the URL. The content leaves your machine -- check it against the PROVENANCE.md boundary before diagramming anything sensitive.",
+        "Output depends on that service staying up and on the reader being online; the img tag is a remote reference, not an embedded image."
+      ],
+      "links": ["file.provenance"]
+    },
+    {
+      "id": "script.new-repo-status-page",
+      "kind": "script",
+      "path": "scripts\\New-RepoStatusPage.ps1",
+      "summary": "Generates an HTML status page for local Git repositories.",
+      "params": ["RootPath", "Author", "OutFile", "Open", "NoFilter"],
+      "tags": ["git", "reporting", "html"],
+      "caveats": [
+        "BROKEN in this repo: dot-sources scripts\\lib\\Invoke-External.ps1, which was not carried over in the extraction. Same root cause as Test-PreCommit.ps1.",
+        "Also calls New-TextFile.ps1 at $HOME\\.github\\scripts\\, a path from the previous repo layout, and defaults -RootPath to C:\\repos."
+      ],
+      "links": ["script.new-text-file", "script.test-pre-commit"]
+    },
+    {
+      "id": "script.read-json-cache",
+      "kind": "script",
+      "path": "scripts\\Read-JsonCache.ps1",
+      "summary": "Read cached JSON files as PSCustomObjects, with optional schema discovery.",
+      "params": ["Path", "Schema"],
+      "tags": ["json", "cache", "data"],
+      "links": []
+    },
+    {
+      "id": "script.open-in-visual-studio",
+      "kind": "script",
+      "path": "scripts\\Open-InVisualStudio.ps1",
+      "summary": "Opens a file in a specific running Visual Studio instance via COM (ROT + EnvDTE).",
+      "params": ["Path", "SolutionMatch", "Line"],
+      "tags": ["visual-studio", "editor", "windows"],
+      "caveats": [
+        "Windows-only and requires an already-running Visual Studio instance; COM/EnvDTE has no equivalent elsewhere. This is the least portable script in the toolkit."
+      ],
+      "links": []
+    },
+    {
+      "id": "script.test-pre-commit",
+      "kind": "script",
+      "path": "scripts\\Test-PreCommit.ps1",
+      "summary": "Pre-commit validation: lint, test, config check, and encoding audit.",
+      "params": [],
+      "tags": ["pre-commit", "validation", "quality"],
+      "caveats": [
+        "BROKEN in this repo: dot-sources scripts\\lib\\Invoke-External.ps1, which was not carried over in the extraction. Fails immediately.",
+        "Also assumes a git repo, PSScriptAnalyzer (not installed), and a Test-Config.ps1 that is absent. Use Test-PowerShellRules.ps1 instead until the lib dependency is restored or inlined."
+      ],
+      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules"]
+    },
+    {
+      "id": "script.get-script-catalog",
+      "kind": "script",
+      "path": "scripts\\Get-ScriptCatalog.ps1",
+      "summary": "Lists all scripts with synopsis and parameter names by scanning the script directory; the exhaustive fallback when research.json lookup misses.",
+      "params": ["ScriptDir", "Text", "Pretty"],
+      "tags": ["catalog", "inventory", "fallback"],
+      "links": ["script.get-research", "file.research"]
+    },
+
+    {
+      "id": "script.test-powershell-rules",
+      "kind": "script",
+      "path": "scripts\\Test-PowerShellRules.ps1",
+      "summary": "Lints .ps1 files against the mechanically checkable house rules: return @() unrolling, $null comparison order, truncating New-Item, plus 7-only syntax when -Target Ps51.",
+      "params": ["Path", "Target", "ExcludeRule", "Text", "Pretty"],
+      "tags": ["powershell", "lint", "quality", "pre-commit", "rules"],
+      "links": ["note.powershell-house-rules", "script.test-pre-commit"]
+    },
+    {
+      "id": "note.powershell-house-rules",
+      "kind": "note",
+      "path": "notes\\powershell-house-rules.md",
+      "summary": "PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, plus a 5.1 backward-compatibility section.",
+      "tags": ["powershell", "rules", "strictmode", "encoding", "quality"],
+      "links": ["script.test-powershell-rules", "pattern.manifest-startup"]
+    },
+    {
+      "id": "note.insertion-mergesort-hybrid",
+      "kind": "note",
+      "path": "notes\\insertion-mergesort-hybrid.md",
+      "summary": "Personal research note on a hybrid insertion/merge sort; pure algorithms, tagged by its author as a shower thought that was not actually needed.",
+      "tags": ["algorithms", "sorting", "research"],
+      "links": ["note.insertion-mergesort-hybrid-full"]
+    },
+    {
+      "id": "note.insertion-mergesort-hybrid-full",
+      "kind": "note",
+      "path": "notes\\insertion-mergesort-hybrid-full.md",
+      "summary": "Expanded 56 KB version of the insertion/mergesort hybrid analysis.",
+      "tags": ["algorithms", "sorting", "research", "long"],
+      "links": ["note.insertion-mergesort-hybrid"]
+    },
+    {
+      "id": "note.dotnet-object-sizing",
+      "kind": "note",
+      "path": "notes\\dotnet-object-sizing.md",
+      "summary": "Research note on .NET object sizing, covering public dotnet/runtime issue 24200 and observable public .NET behavior.",
+      "tags": ["dotnet", "memory", "performance", "research"],
+      "links": []
+    },
+    {
+      "id": "note.meta-ai-second-brain-source",
+      "kind": "note",
+      "path": "notes\\meta-ai-second-brain-source.md",
+      "summary": "Notes on Meta's public AI Second Brain engineering blog post; third-party public material.",
+      "tags": ["meta", "agents", "architecture", "external"],
+      "links": ["note.meta-second-brain-vs-janet"]
+    },
+    {
+      "id": "note.meta-second-brain-vs-janet",
+      "kind": "note",
+      "path": "notes\\meta-second-brain-vs-janet.md",
+      "summary": "Original comparative analysis of Meta's Second Brain against Janet's architecture; sanitized of colleague names and internal system references.",
+      "tags": ["meta", "agents", "architecture", "comparison", "storage"],
+      "links": ["note.meta-ai-second-brain-source", "pattern.per-scope-storage"]
+    },
+
+    {
+      "id": "file.startup-manifest",
+      "kind": "file",
+      "path": "startup-manifest.json",
+      "summary": "The startup contract: files to read, commands to run, operating rules, and onMissing behavior. Executed by Invoke-JanetStartup.ps1.",
+      "tags": ["startup", "contract", "config"],
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup"]
+    },
+    {
+      "id": "file.research",
+      "kind": "file",
+      "path": "research.json",
+      "summary": "This node graph. Queried on demand by Get-Research.ps1 rather than loaded at startup.",
+      "tags": ["retrieval", "index", "config"],
+      "links": ["script.get-research", "pattern.progressive-disclosure"]
+    },
+    {
+      "id": "file.provenance",
+      "kind": "file",
+      "path": "PROVENANCE.md",
+      "summary": "What was carried over from the departure corpus, from where, on what basis, and what was deliberately left behind. The boundary rule for anything added here.",
+      "tags": ["provenance", "boundary", "ethics", "compliance"],
+      "links": ["pattern.lessons-learned", "pattern.handoff-corpus"]
+    },
+    {
+      "id": "file.design-notes",
+      "kind": "file",
+      "path": "DESIGN-NOTES.md",
+      "summary": "The eleven transferable patterns from the 2024-2026 build, written from memory rather than copied from employer artifacts.",
+      "tags": ["patterns", "architecture", "agent"],
+      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-stack"]
+    },
+
+    {
+      "id": "script.add-research-node",
+      "kind": "script",
+      "path": "scripts\\Add-ResearchNode.ps1",
+      "summary": "Adds a validated node to research.json without hand-editing JSON; splices textually so the hand-curated file keeps its grouping and comments.",
+      "params": ["Id", "Kind", "Summary", "NodePath", "Tags", "Links", "Caveats", "ScriptParams", "Section", "GraphPath", "DryRun", "Text"],
+      "tags": ["research", "index", "retrieval", "authoring"],
+      "links": ["script.get-research", "file.research", "script.update-research-node"]
+    },
+
+    {
+      "id": "script.update-research-node",
+      "kind": "script",
+      "path": "scripts\\Update-ResearchNode.ps1",
+      "summary": "Updates an existing research.json node in place with validation; preserves unknown fields and splices textually so the file keeps its curation.",
+      "params": ["Id", "Summary", "NodePath", "Kind", "Section", "Tags", "Links", "Caveats", "ScriptParams", "Append", "Remove", "GraphPath", "DryRun", "Text"],
+      "tags": ["research", "index", "retrieval", "authoring"],
+      "links": ["script.add-research-node", "script.get-research", "file.research"]
+    },
+
+    {
+      "id": "script.invoke-edit-guard",
+      "kind": "script",
+      "path": "scripts\\Invoke-EditGuard.ps1",
+      "summary": "PreToolUse hook that denies direct Write/Edit of research.json and points at the validating add/update scripts.",
+      "params": ["GuardedFile", "InputJson"],
+      "tags": ["hooks", "enforcement", "research", "guard"],
+      "links": ["script.add-research-node", "script.update-research-node", "file.research"]
+    },
+
+    {
+      "id": "script.invoke-lint-hook",
+      "kind": "script",
+      "path": "scripts\\Invoke-LintHook.ps1",
+      "summary": "PostToolUse hook that lints any .ps1 immediately after it is written, returning violations as context.",
+      "params": ["InputJson"],
+      "tags": ["hooks", "enforcement", "lint", "quality"],
+      "links": ["script.test-powershell-rules", "note.powershell-house-rules"]
+    },
+
+    {
+      "id": "note.azure-site-extension-mismatch",
+      "kind": "note",
+      "path": "notes\\azure-appservice-site-extension-version-mismatch.md",
+      "summary": "App Service 500.30 with FileNotFoundException for a shared-framework assembly at startup: the ASP.NET Core Logging site extension version outran the worker runtime and its DOTNET_ADDITIONAL_DEPS injection broke resolution. Incident writeup with diagnosis path and fix.",
+      "caveats": [
+        "VS publish can silently reinstall the extension at latest even with InstallAspNetCoreSiteExtension=false in the pubxml; Kudu PUT will not downgrade an installed extension in place - uninstall first. Recheck after every VS publish.",
+        "Slot swap moves the site extension with the content: after swapping, staging inherits the old production extension version (e.g. 9.0.4) - realign it before the next staging deploy.",
+        "Direction matters (confirmed 2026-07-28): extension NEWER than the installed runtime = startup death; extension OLDER than the runtime is ignored and harmless (a net10 app started clean alongside the 9.0.4 extension). Only realign when the extension version outruns the worker runtime."
+      ],
+      "tags": ["azure", "deployment", "dotnet", "failure-modes", "debugging"],
+      "links": []
+    },
+
+    {
+      "id": "script.invoke-build-deploy",
+      "kind": "script",
+      "path": "scripts\\Invoke-BuildDeploy.ps1",
+      "summary": "Manifest-driven build-and-deploy orchestrator: the generic pipeline (validate-first, git identity stamp, build/package/push gates, stamp-after-push, health poll distinguishing warming from broken, promote hint) lives here; each project declares only nouns in a deploy-manifest.json. Deploy sibling of the manifest-startup pattern.",
+      "caveats": [
+        "Manifest command lines execute as trusted code in the repo root - the manifest is project config, not untrusted input. Only push type azureWebAppZip exists so far; add types in the switch when a new target platform appears. Verify counts only HTTP 200 as healthy. Get-Prop uses the Properties indexer deliberately: .Properties.Name -contains throws under StrictMode when the JSON object is empty."
+      ],
+      "tags": ["deployment", "azure", "contract", "validation", "config"],
+      "links": ["pattern.manifest-startup", "note.azure-site-extension-mismatch"]
+    },
+
+    {
+      "id": "note.razorgraph-mcp-server",
+      "kind": "note",
+      "path": "notes\\razorgraph-mcp-server.md",
+      "summary": "MCP stdio server over the RazorGraphTool code graph (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 18 tools, Janet JSON envelope conventions. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise. Traversal takes a direction (outgoing/incoming/both) and descends containment for free. Extraction covers Razor/Roslyn topology, Class/Method nodes, wwwroot assets, and inline <script> blocks (2026-07-28).",
+      "caveats": [
+        "build_graph and build_solution are slow (full Roslyn compile); build_solution compiles every project in the solution. Solution graphs scope Razor and client-asset ids by project name (page:<Project>/<relPath>, js:<Project>/<relPath>), so ids differ from single-project graphs of the same code.",
+        "The running MCP server holds its Release DLLs open, so a Release rebuild fails with MSB3021 until the process is stopped, and the session must restart before extractor or tool changes appear in the MCP tools. The repo's own .mcp.json intentionally points at the Debug exe.",
+        "Covers edges are call-graph reachability to depth 3, not runtime coverage - a covered method is one some test can reach, not one a test asserted on. uncovered_methods excludes bodiless interface/abstract declarations, which never carry Covers edges."
+      ],
+      "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
+      "links": ["pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "file.skill-deploy",
+      "kind": "file",
+      "path": "skills\\deploy\\SKILL.md",
+      "summary": "The /deploy Claude Code skill: a thin trigger that routes any session (any project) to Invoke-BuildDeploy.ps1 and teaches it to query this graph instead of storing knowledge itself. Canonical file lives here; ~\\.claude\\skills\\deploy is a junction to it.",
+      "tags": ["skills", "deployment", "retrieval", "agent"],
+      "caveats": [
+        "The harness enumerates skill names and trigger descriptions ONCE at session start - a new or renamed skill is invisible until the next session, though content edits take effect on next invoke. Keep the file a pointer: invariants and graph queries only; new deployment lessons go in the graph, never in the skill. If the junction at ~\\.claude\\skills\\deploy is ever deleted, recreate it with New-Item -ItemType Junction."
+      ],
+      "links": ["script.invoke-build-deploy", "pattern.progressive-disclosure"]
+    },
+
+    {
+      "id": "note.azure-kudu-phantom-deployments",
+      "kind": "note",
+      "path": "notes\\azure-kudu-phantom-deployments.md",
+      "summary": "OneDeploy reports Deployment successful while deploying nothing: a fossil WEBSITE_NODE_DEFAULT_VERSION=6.9.1 crashes Kudu deployment-script generation, OneDeploy swallows it, classic zipdeploy fails loudly. Every deploy for 4.5 months was a silent no-op. Verify content (file mtimes, route probes), never deployment status.",
+      "tags": ["azure", "deployment", "failure-modes", "debugging"],
+      "caveats": [
+        "The tell is an impossibly fast successful deployment (~1s for 100MB) plus wwwroot mtimes older than the deploy. Health checks prove AN app runs, not WHICH app - probe a new-build-only route or file. SitePackages/packagename.txt residue is inert without WEBSITE_RUN_FROM_PACKAGE but muddies diagnosis."
+      ],
+      "links": ["note.azure-site-extension-mismatch", "script.invoke-build-deploy"]
+    }
+  ]
+}

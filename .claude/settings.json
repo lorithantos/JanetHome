@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Invoke-JanetStartup.ps1\" *)",
+      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Test-PowerShellRules.ps1\" *)",
+      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Get-Research.ps1\" *)",
+      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Show-ThreadStack.ps1\" *)",
+      "Bash(Get-ChildItem *)",
+      "Bash(Get-Content *)",
+      "Bash(Test-Path *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(az rest --method get *)",
+      "Bash(az webapp config appsettings list *)",
+      "Bash(az webapp config show *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$d = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }; $s = Join-Path $d 'scripts\\Invoke-EditGuard.ps1'; if (Test-Path $s) { & $s }",
+            "timeout": 15,
+            "statusMessage": "Checking edit guard..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$d = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }; $s = Join-Path $d 'scripts\\Invoke-LintHook.ps1'; if (Test-Path $s) { & $s }",
+            "timeout": 30,
+            "statusMessage": "Linting house rules..."
+          }
+        ]
+      }
+    ]
+  }
+}
