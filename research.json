@@ -543,10 +543,10 @@
       "kind": "note",
       "path": "notes\\razorgraph-js-scoping.md",
       "summary": "Scoping measurements for JS graphing in RazorGraph (2026-07-31): client tier is inline-first (575 <script> blocks / 14.5k LOC vs 24 js files / 3.7k in nopCommerce), DOM selectors dominate (2,362 sites vs 5 data-* uses), the literal-URL API rule scores 0% on real code where @Url.Action supplies the URL, and the vendor filter admits 102k LOC of lib_npm as first-party. Revised order: vendor fix, selector contracts, @Url.Action edges, function nodes; ESM/TS deferred.",
-      "tags": ["code-analysis", "javascript", "razor", "research", "scoping"],
       "caveats": [
-        "Counts are regex over raw text - comments and string literals included, indicative not exact. Large-project corpus is one codebase so far (nopCommerce, shallow clone at D:\\Repos\\_corpus); OrchardCore planned as the bundled/TS counter-example before trusting the ESM/TS deferral."
+        "Counts are regex over raw text - comments and string literals included, indicative not exact. Corpus = one personal app (ImageSelector, two versions of the same source) + nopCommerce (classic pole) + OrchardCore (bundled/TS pole). Selector-first and the @Url.Action finding hold at both poles; ESM/TS deferral survives but weakened - OrchardCore keeps sources outside wwwroot in Assets\\, so graph-sources-vs-graph-shipped is an open design question for bundled projects."
       ],
+      "tags": ["code-analysis", "javascript", "razor", "research", "scoping"],
       "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
     }
   ]

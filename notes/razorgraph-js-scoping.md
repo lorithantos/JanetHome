@@ -8,11 +8,12 @@ code is inline in `.cshtml`, not in `.js` files; and the API-call rule that scor
 
 ## Method
 
-Regex counts over first-party JS and `.cshtml`, three codebases: ImageSelector and
-ImageSelectorV2 (personal, classic jQuery, D:\Repos), and nopCommerce (shallow
-clone, `D:\Repos\_corpus\nopCommerce` — kept for repeatability; corpus will grow).
-Counts include comments and string literals, so they are indicative rather than
-exact; the gaps are an order of magnitude, which is enough.
+Regex counts over first-party JS and `.cshtml`. Codebases: ImageSelector and
+ImageSelectorV2 (personal, classic jQuery, D:\Repos — **V2 is a successor of V1,
+so they are one source, not two independent ones**), nopCommerce and OrchardCore
+(shallow clones under `D:\Repos\_corpus` — kept for repeatability). Counts include
+comments and string literals, so they are indicative rather than exact; the gaps
+are an order of magnitude, which is enough.
 
 ## What the current extractor recovers
 
@@ -84,6 +85,38 @@ Against the markup side: nopCommerce renders 1,741 `id=` attributes and 363
 
 Parser decision follows the Razor precedent already on record: syntax API
 primary, text scan fallback, never rewrite back to regex-only.
+
+## History
+
+2026-07-31: initial scoping. Corpus = 2 personal apps + nopCommerce.
+
+## OrchardCore (added 2026-07-31, the deliberately-modern pole)
+
+581 js / 25 ts / 1,611 cshtml. The structural opposite of nopCommerce, as intended:
+
+- **Sources live outside wwwroot.** 159 JS + 20 TS under per-module `Assets\`
+  directories, each with its own `package.json`; `wwwroot` holds *generated*
+  triplets (`x.js` / `x.map` / `x.min.js`). Graphing the unminified shipped copy
+  is a workable proxy for classic modules, but it is not the source for TS- or
+  Vue-compiled files — "graph sources vs graph shipped" is now a live design
+  question for the bundled pole, parked with ESM.
+- **The modern pole moves code out of the markup.** Inline tier is 209 blocks /
+  8k LOC against 41k LOC of sources — the inverse of nopCommerce's 80% inline.
+  Inline handling still matters (598 selectors, 434 Razor interpolations there),
+  but file-side analysis carries more of the weight here.
+- **Selector-first holds at both poles.** Sources: 339 selectors vs 81 `data-*`
+  vs 35 fetch/ajax (0 caught by the literal-URL rule — that finding also holds).
+  With V1/V2 counted as one source, this is now three independent codebases
+  agreeing, priority 2 confirmed.
+- **ESM/TS deferral survives, weakened.** 42 import/export, 25 TS files, 21
+  Vue/Alpine mounts — real but modest, and all of it compiles into scannable
+  shipped JS. Deferral stands for graphing shipped output; revisit if
+  sources-not-shipped becomes the target.
+- **Vendor detection found its first generalization gap.** The Resources module
+  re-ships bootstrap/codemirror/jquery from `wwwroot\Scripts`, with the manifest
+  in `Assets\package.json` — the root-only manifest search read nothing and 176
+  vendor files sailed through. Fixed (manifests now discovered one level down);
+  all three corpus layouts verified clean afterwards.
 
 ## History
 
