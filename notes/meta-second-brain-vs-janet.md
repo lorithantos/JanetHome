@@ -76,3 +76,54 @@ If we built a PARA-style portfolio layer, what's the right vocabulary? My instin
 But you've adopted Janet recently enough to have an outside view. What would you have wanted on day one?
 
 — Lori (drafted by Janet)
+
+---
+
+## Update: 2026-07-31 — the stumble has begun, data-engineering side first
+
+Checked for progress. No follow-up post on Second Brain itself (the original turns
+out to be dated **Apr 29, 2026**, a bit earlier than the ~June dating above; the
+rate-limit incident was early February, and their post frames it as *validation of
+adoption* rather than an architectural warning — which rather proves the
+data-engine reading). Third Brain: "piloting across dozens of teams with hundreds
+of participants." Proactive scheduled agents (morning briefings, meeting-note
+processing, digests) read as directions more than deployed features. Verification,
+staleness, and correctness mechanisms: still entirely absent from the write-up.
+
+But the same blog's **newest** post (June 30, 2026) is *DEmate: Taming LLMs for
+Data Engineering* — and it is the tool engine, arrived at independently:
+
+- ~70 structured **recipes** auto-matched to requests, not free-form prompting
+  (skills with triggers);
+- **context injection** — "explicitly gathers missing data rather than allowing
+  hallucination" (graph first, narrative second);
+- **deterministic generation** against injected schema (model decides, structure
+  performs — §5's split);
+- 20 explicit rules for new recipes including **"Explicit Verification: agents
+  must validate success, not assume it"** (verification-before-summary, verbatim
+  in spirit), plus lint/CI gates before output is shown.
+
+3,500 weekly actives, 80% acceptance on suggested changes, five months from
+experiment to deployment.
+
+**The reading.** The recall product (Second Brain) still feels no verification
+pressure — wrong summaries cost a shrug. The action product (DEmate) lands real
+diffs in the warehouse, and wrong actions forced it into contracts, injected
+context, and explicit verification within months. Both halves now sit on the same
+blog, apparently unconnected; when Third Brain's shared knowledge starts driving
+actions across teams, the DEmate discipline gets pulled into the Second Brain
+architecture. Their closing line — "converging with Meta's broader AI platforms" —
+is that sentence, written by someone who may not yet know it.
+
+**The honest version of the credit question.** It is tempting to read this as
+"we were smarter." The real difference is cheaper and more repeatable: Janet was
+built as a **process** — measure, correct, record, repeat — not as an artifact.
+A process acts on its own corpus from day one, so it collides with the
+verification problem immediately and absorbs the discipline early. An
+accumulation product can defer that collision for as long as it only summarizes.
+Meta's collective talent isn't in question; their recall tool simply hadn't yet
+been forced to act. Anyone operating this as a process would have converged
+sooner — that is a property of the loop, not of the operator.
+
+Sources: the Second Brain post and DEmate post on the Analytics at Meta Medium
+blog (`medium.com/@AnalyticsAtMeta`).

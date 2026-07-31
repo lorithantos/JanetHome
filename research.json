@@ -396,7 +396,7 @@
       "id": "note.meta-second-brain-vs-janet",
       "kind": "note",
       "path": "notes\\meta-second-brain-vs-janet.md",
-      "summary": "Original comparative analysis of Meta's Second Brain against Janet's architecture; sanitized of colleague names and internal system references.",
+      "summary": "Original comparative analysis of Meta's Second Brain against Janet's architecture; sanitized of colleague names and internal system references. Updated 2026-07-31: Meta's newest post (DEmate, June 2026) independently converges on the tool-engine discipline - recipes, context injection, deterministic generation, explicit verification - but on the data-engineering side, while Second Brain itself still publishes no verification or staleness story. The note's update section argues this is a property of action-vs-recall, and of process-vs-artifact, not of talent.",
       "tags": ["meta", "agents", "architecture", "comparison", "storage"],
       "links": ["note.meta-ai-second-brain-source", "pattern.per-scope-storage"]
     },
