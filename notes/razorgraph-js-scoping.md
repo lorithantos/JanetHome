@@ -122,6 +122,20 @@ primary, text scan fallback, never rewrite back to regex-only.
 
 2026-07-31: initial scoping. Corpus = 2 personal apps + nopCommerce.
 
+2026-07-31 (evening): **priority item 2 landed** — the selector ↔ id contract, five
+commits (`39da965`…`edd1d44`). JS side: literal ids from getElementById /
+querySelector / jQuery, with three honesty rules (whole-literal arguments only,
+dynamic call sites counted not guessed, self-created ids excluded from the
+contract). Markup side: literal `id=` values plus asp-for's generated ids; dynamic
+`id="@..."` counted. Graph: `DomSelectedBy` edges per page composition,
+`unboundSelectorIds` on script nodes with three suppression rules, mismatch report
+extended. JS comments stripped before all scanners after a fixture comment created
+a phantom contract (one commit went in red over this; fixed forward in `edd1d44`).
+Acceptance on the corpus: nopCommerce 497 selector ids extracted / 384-of-496
+foreign ids bindable against 2,382 rendered ids; ImageSelectorV2 31/31 bindable
+with zero dynamic sites — a clean codebase closes its contract completely. Items
+3 (@Url.Action edges) and 4 (function nodes / real parser) still open.
+
 2026-07-31 (later): priority item 1 landed in RazorGraphTool. Vendor detection now
 matches whole path segments (the substring bug), plus npm `@scope` dirs, manifests
 shipped inside wwwroot, and package-drop evidence from the root package.json
