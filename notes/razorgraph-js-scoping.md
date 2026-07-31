@@ -89,4 +89,15 @@ primary, text scan fallback, never rewrite back to regex-only.
 
 2026-07-31: initial scoping. Corpus = 2 personal apps + nopCommerce.
 
+2026-07-31 (later): priority item 1 landed in RazorGraphTool. Vendor detection now
+matches whole path segments (the substring bug), plus npm `@scope` dirs, manifests
+shipped inside wwwroot, and package-drop evidence from the root package.json
+(children matching ≥2 dependency names — the manifest-less lib_npm case). Detection
+is separate from policy: `--include-vendor` / `includeVendor` keeps vendor files as
+nodes marked `vendor:true` for bug-hunting inside shipped bundles, and every drop is
+reported (stderr + `skippedVendorAssets` in MCP build responses). Verified against
+the live nopCommerce layout: 21 first-party assets kept, 481 vendor dropped, zero
+lib_npm leak. Items 2+ (selector contracts, @Url.Action edges, function nodes)
+still open.
+
 Related: [[note.razorgraph-mcp-server]], [[pattern.graph-first-analysis]].
