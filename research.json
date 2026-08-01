@@ -508,7 +508,9 @@
       "caveats": [
         "build_graph and build_solution are slow (full Roslyn compile); build_solution compiles every project in the solution. Solution graphs scope Razor and client-asset ids by project name (page:<Project>/<relPath>, js:<Project>/<relPath>), so ids differ from single-project graphs of the same code.",
         "The running MCP server holds its Release DLLs open, so a Release rebuild fails with MSB3021 until the process is stopped, and the session must restart before extractor or tool changes appear in the MCP tools. The repo's own .mcp.json intentionally points at the Debug exe.",
-        "Covers edges are call-graph reachability to depth 3, not runtime coverage - a covered method is one some test can reach, not one a test asserted on. uncovered_methods excludes bodiless interface/abstract declarations, which never carry Covers edges."
+        "Covers edges are call-graph reachability to depth 3, not runtime coverage - a covered method is one some test can reach, not one a test asserted on. uncovered_methods excludes bodiless interface/abstract declarations, which never carry Covers edges.",
+        "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion.",
+        "No type-usage edges (return types, parameter types, property types): a DTO returned by a controller has zero edges even in a solution graph, so \"who uses this type\" is unanswerable for non-service classes - grep finds 6 files, the graph finds 0. Found 2026-08-01 querying ImageSelectorV2's saved graphs."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
       "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping"]
