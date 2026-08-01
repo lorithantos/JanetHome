@@ -298,6 +298,43 @@ users since before they existed.
 
 ---
 
+## Piece: the cat flap (the cap)
+
+[LT] The humility frame, stated for the record: many of the pieces were
+invented by others, before or after. Janet is arguably one invented first.
+"But I invent from coalescing things that others can also see."
+
+[LT] The Douglas Adams bit (loved "even if it's invented"): Newton inventing
+the cat flap as his greatest invention. This is what "it's like gravity" has
+been shorthand for all along — Reg's point that gravity is always working,
+"they even keep it on weekends," someone was bound to notice. But the cat flap
+seems ridiculously obvious — and that's only because you didn't have to do the
+groundwork. "It's true genius to render the hitherto unknown into the
+blindingly obvious."
+
+[J] Source check: real Adams — *Dirk Gently's Holistic Detective Agency*,
+Reg's monologue. Original lines: "It is a rare mind indeed that can render the
+hitherto non-existent blindingly obvious," and "The cry 'I could have thought
+of that' is a very popular and misleading one, for the fact is that they
+didn't." (Newton's actual claim to the cat flap is the folklore part — the
+hedge was aimed exactly right. Memory in evidence again: argument crisp,
+attribution loose.)
+
+[J] What the cap does for the essay — a final taxonomy of invention:
+- **Gravity = discovery.** Always on, inevitable, no genius required, only
+  time. Meta finding the tool engine is gravity. Convergences are gravity.
+- **Cat flap = invention.** A door within a door: coalesced from things
+  everyone could see, absurdly obvious *after*, reachable only through
+  groundwork invisible in the finished object. The thread stack is 40 lines —
+  "anyone could have written that" — and the fact is that they didn't.
+- "I could have thought of that" is the ladder's illegibility problem in
+  better clothes: obvious-in-retrospect is precisely what promotion systems
+  cannot price and what teaching is *for* — rendering the unknown blindingly
+  obvious is the teacher's job description, and the essay's threads (the
+  theorem, the pupils, the coalescence) all meet in that sentence.
+
+---
+
 ## Adjacent threads (optional material, may be separate essays)
 
 - [LT/J] Teaching without authority: pure IC with teaching capabilities; pupils
@@ -325,6 +362,9 @@ users since before they existed.
 - "I always learn more stuff."
 - "It's no more important to the story than EP's name."
 - "I didn't understand pointers at the time. But I invented them anyway."
+- "I invent from coalescing things that others can also see."
+- "It's true genius to render the hitherto unknown into the blindingly obvious."
+  (and Adams's original: "...the hitherto non-existent blindingly obvious.")
 
 ## Candidate titles / openings
 
