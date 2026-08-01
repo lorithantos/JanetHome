@@ -34,6 +34,34 @@ derivation is a contract that fails loudly.
 
 ---
 
+## Piece: physics vs calculus (the apparent contradiction that proves the rule)
+
+[LT] "This is why I was better at physics than at calculus — physics was
+recognizing relatively easy calculus problems (they don't generally have
+answers that are too hard for the instructor to check). Calculus was long
+chains where I had to be certain I remembered everything and where a missed
+sign was a wrong answer."
+
+[J] Looks like a paradox — the quotient-rule person, worse at calculus — and
+resolves into the thesis's sharpest form. Calculus-as-graded was long serial
+symbol chains: perfect recall sustained across every step, errors silent
+until the end, correctness carried in working memory the whole way — the
+taxed faculty, stressed multiplicatively. Physics was recognition (which
+small generator applies?) plus a short derivation — the strong faculty — and,
+crucially, physics answers *check themselves*: units must come out, limiting
+cases must behave, a dropped sign produces a negative mass and becomes
+visibly absurd. Physics failures fail loudly; calculus chains degrade
+quietly. The instructor-checkable-answers aside is the selection effect that
+guarantees it: physics problems are engineered so a small generator suffices.
+
+[J] The through-line this hands the essay: she has been choosing loud-failure
+domains since high school, and the framework's first principle (contracts that
+fail loudly over documents that degrade quietly) is that preference,
+engineered. Janet is the lifelong project of making software feel like
+physics instead of calculus homework.
+
+---
+
 ## Piece: the string sort (high school, same era as the calculus class)
 
 [LT] Sorting strings in BASIC on an Apple IIe ("I think it was pre-himem" —
