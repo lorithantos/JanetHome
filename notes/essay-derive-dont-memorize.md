@@ -105,6 +105,16 @@ multiset, not the array — and for 8-bit data the multiset compresses losslessl
 into 256 counters. A megapixel image: two million multiplies → 512. On a 486
 (multiply = tens of cycles) that's the feature existing vs. not.
 
+[LT] The fun part: it also worked a treat for the 12-bit images. And as a
+trivial optimization, it could ignore the multiplies for zero bins.
+
+[J] Why that's the theorem's scaling law: cost grows with bit depth (4,096 bins)
+while payoff grows with resolution (megapixels) — still ~500:1 in favor. And
+the zero-bin skip is more than an optimization: *a zero bin is knowledge*. The
+raw array can't cheaply say which values never occur; the histogram knows it by
+construction. The optimization wasn't added to the representation — it fell out
+of it. (12-bit in 1994 hints at medical/scientific imaging — see open questions.)
+
 [J] Stated once: **find the representation where the question answers itself;
 convert per-item cost into per-structure cost.**
 
