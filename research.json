@@ -398,7 +398,7 @@
       "path": "notes\\meta-second-brain-vs-janet.md",
       "summary": "Original comparative analysis of Meta's Second Brain against Janet's architecture; sanitized of colleague names and internal system references. Updated 2026-07-31: Meta's newest post (DEmate, June 2026) independently converges on the tool-engine discipline - recipes, context injection, deterministic generation, explicit verification - but on the data-engineering side, while Second Brain itself still publishes no verification or staleness story. The note's update section argues this is a property of action-vs-recall, and of process-vs-artifact, not of talent.",
       "tags": ["meta", "agents", "architecture", "comparison", "storage"],
-      "links": ["note.meta-ai-second-brain-source", "pattern.per-scope-storage"]
+      "links": ["note.meta-ai-second-brain-source", "pattern.per-scope-storage", "note.essay-derive-dont-memorize"]
     },
 
     {
@@ -563,6 +563,18 @@
         "Loads the whole file into memory (fine for MB-scale graphs). Unlike Get-Research it caps -Where results too (default -First 10) because blob arrays can hold tens of thousands of items; -All lifts the cap and the envelope always says when it was applied."
       ],
       "links": ["script.get-research", "note.razorgraph-mcp-server"]
+    },
+
+    {
+      "id": "note.essay-derive-dont-memorize",
+      "kind": "note",
+      "path": "notes\\essay-derive-dont-memorize.md",
+      "summary": "Raw pieces for a personal essay: derive-dont-memorize as a lifelong strategy - quotient rule (~1983), associative memory vs names (the Naked story, IMDb as symbol table), Bresenham scaling and histogram statistics (1994), the three-queue dispatcher (2026), turns-into-scripts as Janet's origin, the essay-drafting method itself, and the late ADHD recognition that named the pattern. LT/J markers separate Lori's material from Claude's framings for the diff-against-perception editing pass.",
+      "tags": ["essay", "personal", "memory", "adhd", "architecture"],
+      "caveats": [
+        "Personal content (health, named-by-initial people, a friend's diary). Raw material, not a draft - the [J] framings are unvetted and must be diffed against perception before any public use. Published as a private artifact 2026-08-01; open questions at the bottom list facts to verify before drafting."
+      ],
+      "links": ["note.meta-second-brain-vs-janet"]
     }
   ]
 }

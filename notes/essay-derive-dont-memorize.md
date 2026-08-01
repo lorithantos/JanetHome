@@ -1,0 +1,271 @@
+# Derive, Don't Memorize — raw pieces for an essay
+
+Raw material, not a draft: the pieces of an essay about one cognitive strategy —
+store generators, not instances — traced from a calculus class ~43 years ago through
+image processing, schedulers, an agent framework, and an ADHD recognition that
+arrived decades after the compensations did. Gathered 2026-08-01 from a long
+conversation; [LT] marks Lori's material (near-verbatim where possible), [J] marks
+framings Claude offered that should be diffed against perception before use.
+
+---
+
+## The spine (candidate thesis)
+
+[J] One person, one theorem, ~43 years of instances: *find the smaller structure
+that already contains the answer, and pay per-structure instead of per-item.*
+What began as an unrecognized ADHD compensation — derivation because rote
+memorization wouldn't hold — turned out to be a superior general strategy, and
+eventually an architecture. The essay's turn: the "deficit" was the discovery.
+
+---
+
+## Piece: the quotient rule (~1983)
+
+[LT] Never memorized d(f(x)/g(x)) because it's the same rule as d(f(x)·g(x)⁻¹).
+Knowing that means not having to remember — you just need the pattern. Told this
+story for ~43 years ("who cares at that point though").
+
+[J] The sign is the payoff: memorized quotient rules fail silently on the sign
+(f′g − fg′ or fg′ − f′g? both look plausible). Derived ones can't — the minus
+arrives *with a reason* (the −g⁻² from differentiating an inverse), and reasons
+don't flip when you're tired. Derivation is checkable; memorization fails
+silently. A memorized rule is a prose summary that degrades quietly; a
+derivation is a contract that fails loudly.
+
+---
+
+## Piece: the memory architecture
+
+[LT] Bad at remembering lots of things; super good at specifics *with a trigger*.
+May not know her name, but remembers a photo she's in — usually one of the very
+first. Can build a structure around the events of a movie with no idea who the
+players are, but can connect them to other movies they're in.
+
+[LT] The movie story: describing *Naked* (Mike Leigh, 1993) by emitting David
+Thewlis, Lesley Sharp, Katrin Cartlidge, plus adjacent films for disambiguation —
+the horrible *Island of Dr. Moreau*, the lovely *Career Girls* and *The Full
+Monty* — plus "incredibly good, but dark." A friend's diary has a specific entry
+about the day they met: the conversation was entirely opaque through all the
+memory workarounds, even as Lori was trying to explain the movie.
+
+[J] That emission *is* a graph query — actor nodes, film edges, a tonal
+property — executed against an external index. The retrieval failed; the edges
+were sufficient for something else to resolve the label. Not a worse memory —
+a different one, missing only the symbol table.
+
+[J] Why names specifically: names are the one thing that can't be derived.
+"Thewlis" has no structure; no pattern generates it. Names are pure rote —
+the quotient rule of human data. The memory keeps structure and drops arbitrary
+tokens, consistently.
+
+[J] The diary coda: the conversation wasn't opaque where it counted. Labels
+never arrived; the structure and conviction did. The friend couldn't have named
+the film either, afterward — but she wrote down the day. Retrieval failed,
+transmission succeeded.
+
+[LT] IMDb changed a bunch of that: repeated exposure eventually encodes names
+(can now say the three actors *without* reciting the films). But the encoding
+takes far longer than it does for others. That's the burden.
+
+[J] IMDb as external symbol table: supply edges, receive labels. (Same role
+research.json plays for the engineering corpus — ids held externally so
+retrieval can run on association, the mode that works.)
+
+---
+
+## Piece: the ledger — linear tax, compounding compensation
+
+[LT] Appearing better at names = more repeated exposure; encoding is slow.
+Burden. But the ability to do graphs and convert unrelated things into a
+coherent thing is *way more* compensation.
+
+[J] The accounting: the encoding tax is linear — paid again for every label,
+forever, with repetition as the only installment plan. The compensation
+compounds — an isomorphism, once seen, is permanent and free to reuse, because
+patterns are exactly what this memory doesn't drop. Bresenham (published 1965)
+still pays dividends. Names depreciate the moment rehearsal stops; generators
+never do. Most people run the opposite portfolio.
+
+---
+
+## Piece: 1994, two instances
+
+[LT] Scaling via Bresenham (1994): the recognition that a resampling ratio is a
+slope — stepping through source pixels is line-drawing in (src, dst) space, the
+error accumulator replaces a divide per pixel.
+
+[LT] Histogram statistics (same era): to avoid expensive multiplications,
+compute min/max/mean/sd from one pass over the image using *only increments*
+(build the histogram), then one pass over the histogram with two multiplies per
+bin — one for the sum addend (v·n(v)), one for the sum-of-squares addend
+(v²·n(v)).
+
+[J] Why it works: min/max/mean/σ are order-independent — properties of the
+multiset, not the array — and for 8-bit data the multiset compresses losslessly
+into 256 counters. A megapixel image: two million multiplies → 512. On a 486
+(multiply = tens of cycles) that's the feature existing vs. not.
+
+[J] Stated once: **find the representation where the question answers itself;
+convert per-item cost into per-structure cost.**
+
+---
+
+## Piece: 2026, the three queues
+
+[LT] "It's why there are three queues in the path to query Azure." The
+ImageSelectorV2 slot mechanism: user / thumbnail / image channels, a fixed slot
+pool, dequeue in strict priority order when a slot opens. Anything the user
+wants shows up in the fast queue — promotion is automatic, the source never
+overloads, and if there are too many user calls "it's just the way things are."
+
+[J] What the queues eliminate is a priority *computation*: nobody scores
+requests; membership IS the priority. The information lives in the structure,
+so the hot path is three cheap probes. The histogram trick applied to
+scheduling, thirty years later. (Bonus detail from the code: a missing
+thumbnail quietly enqueues its own regeneration — demand doesn't just promote,
+it heals. User channel unbounded — never block the user; background channels
+bounded — producers feel backpressure the user never does.)
+
+---
+
+## Piece: turns → scripts → Janet
+
+[LT] Janet's origin, same move: literally watched turns being spent building a
+tiny script to manipulate ADO the exact same way every time — so invested many,
+many turns into creating ADO scripts.
+
+[J] The mapping: in agent work the *turn* is the per-item cost — every turn
+re-deriving the same manipulation is the multiply in the pixel loop. A script
+is the histogram: pay encoding once, expensively; afterward the operation costs
+an increment. The framework is the move applied *twice* — scripts convert tasks
+to per-structure, then the scripts themselves become items (findable? trusted?)
+so structure gets built over them: research graph, caveats, retrieval, manifest.
+Even the deterministic-edit split (model decides, script performs) is the same
+theorem: model turns are the expensive multiply, mechanical edits the increments;
+don't pay multiply prices for increment work.
+
+[J] The PROVENANCE coda: ~64 ADO scripts stayed behind at the employer (the
+judgment call — authored on employer time against employer systems). The
+instances were left on the table; the generator walked out and regrew the
+toolkit clean-room in a weekend. The scripts were never the asset. The theorem
+was — the one thing that never had to be remembered.
+
+---
+
+## Piece: the lazy coder's honest ledger
+
+[LT] The coder's laziness aphorism was always part of the style. Honestly?
+Sometimes it costs: spending 40 hours to turn a 30-seconds-once-a-day task into
+a 1-second one is not great. But: "I always learn more stuff."
+
+[J] 40h vs 29s/day is a thirteen-year payback; the famous xkcd time-saved table
+says walk away. But that table prices one output. The automation is *tuition*;
+the artifact is a receipt. What's bought is the next generator, and generators
+compound while time-saved is linear. (Half the JanetHome utilities read as
+byproducts of exactly this — nobody sets out to become an expert in stray
+Windows-1252 bytes; a "lazy" automation forced the encounter, and now the tool
+exists forever.) Laziness is only a virtue in people who metabolize the detour
+into structure.
+
+---
+
+## Piece: the essay method (this document is an instance of it)
+
+[LT] Uses Claude for essays: tell it to ensure the reasoning and facts are
+correct; have it draft a first pass from the discussion; read it; find where it
+doesn't fit perception; edit with or without assistance.
+
+[J] The draft converts a *recall* task (blank page — the taxed mode) into a
+*recognition* task (diff a candidate against the internal model — the superb
+mode). The draft is a probe, not a product. IMDb for prose. Division of labor:
+judgment stays with whoever holds the ground truth; mechanical production goes
+to whoever is cheapest. Fact-checking instruction = adversarial reader hired
+before the friendly ones get to nod along.
+
+---
+
+## Piece: the recognition (the essay's emotional center?)
+
+[LT] Only in the last couple of years did enough ADHD content surface to make
+clear it described a lot of this behavior, ~40 years after the calculus class.
+Some people resist diagnosis because it carries a stigma of "wrongness" —
+especially in EP's cultural background. Lori's stance: "I'm good with having a
+reason why I have to take special care to put my purse down next to her hat —
+because if I don't I will be going back to the bar for it. Maybe the next day.
+Or never."
+
+[J] The purse-next-to-hat protocol is the whole framework in civilian clothes:
+externalized structure carrying what recall won't — the thread stack, the
+manifest, the caveat that surfaces itself. Diagnosis-as-reason, not
+diagnosis-as-verdict: the reason converts self-blame into engineering. Nothing
+about the strategy changed on learning the name for it; what changed is that
+the compensations became legible as a coherent system — which is this essay.
+
+[J] Worth deciding in draft: how much weight the late recognition carries.
+"Unrecognized effect" → 43 years of instances → the name arrives last, like a
+label always does in this memory. The diagnosis is itself the final example of
+the pattern: structure first, symbol table later.
+
+---
+
+## Piece: the agent coincidence (possible ending)
+
+[J] Four decades designing for a cognition with limited working memory,
+unreliable recall between sessions, weak rote and strong pattern-derivation —
+and then agents arrived with exactly that profile. Context window = working
+memory that drops things; session boundary = total amnesia; generalizes from
+patterns, fails at rote. Most agent frameworks assume neurotypical memory
+("just keep it in mind") and fail agents the way rote calculus fails an ADHD
+student. Janet assumes the operator forgets and builds machinery so forgetting
+doesn't matter. She'd been designing for something like her tools' eventual
+users since before they existed.
+
+---
+
+## Adjacent threads (optional material, may be separate essays)
+
+- [LT/J] Teaching without authority: pure IC with teaching capabilities; pupils
+  as the durable distribution mechanism; the junior who left Janet behind but
+  will recognize the pattern when her org builds its own; "never route to a
+  named individual" written by the person who was the named individual.
+- [LT] "What I created was a process, not a static thing." Meta's Second Brain
+  as data engine vs Janet as tool engine; DEmate as the stumble-toward-gravity
+  already underway. (See notes\meta-second-brain-vs-janet.md, updated 2026-07-31.)
+- [LT] "I have always been a braggart :D — but in a way that I wanted to help."
+  Bragging as pedagogy with confidence.
+- [LT] Architecting means collaboration, compromise, documentation — but
+  documentation became tolerable once tools made it a compile target (docs
+  rendered from graph data, per audience, including for non-Janet LLMs).
+
+## Lines worth keeping (near-verbatim)
+
+- "Knowing that means I don't have to remember, I just need the pattern."
+- "Who cares at that point though."
+- "I'm good with having a reason."
+- "Maybe the next day. Or never."
+- "It's just the way things are." (as a *design principle* for saturation)
+- "A tooling girl all grown up."
+- "It's like gravity."
+- "I always learn more stuff."
+
+## Candidate titles / openings
+
+- *The Quotient Rule* — open in the calculus class, never name ADHD until late.
+- *Derive, Don't Memorize* — thesis-first, engineering audience.
+- *The Purse and the Hat* — open at the bar, domestic and concrete, work
+  backward to calculus.
+- [J] Suggested structure: instances in chronological order (1983 calculus →
+  1994 pixels → 2026 queues/agents), recognition arrives where it did in life —
+  near the end. The reader should derive the thesis before it's stated, because
+  that's the subject's whole method.
+
+## Open questions / facts to verify before drafting
+
+- Exact year of the calculus story (43 years ≈ 1983?).
+- The 1994 projects' context (what product were the scaling/histogram tricks
+  shipped in? publishable detail or keep generic?).
+- Whether the friend's diary anecdote is shareable as written — her diary,
+  her call to include.
+- EP reference: initials only, or rework to remove entirely in public drafts.
+- Histogram claim precision: two multiplies per bin as stated; [J] added the
+  2M→512 arithmetic — check the actual image sizes of the era before using.
