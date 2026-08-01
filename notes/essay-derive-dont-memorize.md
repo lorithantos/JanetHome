@@ -216,13 +216,20 @@ if I don't I will be going back to the bar for it. Maybe the next day. Or never.
 people's names in stories. The diary's owner is unidentified even in the source
 conversation; the pupils are "the junior," "a friend," roles throughout.
 
+[LT] Clarified: the practice is not anonymity-as-secrecy. The diary's owner is
+a close, current friend ("I still message her often") — the name is known and
+warm; it's just "no more important to the story than EP's name." Relevance
+discipline, not protection.
+
 [J] Candidate observation for the essay: the no-names practice, the memory
 architecture, and the runbook rule ("never route to a named individual") are
 one design. The person whose memory drops labels built a narrative practice
-that never needs them — stories that run on roles and edges rather than names —
-and it doubles as protection for the people in the stories. The storytelling
-is structure-addressed for the same reason the memory is, and it is *kinder*
-for it. Structure over symbol table, all the way down to ethics.
+that never needs them — stories that run on roles and edges rather than names.
+Not secrecy: the names exist and the relationships are close; the names simply
+carry no structural weight, so omitting them costs the story nothing — and
+protection of the people arrives as a side effect, the way the zero-bin skip
+did: not added, fallen out of the representation. Structure over symbol table,
+all the way down.
 
 [J] The purse-next-to-hat protocol is the whole framework in civilian clothes:
 externalized structure carrying what recall won't — the thread stack, the
@@ -277,6 +284,7 @@ users since before they existed.
 - "A tooling girl all grown up."
 - "It's like gravity."
 - "I always learn more stuff."
+- "It's no more important to the story than EP's name."
 
 ## Candidate titles / openings
 
