@@ -44,6 +44,23 @@ nothing derived from the employer MCP implementation.
   emitted across a project boundary, so `build_solution` is required — a
   single-project graph can never contain one.
 
+## Planned: attribute-driven DI detection (2026-08-01)
+
+Lori's codebases register services via attributes — `[RegisterDependency<TInterface>]`
+(multiple attributes = forwarding descriptors, one instance across interfaces),
+`[RegisterHostedService]` (forwards IHostedService to the primary registration),
+`[RegisterFactory<TFactory,TCreates>]` — wired by
+`AddDependenciesFromAttributes(assembly)` in
+`ImageSelectorV2\ImageSelectionTools\Attributes\RegisterDependencyAttribute.cs`.
+
+The extractor should read these: a class carrying `RegisterDependency` is a
+ServiceImplementation of the attribute's type argument (or its first interface),
+with lifetime metadata on the node. Constructor parameters should count as
+injections **only when the parameter type is itself registered** — which also
+fixes the record-ctor-params-as-injectedServices misclassification as a side
+effect, since DTOs are never registered. Per Lori: an *option* in the tool
+(attribute conventions are per-codebase), but the default in our repos.
+
 ## History
 
 Updated 2026-07-30. The server and the extractor work it depends on sat uncommitted
