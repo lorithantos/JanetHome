@@ -34,6 +34,30 @@ derivation is a contract that fails loudly.
 
 ---
 
+## Piece: the string sort (high school, same era as the calculus class)
+
+[LT] Sorting strings in BASIC on an Apple IIe ("I think it was pre-himem" —
+the hardware/BASIC-version label is hedged; the solution is not). String
+copies on that machine were brutal: interpreted char-by-char copies, and in
+Applesoft, a quadratic garbage collector that could freeze the machine for
+minutes, fed by every swap. The solution at 17: sort a parallel array of
+integer indexes and never move a string. The permutation is the answer; the
+heavy data holds still.
+
+[J] Three things this piece does for the essay:
+1. It pairs with the quotient rule *in the same school year* — the generator
+   running in two domains at once (math class, computer lab), class of 1983.
+2. In 2026, Claude re-derived the identical solution from the constraints
+   before hearing it — which is the proof it's a generator, not a trick.
+   Derivations are recoverable by anyone standing at the same constraints;
+   memorized tricks die with their owner. Same reason the derived quotient
+   rule can't lose its sign.
+3. The memory kept the *move* crisp for 43 years while holding the machine
+   label loosely — structure retained, symbol table approximate. The thesis,
+   demonstrated in the act of contributing to the essay.
+
+---
+
 ## Piece: the memory architecture
 
 [LT] Bad at remembering lots of things; super good at specifics *with a trigger*.
