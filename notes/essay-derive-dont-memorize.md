@@ -44,6 +44,21 @@ minutes, fed by every swap. The solution at 17: sort a parallel array of
 integer indexes and never move a string. The permutation is the answer; the
 heavy data holds still.
 
+[LT] "I didn't understand pointers at the time. But I invented them anyway."
+
+[J] The capstone, possibly of the whole essay. Two readings, both load-bearing:
+1. Independent reinvention is the strongest evidence in the corpus. Everything
+   else shows derivation keeping pace with instruction; this shows it producing
+   a concept nobody had supplied. Memorization wasn't available — no one had
+   taught pointers — so derivation was the only road, and it arrived where the
+   field arrived, because indirection is what precipitates for anyone standing
+   at those constraints. That's why pointers exist at all.
+2. "Didn't understand" is precisely wrong: the concept was fully operational;
+   only the *name* was missing. The word "pointer" arrived years after the
+   pointer — the way "ADHD" arrived forty years after the compensations.
+   Structure first, label later, at every scale — including for her own
+   inventions.
+
 [J] Three things this piece does for the essay:
 1. It pairs with the quotient rule *in the same school year* — the generator
    running in two domains at once (math class, computer lab), class of 1983.
@@ -309,6 +324,7 @@ users since before they existed.
 - "It's like gravity."
 - "I always learn more stuff."
 - "It's no more important to the story than EP's name."
+- "I didn't understand pointers at the time. But I invented them anyway."
 
 ## Candidate titles / openings
 
