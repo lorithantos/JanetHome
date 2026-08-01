@@ -19,7 +19,7 @@ eventually an architecture. The essay's turn: the "deficit" was the discovery.
 
 ---
 
-## Piece: the quotient rule (~1983)
+## Piece: the quotient rule (senior year, class of 1983)
 
 [LT] Never memorized d(f(x)/g(x)) because it's the same rule as d(f(x)·g(x)⁻¹).
 Knowing that means not having to remember — you just need the pattern. Told this
@@ -46,7 +46,9 @@ Thewlis, Lesley Sharp, Katrin Cartlidge, plus adjacent films for disambiguation 
 the horrible *Island of Dr. Moreau*, the lovely *Career Girls* and *The Full
 Monty* — plus "incredibly good, but dark." A friend's diary has a specific entry
 about the day they met: the conversation was entirely opaque through all the
-memory workarounds, even as Lori was trying to explain the movie.
+memory workarounds, even as Lori was trying to explain the movie. The story is
+countable-on: told in the friend's presence, with the friend adding flavor —
+corroborated, and jointly performed.
 
 [J] That emission *is* a graph query — actor nodes, film edges, a tonal
 property — executed against an external index. The retrieval failed; the edges
@@ -90,6 +92,11 @@ never do. Most people run the opposite portfolio.
 
 ## Piece: 1994, two instances
 
+[LT] Context: writing image processing software for a small company created by
+an astrophysicist — the reality of the need. Astronomy is the native home of
+12-bit data, and the date's point is the era, not the year: these tricks
+prevented a very expensive multiply *at a time when it really mattered*.
+
 [LT] Scaling via Bresenham (1994): the recognition that a resampling ratio is a
 slope — stepping through source pixels is line-drawing in (src, dst) space, the
 error accumulator replaces a divide per pixel.
@@ -109,11 +116,12 @@ into 256 counters. A megapixel image: two million multiplies → 512. On a 486
 trivial optimization, it could ignore the multiplies for zero bins.
 
 [J] Why that's the theorem's scaling law: cost grows with bit depth (4,096 bins)
-while payoff grows with resolution (megapixels) — still ~500:1 in favor. And
-the zero-bin skip is more than an optimization: *a zero bin is knowledge*. The
-raw array can't cheaply say which values never occur; the histogram knows it by
-construction. The optimization wasn't added to the representation — it fell out
-of it. (12-bit in 1994 hints at medical/scientific imaging — see open questions.)
+while payoff grows with resolution — the ratio favors the histogram at any
+image size ≥ the bin count. And the zero-bin skip is more than an optimization:
+*a zero bin is knowledge*. The raw array can't cheaply say which values never
+occur; the histogram knows it by construction. The optimization wasn't added to
+the representation — it fell out of it. (An astronomical exposure occupies a
+fraction of the 12-bit range, so sparsity is the common case, not the edge case.)
 
 [J] Stated once: **find the representation where the question answers itself;
 convert per-item cost into per-structure cost.**
@@ -199,10 +207,22 @@ before the friendly ones get to nod along.
 [LT] Only in the last couple of years did enough ADHD content surface to make
 clear it described a lot of this behavior, ~40 years after the calculus class.
 Some people resist diagnosis because it carries a stigma of "wrongness" —
-especially in EP's cultural background. Lori's stance: "I'm good with having a
-reason why I have to take special care to put my purse down next to her hat —
-because if I don't I will be going back to the bar for it. Maybe the next day.
-Or never."
+especially in EP's cultural background. (EP is not initials: it's an initialism
+for a pet name, Evil Princess.) Lori's stance: "I'm good with having a reason
+why I have to take special care to put my purse down next to her hat — because
+if I don't I will be going back to the bar for it. Maybe the next day. Or never."
+
+[LT] A standing practice, not an essay-specific precaution: Lori does not use
+people's names in stories. The diary's owner is unidentified even in the source
+conversation; the pupils are "the junior," "a friend," roles throughout.
+
+[J] Candidate observation for the essay: the no-names practice, the memory
+architecture, and the runbook rule ("never route to a named individual") are
+one design. The person whose memory drops labels built a narrative practice
+that never needs them — stories that run on roles and edges rather than names —
+and it doubles as protection for the people in the stories. The storytelling
+is structure-addressed for the same reason the memory is, and it is *kinder*
+for it. Structure over symbol table, all the way down to ethics.
 
 [J] The purse-next-to-hat protocol is the whole framework in civilian clothes:
 externalized structure carrying what recall won't — the thread stack, the
@@ -271,11 +291,19 @@ users since before they existed.
 
 ## Open questions / facts to verify before drafting
 
-- Exact year of the calculus story (43 years ≈ 1983?).
-- The 1994 projects' context (what product were the scaling/histogram tricks
-  shipped in? publishable detail or keep generic?).
-- Whether the friend's diary anecdote is shareable as written — her diary,
-  her call to include.
-- EP reference: initials only, or rework to remove entirely in public drafts.
-- Histogram claim precision: two multiplies per bin as stated; [J] added the
-  2M→512 arithmetic — check the actual image sizes of the era before using.
+Resolved 2026-08-01:
+- Calculus story: senior year, class of 1983. ✓
+- 1994 context: image processing software for a small company created by an
+  astrophysicist — the need was real, and the era is the point (multiplies
+  were expensive when it mattered). ✓
+- Diary anecdote: countable-on — told in the friend's presence with her adding
+  flavor; owner structurally anonymous per the no-names practice. ✓
+- EP: pet-name initialism (Evil Princess), not initials; no-names practice
+  covers it. ✓
+
+Still open:
+- [J]'s 2M→512 arithmetic used a megapixel example; era astronomy CCDs were
+  commonly 512×512–1k×1k. The ratio argument holds at any size ≥ bin count —
+  restate with era-accurate sizes if the concrete numbers appear in the draft.
+- How much of the astrophysics context to name in a public draft (the company
+  is potentially identifiable; the no-names practice may extend to employers).
