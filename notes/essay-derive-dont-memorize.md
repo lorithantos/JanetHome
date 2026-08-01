@@ -60,6 +60,29 @@ fail loudly over documents that degrade quietly) is that preference,
 engineered. Janet is the lifelong project of making software feel like
 physics instead of calculus homework.
 
+[LT] Later addition, and the discussion's payoff: "I never before had a
+*framework* for why calculus and later EE was harder for me than physics."
+Forty-three years of knowing the fact without the explanation.
+
+[J] EE confirms the taxonomy from a second angle: the purest long-silent-chain
+discipline — pages of complex arithmetic and transforms where intermediate
+quantities carry no absurdity check. A wrong node voltage looks exactly as
+plausible as the right one; physics fails loudly at the end, EE fails silently
+in the middle, and the middle is forty steps long.
+
+[J] The third act this sets up: software is the one field where the
+practitioner *chooses* the failure loudness — compilers, tests, asserts,
+contracts, hooks. You don't have to find a loud-failure domain; you build one,
+to taste. That's why software, and why hers looks the way it does: a career
+spent converting calculus into physics.
+
+[J] Meta-note for the drafting pass: this framework did not exist before the
+discussion that produced these pieces. It was derived — instances accumulated
+until the generator became recoverable, then physics-vs-calculus fell out as a
+consequence. A framework about derivation, arrived at by derivation, with its
+explanation landing decades after the experience — the label arriving last,
+as they always do. The essay can honestly claim its own method as its origin.
+
 ---
 
 ## Piece: the string sort (high school, same era as the calculus class)
