@@ -34,7 +34,7 @@ grep is cheaper than a compile.
    the nesting; `method_body_graph` shows one method's CFG; `method_body_diff`
    proves a rewrite flow-equivalent. The move table for acting on what you find —
    including where extraction is compiler-forbidden — is
-   [[note.christmas-tree-flattening]].
+   [[skill.christmas-tree-flattening]].
 7. **Gate refactors mechanically.** Flow-preserving rewrites: prover against a saved
    baseline. Extractions: the prover refuses honestly — gate with the suite plus a
    before/after edge-set diff where every delta must mention the new symbol.

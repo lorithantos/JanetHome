@@ -41,7 +41,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "note.christmas-tree-flattening", "skill.graph-first-code-analysis"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -530,7 +530,7 @@
         "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "note.christmas-tree-flattening", "skill.graph-first-code-analysis"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis"]
     },
 
     {
@@ -649,8 +649,8 @@
     },
 
     {
-      "id": "note.christmas-tree-flattening",
-      "kind": "note",
+      "id": "skill.christmas-tree-flattening",
+      "kind": "skill",
       "path": "notes\\christmas-tree-flattening.md",
       "summary": "The move table for flattening deep nesting (christmas-tree code): guard inversion (universally legal, prover-blessable via method_body_diff), extract-method (only real fix for loop pyramids; prover correctly refuses, gate with tests + graph edge-set diff), compute-and-return (ctor fallback). Extract-method is compiler-forbidden in ctors assigning readonly fields (CS0191) or init-only properties (CS8852) - an auto-flattener must check MethodKind.Constructor plus what the block assigns. Includes the worked workflow from the prover's first production run (RazorGraphTool bc6693f, 2026-08-03).",
       "tags": ["refactoring", "style-gate", "csharp", "roslyn", "code-analysis"],
@@ -663,7 +663,7 @@
       "path": "notes\\skill-graph-first-code-analysis.md",
       "summary": "The operating skill for the RazorGraph cluster: WHEN to reach for the graph (questions text search cannot answer - callers, implementers, blast radius, test reach, nesting, flow equivalence) and the workflow (build once/save/load, orient then drill, direction semantics, exact m:Type.Name(params) ids, coverage=reachability, body tools for method-level, mechanical refactor gates, source only to spot-check). Judgment here; depth delegated to the linked nodes; blind spots on note.razorgraph-mcp-server.",
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "note.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json"]
+      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json"]
     }
   ]
 }
