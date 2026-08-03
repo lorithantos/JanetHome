@@ -111,10 +111,13 @@
       "id": "script.invoke-janet-startup",
       "kind": "script",
       "path": "scripts\\Invoke-JanetStartup.ps1",
-      "summary": "Executes startup-manifest.json: sets $env:JanetBase, validates every entry resolves before running anything, executes startup commands, emits a session brief.",
+      "summary": "Executes startup-manifest.json: sets $env:JanetBase, validates every entry resolves before running anything, executes startup commands, emits a trimmed session brief (-Full for everything, -Text for the terminal).",
       "params": ["ManifestPath", "Text", "Pretty", "IncludeContent", "SkipRun"],
+      "caveats": [
+        "Trims by default (-Full restores): strips $-prefixed manifest keys, reduces retrieval to graph/via/hint, emits rule text without why, omits run output already in captured. enforcedBy verification recognizes TWO wirings: project-level (Join-Path <project dir> <enforcedBy>) and user-level (~\\.claude\\settings.json names the script AND it exists at repo root) -- so ENFORCED labels survive foreign-dir sessions on this machine. An unwired hook NEVER fails startup: the rule is relabelled ADVISORY (claims ENFORCED; hook not wired here) and the note goes to the brief's own enforcement field plus the warning stream, NOT to problems (Start-Janet gates launch on problems). Only unresolved manifest entries are fatal, governed by onMissing. Runs from any working directory: everything resolves from $PSScriptRoot. Writes .janet\\last-brief.json every run INCLUDING -Text; -OutFile moves it, an empty -OutFile skips writing. Adding a parameter renames every same-named local: $full/$text collided with -Full/-Text. See note.startup-brief-budget."
+      ],
       "tags": ["startup", "session", "validation", "entrypoint"],
-      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers"]
+      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget"]
     },
     {
       "id": "script.get-research",
@@ -122,8 +125,11 @@
       "path": "scripts\\Get-Research.ps1",
       "summary": "Queries research.json by id, tag, kind, or scored free text, returning a ranked top-N shortlist; the single retrieval entry point so startup never loads the full inventory.",
       "params": ["Id", "Tag", "Kind", "Query", "First", "All", "Expand", "Depth", "Full", "Text", "Pretty", "Path"],
+      "caveats": [
+        "-Text is denser than the JSON for multi-node results (75% of the size: it drops the per-node field names), so it is the cheaper form for a model scanning a shortlist -- the opposite of Invoke-JanetStartup, where -Text is 251% because it adds every rule why. Choose by what the projection contains, not the flag name. -Text is written with Write-Host, so it cannot be captured by pipe, > redirection, or assignment; use 6>&1. See note.startup-brief-budget."
+      ],
       "tags": ["retrieval", "research", "index", "entrypoint"],
-      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json"]
+      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json", "note.startup-brief-budget"]
     },
     {
       "id": "script.push-thread-stack",
@@ -292,11 +298,11 @@
       "path": "scripts\\New-RepoStatusPage.ps1",
       "summary": "Generates an HTML status page for local Git repositories.",
       "params": ["RootPath", "Author", "OutFile", "Open", "NoFilter"],
-      "tags": ["git", "reporting", "html"],
       "caveats": [
-        "BROKEN in this repo: dot-sources scripts\\lib\\Invoke-External.ps1, which was not carried over in the extraction. Same root cause as Test-PreCommit.ps1.",
-        "Also calls New-TextFile.ps1 at $HOME\\.github\\scripts\\, a path from the previous repo layout, and defaults -RootPath to C:\\repos."
+        "lib\\Invoke-External.ps1 dependency restored 2026-08-02 (see script.invoke-external); no longer broken on that account, but not yet re-tested end-to-end.",
+        "Still calls New-TextFile.ps1 at $HOME\\.github\\scripts\\, a path from the previous repo layout, and defaults -RootPath to C:\\repos."
       ],
+      "tags": ["git", "reporting", "html"],
       "links": ["script.new-text-file", "script.test-pre-commit"]
     },
     {
@@ -326,11 +332,12 @@
       "path": "scripts\\Test-PreCommit.ps1",
       "summary": "Pre-commit validation: lint, test, config check, and encoding audit.",
       "params": [],
-      "tags": ["pre-commit", "validation", "quality"],
       "caveats": [
-        "BROKEN in this repo: dot-sources scripts\\lib\\Invoke-External.ps1, which was not carried over in the extraction. Fails immediately.",
-        "Also assumes a git repo, PSScriptAnalyzer (not installed), and a Test-Config.ps1 that is absent. Use Test-PowerShellRules.ps1 instead until the lib dependency is restored or inlined."
+        "Requires git on PATH; aborts loudly (exit 1) when absent rather than passing vacuously. On this machine git is VS-bundled and not on PATH.",
+        "PSScriptAnalyzer and Pester 5+ are required only when staged .ps1 files / a tests directory exist; both absences FAIL the step legibly instead of crashing or skipping. Neither module is installed on this machine.",
+        "Test-Config.ps1 remains absent; that step self-skips."
       ],
+      "tags": ["pre-commit", "validation", "quality"],
       "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules"]
     },
     {
@@ -356,9 +363,9 @@
       "id": "note.powershell-house-rules",
       "kind": "note",
       "path": "notes\\powershell-house-rules.md",
-      "summary": "PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, plus a 5.1 backward-compatibility section.",
-      "tags": ["powershell", "rules", "strictmode", "encoding", "quality"],
-      "links": ["script.test-powershell-rules", "pattern.manifest-startup"]
+      "summary": "PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, parameter/local name collisions, plus a 5.1 backward-compatibility section.",
+      "tags": ["powershell", "rules", "strictmode", "encoding", "quality", "parameters"],
+      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget"]
     },
     {
       "id": "note.insertion-mergesort-hybrid",
@@ -405,9 +412,12 @@
       "id": "file.startup-manifest",
       "kind": "file",
       "path": "startup-manifest.json",
-      "summary": "The startup contract: files to read, commands to run, operating rules, and onMissing behavior. Executed by Invoke-JanetStartup.ps1.",
+      "summary": "The startup contract: files to read, commands to run, operating rules as { text, why }, and onMissing behavior. Executed by Invoke-JanetStartup.ps1.",
+      "caveats": [
+        "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
+      ],
       "tags": ["startup", "contract", "config"],
-      "links": ["script.invoke-janet-startup", "pattern.manifest-startup"]
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget"]
     },
     {
       "id": "file.research",
@@ -460,6 +470,9 @@
       "path": "scripts\\Invoke-EditGuard.ps1",
       "summary": "PreToolUse hook that denies direct Write/Edit of research.json and points at the validating add/update scripts.",
       "params": ["GuardedFile", "InputJson"],
+      "caveats": [
+        "Wired twice: project-level .claude\\settings.json (live only when JanetHome is the project dir) and user-level ~\\.claude\\settings.json by absolute path (2026-08-01, skips when the project dir IS JanetHome so the levels never double-fire). Guards by leaf name, so a file named research.json in ANY repo is denied when the user-level hook is active."
+      ],
       "tags": ["hooks", "enforcement", "research", "guard"],
       "links": ["script.add-research-node", "script.update-research-node", "file.research"]
     },
@@ -470,6 +483,9 @@
       "path": "scripts\\Invoke-LintHook.ps1",
       "summary": "PostToolUse hook that lints any .ps1 immediately after it is written, returning violations as context.",
       "params": ["InputJson"],
+      "caveats": [
+        "Wired twice: project-level .claude\\settings.json (live only when JanetHome is the project dir) and user-level ~\\.claude\\settings.json by absolute path (2026-08-01, skips when the project dir IS JanetHome). The user-level wiring lints every .ps1 written in ANY session on this machine against the JanetHome house rules -- deliberate, they are personal rules, but remember it when a lint message appears in an unrelated repo."
+      ],
       "tags": ["hooks", "enforcement", "lint", "quality"],
       "links": ["script.test-powershell-rules", "note.powershell-house-rules"]
     },
@@ -504,13 +520,13 @@
       "id": "note.razorgraph-mcp-server",
       "kind": "note",
       "path": "notes\\razorgraph-mcp-server.md",
-      "summary": "MCP stdio server over the RazorGraphTool code graph (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 18 tools, Janet JSON envelope conventions. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise. Traversal takes a direction (outgoing/incoming/both) and descends containment for free. Extraction covers Razor/Roslyn topology, Class/Method nodes, wwwroot assets, and inline <script> blocks (2026-07-28).",
+      "summary": "MCP stdio server over the RazorGraphTool code graph (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 21 tools, Janet JSON envelope conventions. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise (full call closure, depth carried on each edge). Method-level detail: explicit constructors are Method nodes, using/await-using disposal is a Calls edge, bodyDepth nesting metric feeds deep_methods (the christmas-tree report), method_body_graph exposes one method's CFG with guard depths, method_body_diff proves two bodies flow-equivalent by bisimulation. Traversal takes a direction (outgoing/incoming/both) and descends containment for free. Extraction covers Razor/Roslyn topology, Class/Method nodes, wwwroot assets, and inline <script> blocks (2026-08-03).",
       "caveats": [
         "build_graph and build_solution are slow (full Roslyn compile); build_solution compiles every project in the solution. Solution graphs scope Razor and client-asset ids by project name (page:<Project>/<relPath>, js:<Project>/<relPath>), so ids differ from single-project graphs of the same code.",
-        "The running MCP server holds its Release DLLs open, so a Release rebuild fails with MSB3021 until the process is stopped, and the session must restart before extractor or tool changes appear in the MCP tools. The repo's own .mcp.json intentionally points at the Debug exe.",
-        "Covers edges are call-graph reachability to depth 3, not runtime coverage - a covered method is one some test can reach, not one a test asserted on. uncovered_methods excludes bodiless interface/abstract declarations, which never carry Covers edges.",
-        "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion.",
-        "No type-usage edges (return types, parameter types, property types): a DTO returned by a controller has zero edges even in a solution graph, so \"who uses this type\" is unanswerable for non-service classes - grep finds 6 files, the graph finds 0. Found 2026-08-01 querying ImageSelectorV2's saved graphs.",
+        ".mcp.json launches a PUBLISHED copy -- D:/Repos/RazorGraphTool/.mcp-bin/RazorGraph.Mcp.exe, absolute path, gitignored -- refreshed with: dotnet publish src\\RazorGraph.Mcp -c Release -o .mcp-bin. It used to launch the live bin/Debug output, which a running server locks, so any rebuild of that configuration failed with MSB3021 while a Claude session was up. Verified 2026-08-01 that Debug and Release solution builds both succeed with the server live. Residual: .mcp-bin itself is locked while a session runs, so re-publishing needs those sessions closed, and code changes reach the MCP tools only after re-publish AND a session restart.",
+        "Covers edges are call-graph reachability to the FULL call closure (since 73ddf10, 2026-08-02; was depth 3), not runtime coverage - a covered method is one some test can reach, not one a test asserted on. Each edge carries the depth it was reached at; filter on depth for direct exercise. Traversal seeds from the test and from its class lifecycle hooks and constructor. uncovered_methods excludes bodiless interface/abstract declarations, which never carry Covers edges.",
+        "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion. Still present as of 2026-08-03; the planned attribute-driven DI detection would fix it as a side effect.",
+        "No type-usage edges (return types, parameter types, property types): a DTO returned by a controller has zero edges even in a solution graph, so \"who uses this type\" is unanswerable for non-service classes - grep finds 6 files, the graph finds 0. Found 2026-08-01 querying ImageSelectorV2 saved graphs.",
         "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
@@ -575,6 +591,61 @@
         "Personal content (health, named-by-initial people, a friend's diary). Raw material, not a draft - the [J] framings are unvetted and must be diffed against perception before any public use. Published as a private artifact 2026-08-01; open questions at the bottom list facts to verify before drafting."
       ],
       "links": ["note.meta-second-brain-vs-janet"]
+    },
+
+    {
+      "id": "note.startup-brief-budget",
+      "kind": "note",
+      "path": "notes\\startup-brief-budget.md",
+      "summary": "The startup brief grew until 84% of it was non-contract prose; measurement, the trim, and the switch-parameter/local variable collision that adding -Full exposed.",
+      "tags": ["startup", "brief", "progressive-disclosure", "powershell", "landmine", "measurement"],
+      "caveats": [
+        "The 54% reduction is measured against the 2026-08-01 manifest; re-measure after adding rules or retrieval fields. Trimming is done by the emitter, so growing manifest prose no longer costs the session but still costs -Full and -Text readers."
+      ],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup"]
+    },
+
+    {
+      "id": "file.claude-md",
+      "kind": "file",
+      "path": "CLAUDE.md",
+      "summary": "Agent instructions for this repo: run Invoke-JanetStartup.ps1 yourself rather than accepting a pasted brief, and launch with JanetHome as the project dir so the hooks load.",
+      "tags": ["startup", "agent", "contract", "hooks"],
+      "caveats": [
+        "Only loads when the session project dir is JanetHome -- which is the same condition the enforcement check tests. A session started elsewhere sees neither this file nor the hooks."
+      ],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.startup-brief-budget"]
+    },
+
+    {
+      "id": "script.start-janet",
+      "kind": "script",
+      "path": "scripts\\Start-Janet.ps1",
+      "summary": "Launcher: runs Invoke-JanetStartup.ps1, refuses to launch on any problems entry, then starts an interactive claude session with the brief as the opening prompt. -Path for the working dir (default cwd -- designed for loading Janet while working in another repo), -DryRun to preview, prompts over 24k chars staged through a temp file.",
+      "caveats": [
+        "Gates launch on the brief's problems field, so anything added to problems becomes a launch blocker by contract -- enforcement notes went there briefly on 2026-08-01 and broke launching from any non-JanetHome directory, the launcher's primary case. Unwired-hook notes now arrive in the separate enforcement field, printed as yellow warnings without blocking. Windows caps a command line at 32767 chars with silent truncation, hence the 24k inline-prompt ceiling.",
+        "The prompt is ALWAYS staged through a file; only a quote-free pointer goes on the command line. Passing the brief inline shredded under Windows PowerShell 5.1 native-argument passing (embedded JSON quotes are not escaped), and claude read brief fragments as options: error unknown option -Query, 2026-08-01."
+      ],
+      "tags": ["startup", "session", "entrypoint", "agent"],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest"]
+    },
+
+    {
+      "id": "note.pre-checkin-style-janet-level",
+      "kind": "note",
+      "path": "notes\\pre-checkin-style-janet-level.md",
+      "summary": "Decision 2026-08-02: pre-checkin style fixing is a Janet-level, language-plugged gate for all code in every repo; Test-PreCommit.ps1 is the broken natural host.",
+      "tags": ["pre-commit", "quality", "code-analysis"],
+      "links": ["script.test-pre-commit", "script.test-powershell-rules", "script.test-file-encoding", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "script.invoke-external",
+      "kind": "script",
+      "path": "scripts\\lib\\Invoke-External.ps1",
+      "summary": "Circuit-breaker wrapper for external commands (DESIGN-NOTES section 8 as code): captured StdOut/StdErr as line arrays, explicit timeout with kill, throws on failure by default; -NoThrow/-Quiet for caller-owned outcomes, -WorkingDirectory defaults to the caller's PowerShell location.",
+      "tags": ["external", "reliability", "fallback", "pre-commit"],
+      "links": ["script.test-pre-commit", "script.new-repo-status-page", "pattern.circuit-breakers"]
     }
   ]
 }

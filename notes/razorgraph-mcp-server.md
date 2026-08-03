@@ -13,12 +13,17 @@ nothing derived from the employer MCP implementation.
   optional `graphId` and falls back to the most recently added, so a solution graph
   and a single-project graph of the same code can be compared without rebuilding
   either.
-- 18 tools: `build_graph` (one csproj via MSBuild+Roslyn, slow) and `build_solution`
+- 21 tools: `build_graph` (one csproj via MSBuild+Roslyn, slow) and `build_solution`
   (every project in a solution — slower, and the only way to get edges that cross a
   project boundary), `load_graph` / `save_graph` (JSON round-trip, fast),
   `list_graphs` / `drop_graph`, `graph_summary`, `find_nodes`, `get_node`,
   `render_tree`, `page_context`, `trace_data_flow`, `find_path`, `covering_tests` /
-  `covered_methods` / `uncovered_methods`, `find_server_to_js_mismatches`,
+  `covered_methods` / `uncovered_methods`, `deep_methods` (christmas-tree report:
+  methods ranked by syntactic nesting depth, stamped at build time as `bodyDepth`),
+  `method_body_graph` (CFG basic blocks + regions + call sites with guard depths,
+  inside one method), `method_body_diff` (proves two bodies flow-equivalent by
+  bisimulation, or says precisely why not — conservative: renamed locals report
+  different), `find_server_to_js_mismatches`,
   `research` (relevance-scored subgraph, score 1/(1+depth), returned inline).
 - Traversal takes a direction (outgoing / incoming / both) and descends containment
   without spending depth — call edges hang off Method nodes, so a class-level trace
@@ -34,15 +39,40 @@ nothing derived from the employer MCP implementation.
   stderr, so builds don't corrupt the stream.
 - MSBuildLocator registration happens in RoslynExtractor's ctor — no special
   startup hook needed in the server.
-- Registered for Claude Code via `.mcp.json` in the RazorGraphTool repo root
-  (points at the Debug exe; rebuild before use, or switch to a published binary).
+- Registered for Claude Code via `.mcp.json` in the RazorGraphTool repo root. It
+  points at a **published copy** — `D:/Repos/RazorGraphTool/.mcp-bin/RazorGraph.Mcp.exe`,
+  absolute, gitignored — refreshed with:
+
+  ```powershell
+  dotnet publish src\RazorGraph.Mcp -c Release -o .mcp-bin
+  ```
+
+  It used to point at `src/RazorGraph.Mcp/bin/Debug/net10.0/RazorGraph.Mcp.exe`, the
+  live build output, and that is the wrong thing to launch: a running server holds its
+  DLLs open, so while any Claude session was up, a rebuild of that configuration died
+  with MSB3021. The tool you reach for to understand a codebase was the tool that
+  stopped you building it. The path was also relative, so it additionally depended on
+  the directory Claude happened to launch from.
+
+  Publishing to a separate directory decouples the two. Verified 2026-08-01 with a
+  server live out of `.mcp-bin`: `dotnet build` of the whole solution succeeds in both
+  Debug and Release, 0 errors.
+
+  The residual is narrower and worth knowing: `.mcp-bin` is itself held open while a
+  session runs, so **re-publishing** needs every session using the server closed first.
+  That is now one deliberate command rather than every ordinary build, and the trade is
+  the one you accept for a stable binary — code changes do not reach the MCP tools until
+  you re-publish *and* restart the session.
 - `research`, `trace_data_flow` and `find_path` take a direction. It still defaults
   to outgoing, so a service `InjectedInto` a PageModel is NOT pulled into a
   page-focused research doc unless you ask for `incoming`. Same default as the CLI.
-- Coverage is call-graph reachability to depth 3, not runtime coverage: a covered
-  method is one some test can reach, not one a test asserted on. Edges are only
-  emitted across a project boundary, so `build_solution` is required — a
-  single-project graph can never contain one.
+- Coverage is call-graph reachability to the full closure (since `73ddf10`,
+  2026-08-02; was depth 3), not runtime coverage: a covered method is one some test
+  can reach, not one a test asserted on. Each edge carries the depth it was reached
+  at, so filter on depth for direct exercise. Traversal seeds from the test and from
+  its class's lifecycle hooks and constructor alike. Edges are only emitted across a
+  project boundary, so `build_solution` is required — a single-project graph can
+  never contain one.
 
 ## Planned: attribute-driven DI detection (2026-08-01)
 
@@ -69,5 +99,12 @@ core traversal → `f3fdb12` the server itself), each building and passing its t
 This note had drifted in the meantime — it claimed 12 tools and one active graph —
 which is DESIGN-NOTES §1's own argument about quietly-degrading documents landing on
 one of my own notes. The `research.json` node stayed accurate; the prose did not.
+
+Updated 2026-08-03: it happened again — this note, the repo README, and this time the
+`research.json` node too all said 18 tools and depth-3 coverage, while the code had
+moved to 21 tools and full-closure coverage (constructor nodes, disposal-as-call,
+`deep_methods`, `method_body_graph`, `method_body_diff`, lifecycle-seeded coverage).
+Caught by graphing the tool's own solution and comparing docs to code with its own
+reports. All three surfaces re-synced together this time.
 
 Related: [[pattern.graph-first-analysis]], `meta-second-brain-vs-janet.md`.
