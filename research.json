@@ -330,15 +330,18 @@
       "id": "script.test-pre-commit",
       "kind": "script",
       "path": "scripts\\Test-PreCommit.ps1",
-      "summary": "Pre-commit validation: lint, test, config check, and encoding audit.",
+      "summary": "Repo-agnostic pre-commit gate: PSScriptAnalyzer, deep nesting (christmas-tree, fail at >=6), Pester, config check, encoding audit. Staged files resolve against git rev-parse --show-toplevel from the CWD, so the one gate serves every repo (the Janet-level decision in note.pre-checkin-style-janet-level). Resolves git via JANET_GIT, then PATH, then the VS-bundled copy - no machine-specific hardcoding.",
       "params": [],
       "caveats": [
         "Requires git on PATH; aborts loudly (exit 1) when absent rather than passing vacuously. On this machine git is VS-bundled and not on PATH.",
         "PSScriptAnalyzer and Pester 5+ are required only when staged .ps1 files / a tests directory exist; both absences FAIL the step legibly instead of crashing or skipping. Neither module is installed on this machine.",
-        "Test-Config.ps1 remains absent; that step self-skips."
+        "Test-Config.ps1 remains absent; that step self-skips.",
+        "PSScriptAnalyzer and Pester 5+ are required only when staged .ps1 files / *.Tests.ps1 files exist; both absences FAIL the step legibly instead of crashing or skipping. Neither module is installed on this machine (2026-08-03) - the analyzer step fails on any repo with staged .ps1 until Install-Module PSScriptAnalyzer.",
+        "$LASTEXITCODE is reset before each child-script step: a child that never calls exit leaves the previous child code in place, and the encoding step once failed on the nesting step verdict while printing All clean (caught by the 2026-08-03 smoke test).",
+        "C# nesting is not checked per-commit - no fast syntax-only path yet; the C# rule lives in RazorGraph deep_methods / query --deep at repo level."
       ],
       "tags": ["pre-commit", "validation", "quality"],
-      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules"]
+      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules", "script.test-deep-nesting"]
     },
     {
       "id": "script.get-script-catalog",
@@ -674,6 +677,18 @@
       "summary": "Split conditional tangles that are really dispatch: a discriminator front end that only routes, over a catalog of well-known fixed back ends (state machines as declarative queries) that only compute. Duplication corollary: copies behind a discriminator are enumerable inventory, not silently-drifting contraband - deliberately anti-DRY-reflex. RazorGraph-era tooling upgrades it: method_body_diff proves which back ends are merge candidates, coverage prices refactor risk upfront, and conformance (every path lands in exactly one back end, nothing routes around the front end) is a graph query. The tell: a method whose nesting grows every time the business adds a case.",
       "tags": ["architecture", "refactoring", "code-analysis", "csharp"],
       "links": ["skill.christmas-tree-flattening", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "script.test-deep-nesting",
+      "kind": "script",
+      "path": "scripts\\Test-DeepNesting.ps1",
+      "summary": "Deep-nesting (christmas-tree) detector for PowerShell by AST - the PS backend of the style gate nesting rule, sibling of RazorGraph deep_methods. Reports functions and top-level script bodies nesting >= MinDepth, deepest first; elseif adds no depth (free from IfStatementAst.Clauses); script-block literals count one level because they indent. JSON envelope, -Text opt-in, exit 1 on findings so it gates directly. Calibration 2026-08-03 over JanetHome scripts: >=3 flags 35 containers, >=6 flags 3; gate threshold set to 6 from that data plus the RazorGraphTool precedent (5 is case-by-case).",
+      "caveats": [
+        "Parse errors are reported and exit 1, never silently skipped - an unparseable staged file fails the gate by design. Counting script-block literals is a deliberate divergence from the C# metric (lambdas add no depth there): pipeline-style trees would otherwise vanish from the report."
+      ],
+      "tags": ["style-gate", "powershell", "code-analysis", "refactoring"],
+      "links": ["skill.christmas-tree-flattening", "script.test-pre-commit", "note.pre-checkin-style-janet-level"]
     }
   ]
 }

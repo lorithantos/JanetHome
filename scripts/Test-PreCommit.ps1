@@ -3,13 +3,17 @@
     Pre-commit validation: lint, test, config check, and encoding audit.
 
 .DESCRIPTION
-    Runs PSScriptAnalyzer on staged .ps1 files, executes the Pester test suite,
-    validates toolkit config via Test-Config.ps1, and checks file encoding on
-    staged files via Test-FileEncoding.ps1. Returns exit code 0 only when every
-    step passes.
+    Runs PSScriptAnalyzer and the deep-nesting gate on staged .ps1 files, executes
+    the Pester test suite, validates toolkit config via Test-Config.ps1, and checks
+    file encoding on staged files via Test-FileEncoding.ps1. Returns exit code 0
+    only when every step passes.
+
+    Repo-agnostic by design (see note.pre-checkin-style-janet-level): staged files
+    are resolved against the repo git reports from the current directory, not
+    against this toolkit's own root, so the same gate serves every repo.
 
 .EXAMPLE
-    & "$env:JanetBase\.github\scripts\Test-PreCommit.ps1"
+    & "$env:JanetBase\scripts\Test-PreCommit.ps1"
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -17,15 +21,35 @@ $ErrorActionPreference = 'Stop'
 
 # git is the source of truth for what is staged; without it every step would
 # see an empty staged list and pass while checking nothing -- the exact quiet
-# degradation this gate exists to stop. Fail loudly instead.
-$gitCheck = Invoke-External -NoThrow -Quiet git --version
-if (-not $gitCheck.Success) {
-    Write-Host 'git is not on PATH; cannot determine staged files. Aborting pre-commit checks.' -ForegroundColor Red
+# degradation this gate exists to stop. Fail loudly instead. Not every machine
+# has git on PATH (a Visual Studio install without standalone git is common),
+# so resolve it: JANET_GIT if set, then PATH, then the VS-bundled copy.
+$git = $null
+$gitCandidates = @(
+    $env:JANET_GIT
+    (Get-Command git -ErrorAction SilentlyContinue)?.Source
+) + @(Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio\*\*\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe" -ErrorAction SilentlyContinue | ForEach-Object FullName)
+foreach ($candidate in $gitCandidates) {
+    if ($candidate -and (Test-Path $candidate)) { $git = $candidate; break }
+}
+if (-not $git) {
+    Write-Host 'git not found (checked JANET_GIT, PATH, VS-bundled). Cannot determine staged files; aborting.' -ForegroundColor Red
     exit 1
 }
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$toolkitRoot = Split-Path -Parent $scriptRoot
+
+# The repo under check is wherever the commit is happening, which is not
+# necessarily this toolkit's repo. Joining staged paths to the toolkit root made
+# the gate check the wrong tree when run from anywhere else — quietly, since the
+# joined paths simply failed Test-Path and vanished from every staged list.
+$topLevel = Invoke-External -NoThrow $git rev-parse --show-toplevel
+if (-not $topLevel.Success) {
+    Write-Host 'Not inside a git repository; nothing to gate. Aborting.' -ForegroundColor Red
+    exit 1
+}
+$repoRoot = [string]($topLevel.StdOut | Select-Object -First 1)
+
 $stepResults = [ordered]@{}
 $overallPass = $true
 
@@ -46,9 +70,9 @@ function Write-StepResult ([string]$Name, [bool]$Passed) {
 # ---------- 1. PSScriptAnalyzer on staged .ps1 files ----------
 Write-StepHeader 'PSScriptAnalyzer'
 
-$stagedPs1 = @((Invoke-External -NoThrow git diff --cached --name-only --diff-filter=ACM).StdOut |
+$stagedPs1 = @((Invoke-External -NoThrow $git diff --cached --name-only --diff-filter=ACM).StdOut |
     Where-Object { $_ -like '*.ps1' } |
-    ForEach-Object { Join-Path $toolkitRoot $_ } |
+    ForEach-Object { Join-Path $repoRoot $_ } |
     Where-Object { Test-Path $_ })
 
 if ($stagedPs1.Count -eq 0) {
@@ -60,7 +84,7 @@ if ($stagedPs1.Count -eq 0) {
     Write-Host '  PSScriptAnalyzer is not installed (Install-Module PSScriptAnalyzer) and .ps1 files are staged.' -ForegroundColor Red
     Write-StepResult 'PSScriptAnalyzer' $false
 } else {
-    $settingsPath = Join-Path $toolkitRoot 'PSScriptAnalyzerSettings.psd1'
+    $settingsPath = Join-Path $repoRoot 'PSScriptAnalyzerSettings.psd1'
     $analyzerArgs = @{ Severity = @('Error', 'Warning') }
     if (Test-Path $settingsPath) {
         $analyzerArgs['Settings'] = $settingsPath
@@ -79,11 +103,37 @@ if ($stagedPs1.Count -eq 0) {
     Write-StepResult 'PSScriptAnalyzer' ($errors.Count -eq 0)
 }
 
-# ---------- 2. Pester Tests ----------
+# ---------- 2. Deep Nesting ----------
+Write-StepHeader 'Deep Nesting'
+
+# Gate threshold 6, from the 2026-08-03 calibration sweep: everything >= 6 in
+# both this toolkit and RazorGraphTool proved refactor-worthy, while 5 is
+# case-by-case (ExtractCallEdges stayed at 5 deliberately). Advisory sweeps at
+# lower thresholds go straight to Test-DeepNesting.ps1. C# gets the same rule
+# from RazorGraph deep_methods / query --deep; there is no fast per-commit C#
+# path yet, so this step covers PowerShell only.
+$maxNesting = 6
+$testNesting = Join-Path $scriptRoot 'Test-DeepNesting.ps1'
+if ($stagedPs1.Count -eq 0) {
+    Write-Host '  No staged .ps1 files -- skipping.'
+    $stepResults['Deep Nesting'] = $true
+} elseif (Test-Path $testNesting) {
+    $global:LASTEXITCODE = 0
+    & $testNesting -Path $stagedPs1 -MinDepth $maxNesting -Text
+    Write-StepResult 'Deep Nesting' ($LASTEXITCODE -eq 0)
+} else {
+    Write-Host '  Test-DeepNesting.ps1 not found and .ps1 files are staged.' -ForegroundColor Red
+    Write-StepResult 'Deep Nesting' $false
+}
+
+# ---------- 3. Pester Tests ----------
 Write-StepHeader 'Pester Tests'
 
-$testsDir = Join-Path $toolkitRoot 'tests'
-if (Test-Path $testsDir) {
+# Keyed to the presence of test files, not a tests directory: a repo whose
+# tests\ holds fixtures for some other language must not conscript Pester.
+$testsDir = Join-Path $repoRoot 'tests'
+$pesterFiles = if (Test-Path $testsDir) { @(Get-ChildItem $testsDir -Recurse -Filter '*.Tests.ps1' -File) } else { @() }
+if ($pesterFiles.Count -gt 0) {
     # -Output/-PassThru as used here are Pester 5 syntax; the 3.4.0 that ships
     # in Windows throws on them. Same failure philosophy as the analyzer guard.
     $pester = Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1
@@ -96,16 +146,20 @@ if (Test-Path $testsDir) {
         Write-StepResult 'Pester Tests' ($pesterResult.FailedCount -eq 0)
     }
 } else {
-    Write-Host '  No tests directory found -- skipping.'
+    Write-Host '  No *.Tests.ps1 files found -- skipping.'
     $stepResults['Pester Tests'] = $true
 }
 
-# ---------- 3. Config Validation ----------
+# ---------- 4. Config Validation ----------
 Write-StepHeader 'Config Validation'
 
 $testConfig = Join-Path $scriptRoot 'Test-Config.ps1'
 if (Test-Path $testConfig) {
     try {
+        # A child script that never calls exit leaves $LASTEXITCODE holding
+        # whatever an earlier step's child set it to -- reset, or a passing
+        # step inherits a failing verdict from a stranger.
+        $global:LASTEXITCODE = 0
         & $testConfig
         Write-StepResult 'Config Validation' ($LASTEXITCODE -eq 0)
     } catch {
@@ -117,11 +171,11 @@ if (Test-Path $testConfig) {
     $stepResults['Config Validation'] = $true
 }
 
-# ---------- 4. File Encoding ----------
+# ---------- 5. File Encoding ----------
 Write-StepHeader 'File Encoding'
 
-$stagedAll = @((Invoke-External -NoThrow git diff --cached --name-only --diff-filter=ACM).StdOut |
-    ForEach-Object { Join-Path $toolkitRoot $_ } |
+$stagedAll = @((Invoke-External -NoThrow $git diff --cached --name-only --diff-filter=ACM).StdOut |
+    ForEach-Object { Join-Path $repoRoot $_ } |
     Where-Object { Test-Path $_ })
 
 $testEncoding = Join-Path $scriptRoot 'Test-FileEncoding.ps1'
@@ -130,6 +184,7 @@ if ($stagedAll.Count -eq 0) {
     $stepResults['File Encoding'] = $true
 } elseif (Test-Path $testEncoding) {
     try {
+        $global:LASTEXITCODE = 0
         & $testEncoding -Path $stagedAll
         Write-StepResult 'File Encoding' ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
     } catch {
