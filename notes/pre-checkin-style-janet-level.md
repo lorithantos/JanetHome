@@ -92,5 +92,5 @@ in, which puts the capability at the framework level:
   draws on machine-level settings the repo does not carry.
 - Fast per-commit C# nesting: bodyDepth is syntax-only, so a parse-without-
   compile CLI mode in RazorGraphTool would make the C# rule commit-speed.
-- Machine setup: PSScriptAnalyzer and Pester 5+ are not installed here; the
-  analyzer step fails legibly on any repo with staged .ps1 until they are.
+- ~~Machine setup~~ resolved 2026-08-03: PSScriptAnalyzer 1.25.0 and Pester
+  6.0.1 installed CurrentUser; gate verified green end-to-end.
