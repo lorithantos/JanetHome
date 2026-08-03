@@ -15,6 +15,14 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\Invoke-External.ps1"
 
+# git is the source of truth for what is staged; without it every step would
+# see an empty staged list and pass while checking nothing -- the exact quiet
+# degradation this gate exists to stop. Fail loudly instead.
+$gitCheck = Invoke-External -NoThrow -Quiet git --version
+if (-not $gitCheck.Success) {
+    Write-Host 'git is not on PATH; cannot determine staged files. Aborting pre-commit checks.' -ForegroundColor Red
+    exit 1
+}
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $toolkitRoot = Split-Path -Parent $scriptRoot
@@ -46,6 +54,11 @@ $stagedPs1 = @((Invoke-External -NoThrow git diff --cached --name-only --diff-fi
 if ($stagedPs1.Count -eq 0) {
     Write-Host '  No staged .ps1 files -- skipping.'
     $stepResults['PSScriptAnalyzer'] = $true
+} elseif ($null -eq (Get-Command Invoke-ScriptAnalyzer -ErrorAction SilentlyContinue)) {
+    # A missing linter with lintable files staged is a failure, not a skip:
+    # a gate that silently checks less than it claims is worse than no gate.
+    Write-Host '  PSScriptAnalyzer is not installed (Install-Module PSScriptAnalyzer) and .ps1 files are staged.' -ForegroundColor Red
+    Write-StepResult 'PSScriptAnalyzer' $false
 } else {
     $settingsPath = Join-Path $toolkitRoot 'PSScriptAnalyzerSettings.psd1'
     $analyzerArgs = @{ Severity = @('Error', 'Warning') }
@@ -71,8 +84,17 @@ Write-StepHeader 'Pester Tests'
 
 $testsDir = Join-Path $toolkitRoot 'tests'
 if (Test-Path $testsDir) {
-    $pesterResult = Invoke-Pester -Path $testsDir -Output Minimal -PassThru
-    Write-StepResult 'Pester Tests' ($pesterResult.FailedCount -eq 0)
+    # -Output/-PassThru as used here are Pester 5 syntax; the 3.4.0 that ships
+    # in Windows throws on them. Same failure philosophy as the analyzer guard.
+    $pester = Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1
+    if ($null -eq $pester -or $pester.Version.Major -lt 5) {
+        $found = if ($null -eq $pester) { 'none' } else { $pester.Version }
+        Write-Host "  Pester 5+ required to run the tests directory (found: $found). Install-Module Pester -Force." -ForegroundColor Red
+        Write-StepResult 'Pester Tests' $false
+    } else {
+        $pesterResult = Invoke-Pester -Path $testsDir -Output Minimal -PassThru
+        Write-StepResult 'Pester Tests' ($pesterResult.FailedCount -eq 0)
+    }
 } else {
     Write-Host '  No tests directory found -- skipping.'
     $stepResults['Pester Tests'] = $true
