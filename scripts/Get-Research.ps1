@@ -75,7 +75,7 @@
 param(
     [string[]]$Id,
     [string[]]$Tag,
-    [ValidateSet('script', 'pattern', 'note', 'file')]
+    [ValidateSet('script', 'pattern', 'note', 'file', 'skill')]
     [string]$Kind,
     [string]$Query,
     [int]$First = 5,

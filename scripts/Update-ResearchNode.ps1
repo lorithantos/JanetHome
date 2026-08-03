@@ -85,7 +85,7 @@ param(
     [string]$Summary,
     [string]$NodePath,
 
-    [ValidateSet('script', 'pattern', 'note', 'file')]
+    [ValidateSet('script', 'pattern', 'note', 'file', 'skill')]
     [string]$Kind,
 
     [string]$Section,
