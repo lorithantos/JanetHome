@@ -41,7 +41,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -654,7 +654,7 @@
       "path": "notes\\christmas-tree-flattening.md",
       "summary": "The move table for flattening deep nesting (christmas-tree code): guard inversion (universally legal, prover-blessable via method_body_diff), extract-method (only real fix for loop pyramids; prover correctly refuses, gate with tests + graph edge-set diff), compute-and-return (ctor fallback). Extract-method is compiler-forbidden in ctors assigning readonly fields (CS0191) or init-only properties (CS8852) - an auto-flattener must check MethodKind.Constructor plus what the block assigns. Includes the worked workflow from the prover's first production run (RazorGraphTool bc6693f, 2026-08-03).",
       "tags": ["refactoring", "style-gate", "csharp", "roslyn", "code-analysis"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.graph-first-code-analysis"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.graph-first-code-analysis", "pattern.discriminator-backends"]
     },
 
     {
@@ -664,6 +664,16 @@
       "summary": "The operating skill for the RazorGraph cluster: WHEN to reach for the graph (questions text search cannot answer - callers, implementers, blast radius, test reach, nesting, flow equivalence) and the workflow (build once/save/load, orient then drill, direction semantics, exact m:Type.Name(params) ids, coverage=reachability, body tools for method-level, mechanical refactor gates, source only to spot-check). Judgment here; depth delegated to the linked nodes; blind spots on note.razorgraph-mcp-server.",
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval", "refactoring"],
       "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json"]
+    },
+
+    {
+      "id": "pattern.discriminator-backends",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "12",
+      "summary": "Split conditional tangles that are really dispatch: a discriminator front end that only routes, over a catalog of well-known fixed back ends (state machines as declarative queries) that only compute. Duplication corollary: copies behind a discriminator are enumerable inventory, not silently-drifting contraband - deliberately anti-DRY-reflex. RazorGraph-era tooling upgrades it: method_body_diff proves which back ends are merge candidates, coverage prices refactor risk upfront, and conformance (every path lands in exactly one back end, nothing routes around the front end) is a graph query. The tell: a method whose nesting grows every time the business adds a case.",
+      "tags": ["architecture", "refactoring", "code-analysis", "csharp"],
+      "links": ["skill.christmas-tree-flattening", "pattern.graph-first-analysis"]
     }
   ]
 }
