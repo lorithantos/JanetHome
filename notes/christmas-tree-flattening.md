@@ -45,6 +45,18 @@ flags exactly those removed lines as strays.
 blocked: the helper does the deep conditional work and returns values; the
 assignments stay behind in the ctor.
 
+**SelectMany pair-flattening** — when the upper levels of a pyramid are pure
+iteration product (every A × its Bs, no per-level work), collapse them inline:
+`foreach (var (a, b) in xs.SelectMany(a => a.Items.Select(b => (a, b))))`.
+Lambdas add no depth in the C# bodyDepth metric — a deliberate calibration
+decision — so the level genuinely disappears, with no new members and both
+loop variables still in scope. Prover refuses per the LINQ-ification rule
+(SelectMany is a new call); seam is one line, gate with tests. Prefer this
+over a bespoke pair-iterator helper when the pairing has one consumer — and
+especially over widening a *shared* helper's tuple to feed one caller: a
+discard (`_`) at the other call sites is the tell that the sharing is forced
+(Lori's catch, RazorGraphTool `5733c14`, 2026-08-03).
+
 ## Where extract-method is forbidden
 
 A block inside a constructor that assigns `readonly` fields (CS0191: assignable
