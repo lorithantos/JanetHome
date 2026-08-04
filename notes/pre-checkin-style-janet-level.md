@@ -50,6 +50,30 @@ in, which puts the capability at the framework level:
   unreadable, untestable, and invisible to the code graph (compiled name
   unrecoverable from grep). Named methods fix all three at once. Distinct
   from the nesting rule -- that lambda was flat.
+
+  Second justification (2026-08-03): this rule is the *companion the nesting
+  rule requires*. C# bodyDepth deliberately exempts lambda bodies, which is
+  what makes SelectMany pair-flattening metric-real -- but the same exemption
+  means a statement lambda is a blind spot where a christmas tree can hide
+  invisibly (thought experiment: ClassifySymbol's five-branch dispatch inside
+  a lambda would vanish from deep_methods while costing the reader full
+  price). Principle: depth exemptions belong to containers that cannot hold
+  logic; the moment a container can hold logic it needs either a name or a
+  limit. Expression lambdas are exempt by construction -- they cannot nest;
+  statement lambdas get this rule.
+- **Tuples at method boundaries.** `(string FromId, string ToId)` across a
+  signature is positionally typed strings: element names are compiler fiction
+  (erased, unenforced), so a swapped pair compiles and quietly reverses every
+  call edge. RazorGraphTool `c201a58` replaced its call-edge and disposal
+  tuples with `readonly record struct` (CallEdge, DisposedResource) -- same
+  layout, value equality preserved (Distinct keeps working), deconstruction
+  call sites compile unchanged, and the swap becomes unwritable. Rule form:
+  a tuple whose lifetime exceeds one expression gets a name; inside the
+  expression that deconstructs it, it is plumbing. Same principle as
+  anonymous blocks -- a tuple is to a type what a lambda is to a method.
+  Checkable by Roslyn: flag tuple types in method signatures. Tolerable end
+  of the spectrum: natural ordered pairs deconstructed immediately
+  (GetLines' (start, end)).
 - **Floating-point equality comparison.** Operator-stated: "no one should do
   equals comparisons on them." No stock warning exists -- the C# compiler and
   .NET SDK analyzers accept `double == double` silently (CA2242 only catches

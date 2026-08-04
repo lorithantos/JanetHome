@@ -57,6 +57,32 @@ especially over widening a *shared* helper's tuple to feed one caller: a
 discard (`_`) at the other call sites is the tell that the sharing is forced
 (Lori's catch, RazorGraphTool `5733c14`, 2026-08-03).
 
+## The pipeline rules (2026-08-03, from the ExtractCallEdges/ExtractSymbols runs)
+
+One principle, four clauses — anonymity is for spans the eye can see whole,
+and expires at a boundary:
+
+- **Pipeline the plumbing, statement the logic.** Iterate/filter/project
+  stages go declarative (SelectMany/Where/OfType); dispatch and branching
+  stay as named-method statements. Runtime cost is noise whenever the stage
+  bodies do real work (semantic queries dwarf enumerator overhead), and the
+  methods were yield-state-machines already.
+- **Filter with Where/OfType, bind with guards.** A guard that only filters
+  (`if (x == null) continue`) states itself better as a pipeline stage. A
+  guard that *binds* a name used downstream (`is not { } toId continue`) stays
+  a statement — C# has no clean flatMap-with-pattern, and the
+  Select/Where-null/Select chain is longer and nullably dishonest.
+- **Expression lambdas exempt, statement lambdas are anonymous blocks.** The
+  bodyDepth lambda exemption is sound only for containers that cannot hold
+  logic. A statement lambda is a method that lost its name and escaped the
+  nesting rule's jurisdiction — it belongs to the anonymous-blocks rule
+  (note.pre-checkin-style-janet-level).
+- **Tuples inside expressions, names at boundaries.** A tuple is to a type
+  what a lambda is to a method. `(l, t)` deconstructed on the next line is
+  plumbing; a tuple crossing a signature is positionally typed data whose
+  element names are unenforced fiction — name it (readonly record struct;
+  deconstruction call sites compile unchanged). RazorGraphTool `c201a58`.
+
 ## Where extract-method is forbidden
 
 A block inside a constructor that assigns `readonly` fields (CS0191: assignable
