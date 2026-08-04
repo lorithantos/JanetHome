@@ -35,7 +35,11 @@ on a clean extraction, `callsOnlyInRight` is exactly the new helper,
 `callsOnlyInLeft` is exactly the plumbing that moved, and the diverging block is
 the seam. Gate it with the test suite plus a before/after edge-set diff of the
 code graph: every delta line must mention the new helper. 52/52 did on the first
-production run.
+production run. Second run (RazorGraphTool `affac31`, 2026-08-03) sharpened the
+rule: **removed** edges cite the *old* caller, not the helper, so the check is
+pairwise — every removed `Old -> X` must match an added `NewHelper -> X`, and
+every added edge must mention a helper. A naive "grep every line for the helper"
+flags exactly those removed lines as strays.
 
 **Compute-and-return** — the constructor's consolation move when extraction is
 blocked: the helper does the deep conditional work and returns values; the
