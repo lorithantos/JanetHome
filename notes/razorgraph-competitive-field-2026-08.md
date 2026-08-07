@@ -70,6 +70,29 @@ github.com/ndepend/NDepend.MCP.Server · github.com/oraios/serena ·
 github.com/codegraphcontext/codegraphcontext ·
 github.com/carquiza/RoslynMCP · github.com/goldbergyoni/test-coverage-mcp
 
+## Openness audit (same day)
+
+Of 16 surveyed: **9 genuinely open** (MIT/Apache, full source, nothing gated):
+sdsrss, DeusData (full C source in-repo — the "single static binary" phrasing
+was just convenience releases), giauphan/codeatlas-mcp (npm; possibly a lighter
+cousin of the closed codeatlas.live site product), carquiza/RoslynMCP,
+**roslyn-codelens-mcp (MIT — the closest competitor is fully open, all 67
+tools)**, codegraphcontext, goldbergyoni/test-coverage-mcp, SymDiff (MIT,
+dormant), DiffKemp (Apache-2.0, active, C/LLVM only). **3 open-core**: NDepend
+(MIT shell over mandatory commercial engine), Serena (MIT core, paid JetBrains
+backend), JudiniLabs (MIT client, closed DeepGraph cloud does the actual graph
+building). **3 closed**: CodeFathom (proprietary, $15–29/seat, no free tier),
+Horokhov VS extension (closed freemium, "Public" repo is docs-only),
+codeatlas.live site product (no license or repo visible). **1 trap**:
+egorpavlikhin/roslyn-mcp has no license file — source-visible but legally
+all-rights-reserved.
+
+Prover-specific: the only prover-like code anywhere is permissively licensed
+research (SymDiff MIT, DiffKemp Apache) but none is MCP-shaped or C#-capable;
+REM2.0 — the only modern refactoring-gate prover — is paper-only, no released
+code (arXiv 2601.19207). **No usable open implementation of the equivalence-
+prover capability exists in the field.**
+
 ## Strategic read
 
 Invest to stay distinct: the prover and the Razor correlation. Invest to catch
