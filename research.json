@@ -687,6 +687,15 @@
       ],
       "tags": ["style-gate", "powershell", "code-analysis", "refactoring"],
       "links": ["skill.christmas-tree-flattening", "script.test-pre-commit", "note.pre-checkin-style-janet-level"]
+    },
+
+    {
+      "id": "note.razorgraph-competitive-field",
+      "kind": "note",
+      "path": "notes\\razorgraph-competitive-field-2026-08.md",
+      "summary": "2026-08-07 survey of the MCP code-graph field. Unique to RazorGraphTool: the flow-equivalence prover as refactoring gate, and Razor/PageModel/JS cross-boundary correlation. Near-unique: coverage-as-reachability (one other implementer: roslyn-codelens-mcp, the closest competitor - watch it). Commodity: call graphs/references/impact. Field is ahead on language breadth, incremental indexing, vector search, token economy, composable queries. Strategy: invest in prover + Razor to stay distinct; incremental indexing + Lua to catch up.",
+      "tags": ["research", "code-analysis", "agent", "csharp"],
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
     }
   ]
 }
