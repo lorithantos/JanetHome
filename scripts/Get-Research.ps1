@@ -25,7 +25,7 @@
     Return nodes carrying any of these tags.
 
 .PARAMETER Kind
-    Filter to a node kind: script, pattern, note, file.
+    Filter to a node kind: script, pattern, note, file, skill.
 
 .PARAMETER Query
     Free-text match over id, summary, and tags. Case-insensitive substring.

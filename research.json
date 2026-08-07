@@ -29,7 +29,7 @@
       "section": "3",
       "summary": "Push/pop stack of investigation topics: debugging is depth-first search and working memory is not, so make the descent explicit and give it an unwind path.",
       "tags": ["debugging", "session", "thread-stack", "highest-value"],
-      "links": ["script.push-thread-stack", "script.pop-thread-stack", "script.show-thread-stack"]
+      "links": ["script.push-thread-stack", "script.pop-thread-stack", "script.show-thread-stack", "skill.crash-escape-analysis"]
     },
     {
       "id": "pattern.graph-first-analysis",
@@ -528,10 +528,11 @@
         "Covers edges are call-graph reachability to the FULL call closure (since 73ddf10, 2026-08-02; was depth 3), not runtime coverage - a covered method is one some test can reach, not one a test asserted on. Each edge carries the depth it was reached at; filter on depth for direct exercise. Traversal seeds from the test and from its class lifecycle hooks and constructor. uncovered_methods excludes bodiless interface/abstract declarations, which never carry Covers edges.",
         "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion. Still present as of 2026-08-03; the planned attribute-driven DI detection would fix it as a side effect.",
         "No type-usage edges (return types, parameter types, property types): a DTO returned by a controller has zero edges even in a solution graph, so \"who uses this type\" is unanswerable for non-service classes - grep finds 6 files, the graph finds 0. Found 2026-08-01 querying ImageSelectorV2 saved graphs.",
-        "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first."
+        "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first.",
+        "The published .mcp-bin predates exception_escapes (added 2026-08-07) until re-published; publish fails while any session holds the server open - close sessions first, then dotnet publish src/RazorGraph.Mcp -c Release -o .mcp-bin. The CLI twin (query --escapes) works immediately."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis"]
     },
 
     {
@@ -664,7 +665,7 @@
       "path": "notes\\skill-graph-first-code-analysis.md",
       "summary": "The operating skill for the RazorGraph cluster: WHEN to reach for the graph (questions text search cannot answer - callers, implementers, blast radius, test reach, nesting, flow equivalence) and the workflow (build once/save/load, orient then drill, direction semantics, exact m:Type.Name(params) ids, coverage=reachability, body tools for method-level, mechanical refactor gates, source only to spot-check). Judgment here; depth delegated to the linked nodes; blind spots on note.razorgraph-mcp-server.",
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json"]
+      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json", "skill.crash-escape-analysis"]
     },
 
     {
@@ -705,6 +706,19 @@
       "summary": "Concepts to borrow from the MCP code-graph field, tiered by fusion with unique assets. Tier 1: diff-aware test impact (Covers edges backward from git diff), MinHash similarity shortlisting for the prover (makes the section-12 pairwise sweep tractable), measured-coverage import (closes reachable-vs-asserted caveat), graph_diff tool, content-hash incremental indexing + syntax-only fast tier (solves fast per-commit C# nesting). Tier 3 synthesis: plan -> SurgicalEdit -> prover-verify closed loop. Not borrowed: cloud, language breadth, vectors.",
       "tags": ["research", "code-analysis", "agent", "refactoring"],
       "links": ["note.razorgraph-competitive-field", "note.razorgraph-mcp-server", "pattern.discriminator-backends"]
+    },
+
+    {
+      "id": "skill.crash-escape-analysis",
+      "kind": "skill",
+      "path": "notes\\skill-crash-escape-analysis.md",
+      "summary": "Diagnose no-trace app exits as a reachability question: check the process exception surface first (one get_node), run exception_escapes for the throw-to-entry-point shortlist, rule reachable sites out, hunt catch-shape mismatches and non-total render-loop callbacks, then fix in four layers (site guard, operation catch, process backstop, crash log). Distilled from the RetirementCore.App first-run crash, 2026-08-07.",
+      "caveats": [
+        "exception_escapes reports zero on delegate-wired UI apps (WPF bindings, AsyncRelayCommand method groups, chart callbacks) - the crash channels are exactly its blind spots. Treat zero as \"no static chain\", never as \"safe\"; workflow steps 4-5 stay manual. Observed on RetirementCore 2026-08-07.",
+        "Verified on the pre-fix RetirementCore crash commit (2012e73, 2026-08-07): exception_escapes reports zero on code that demonstrably crashed. The Money.FromDouble throw propagates statically only as far as Recompute; every hop from there to the process boundary (PropertyChanged lambda, LiveCharts labeler delegate, AsyncRelayCommand method group) carries no Calls edge. False negative by construction; delegate/callback edge following is the increment that would close it."
+      ],
+      "tags": ["debugging", "csharp", "code-analysis", "roslyn"],
+      "links": ["pattern.thread-stack", "skill.graph-first-code-analysis", "note.razorgraph-mcp-server"]
     }
   ]
 }
