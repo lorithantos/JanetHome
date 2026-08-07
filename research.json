@@ -696,6 +696,15 @@
       "summary": "2026-08-07 survey of the MCP code-graph field. Unique to RazorGraphTool: the flow-equivalence prover as refactoring gate, and Razor/PageModel/JS cross-boundary correlation. Near-unique: coverage-as-reachability (one other implementer: roslyn-codelens-mcp, the closest competitor - watch it). Commodity: call graphs/references/impact. Field is ahead on language breadth, incremental indexing, vector search, token economy, composable queries. Strategy: invest in prover + Razor to stay distinct; incremental indexing + Lua to catch up.",
       "tags": ["research", "code-analysis", "agent", "csharp"],
       "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "note.razorgraph-borrow-list",
+      "kind": "note",
+      "path": "notes\\razorgraph-borrow-list-2026-08.md",
+      "summary": "Concepts to borrow from the MCP code-graph field, tiered by fusion with unique assets. Tier 1: diff-aware test impact (Covers edges backward from git diff), MinHash similarity shortlisting for the prover (makes the section-12 pairwise sweep tractable), measured-coverage import (closes reachable-vs-asserted caveat), graph_diff tool, content-hash incremental indexing + syntax-only fast tier (solves fast per-commit C# nesting). Tier 3 synthesis: plan -> SurgicalEdit -> prover-verify closed loop. Not borrowed: cloud, language breadth, vectors.",
+      "tags": ["research", "code-analysis", "agent", "refactoring"],
+      "links": ["note.razorgraph-competitive-field", "note.razorgraph-mcp-server", "pattern.discriminator-backends"]
     }
   ]
 }
