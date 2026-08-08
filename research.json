@@ -59,7 +59,7 @@
       "section": "6",
       "summary": "Depersonalized review principles: capture why in comments, tests must be able to fail, move/rename PRs owe evidence, warning fixes must not change runtime defaults, runbooks never route to a named person.",
       "tags": ["review", "testing", "ethics", "process"],
-      "links": ["script.test-pre-commit", "pattern.handoff-corpus"]
+      "links": ["script.test-pre-commit", "pattern.handoff-corpus", "note.linq-deferred-side-effects"]
     },
     {
       "id": "pattern.two-question-routing",
@@ -729,7 +729,7 @@
       "path": "notes\\coalescing-input-to-output.md",
       "summary": "State belongs in structure, not in bookkeeping that describes it. Two instances of one move. (1) Coalescing input changes into output work: key partitions, queue buffers, DESTINATION collapses -- the fold belongs to the consumer, so two consumers fold the same stream differently and a complete list can be folded non-associatively. A consumer loop waits for non-empty, delays one frame, drains GREEDILY to empty (stragglers make the current frame), awaits delivery; the loop position IS the window, so no armed flag, no race, no overlapping deliveries, backpressure free. Output rate capped at one per window by construction, so a fast producer can never overwhelm it -- only a slow consumer can. Plus laziness: per-output cells, never a base class. (2) Capping simultaneous calls to a remote (N items, K slots) -- the question people arrive with. Cold answers stop at SemaphoreSlim because it is CORRECT, and every weakness is second-order: leaked permits, nowhere for results or retry, K cannot change, no ordering. Better: K worker loops (K loops IS the limit), or a K-slot list where WhenAny is a wake-up to discard and you sweep for completed slots -- the slot index is the identity. The slot list has a coordinator, which buys unsynchronized results, per-item retry, adaptive K on 429s, and deterministic start order. Chunking is worse (a barrier that turns one poison pill into a total stall, and retry re-runs survivors) UNLESS the batch is the request -- \"K at a time\" means K per call or K in flight, and they want opposite structures. Concurrency cap is not a rate cap. The portable tell: when correctness depends on a paired acquire and release, there is usually a version where the thing is not a resource at all.",
       "caveats": [
-        "Design only, 2026-08-07 - no implementation exists yet. The first is planned in the RetirementCore repo DESIGN-COALESCING.md, which holds the application-specific half.",
+        "First implementation shipped 2026-08-08 in RetirementCore (RetirementCore.App\\Coalescing: ChangeCoalescer, Derived<T>, AsyncDerived<T>, deterministic pump+fake-clock test harness). The machine survived contact; the async-cell addition it forced (two counters, staleness independent of status) is recorded in the note.",
         "The request/response variant (batching loader / dataloader shape) is specified only as a contrast table; correlation and failure fan-out are unbuilt and are a genuine extension, not a free consequence."
       ],
       "tags": ["architecture", "concurrency", "ui", "wpf", "performance", "patterns", "csharp", "failure-modes"],
@@ -774,6 +774,15 @@
         "The candidate list leads with this machine's VS 18 Enterprise path. On another machine that misses and the fallback is a recursive Get-ChildItem over the Visual Studio install root, which is slow but only reached once per invocation."
       ],
       "links": []
+    },
+
+    {
+      "id": "note.linq-deferred-side-effects",
+      "kind": "note",
+      "path": "notes\\linq-deferred-side-effects.md",
+      "summary": "Deferred LINQ over a side-effecting projection re-runs the side effect on every enumeration, and Count() IS an enumeration. Enumerable.Count() on a Select iterator does not take a cheap path: SelectListIterator.GetCount(onlyIfCheap:false) deliberately re-invokes the selector so side effects and exceptions are preserved. Found 2026-08-08 in ImageSelectorV2 PreloadThumbnails, where an IEnumerable<Task> was enumerated by Task.WhenAll and again by a .Count() in the finally, silently doubling dispatcher load with a second unawaited set of fetches. Tell: an IEnumerable<Task<T>> local is almost always a latent bug -- materialize at point of creation. Symptom is load, not an exception, so it survives review.",
+      "tags": ["csharp", "linq", "async", "anti-pattern", "code-review"],
+      "links": ["pattern.reviewer-principles"]
     }
   ]
 }

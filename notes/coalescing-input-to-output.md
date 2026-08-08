@@ -4,8 +4,12 @@ A pattern for the boundary between **input-side changes** and **output-side
 representations**. Distilled 2026-08-07 from a WPF chart-rebuild problem, but the machine is
 not WPF-specific and has at least two independent instances (see *Second instance*, below).
 
-Status: **pattern, not code.** No implementation exists yet. The first is planned in the
-RetirementCore repo's `DESIGN-COALESCING.md`, which carries the application-specific half.
+Status: **first implementation shipped 2026-08-08** — RetirementCore's
+`RetirementCore.App\Coalescing\` (`ChangeCoalescer`, `Derived<T>`,
+`AsyncDerived<T>`), built to this note plus the repo's `DESIGN-COALESCING.md`
+(the application half, whose section 8 records what the build taught). The
+machine survived contact intact; the one addition it forced is recorded under
+*Derived state as explicit status* below.
 
 ---
 
@@ -189,6 +193,19 @@ Synchronous values are the degenerate case — they move `Stale → Valid` insid
 never occupy `Computing`. Async recomputation needs a **generation counter** captured at
 start and compared at publish, which generalizes the common `ReferenceEquals(input, current)`
 supersession check and works for inputs that are not reference-comparable.
+
+**What the first implementation added (2026-08-08): one counter is not enough.**
+The generation decides whether a flight may *publish*; a second latest-flight
+stamp decides who may *resolve the status*, or an old flight landing late
+(cancelled, failed, superseded) clobbers the `Computing` a newer flight owns.
+And staleness is **not** derivable from status: a flight in progress says
+nothing about whether the value it will replace had already gone stale, so
+the cell carries an explicit value-is-current bit beside the status. Two
+consequences fall out: cancelling a redundant recompute of unchanged inputs
+restores `Valid` rather than lying `Stale`, and consumers holding the value
+as one captured artifact can keep *using* it while stale — a stale snapshot
+is internally consistent by construction, so operations against it (replays,
+re-renders, reformatting) stay legal long after the live inputs moved on.
 
 Making failure a state rather than a modal dialog is usually an improvement, and a behavior
 change worth taking deliberately.
