@@ -74,6 +74,17 @@ nothing derived from the employer MCP implementation.
   project boundary, so `build_solution` is required — a single-project graph can
   never contain one.
 
+## Planned: coverage as a separate overlay pass (2026-08-08)
+
+Lori's direction: `Covers` may later move out of the build entirely — a separate
+call that takes an input graph and emits the coverage closure as a separate file.
+Rationale: the self-graph showed Covers is ~81% of edge volume (15,631 of 19,322);
+`--no-tests` (shipped same day) is the stopgap that cuts it at build time, an
+overlay would make base graph + coverage independently buildable and cacheable.
+Fits the tier-1 borrow-list items (measured-coverage import, graph_diff) — an
+overlay file is the natural place to merge measured runtime coverage with
+reachability. Not scheduled; recorded so the flag is understood as interim.
+
 ## Planned: attribute-driven DI detection (2026-08-01)
 
 Lori's codebases register services via attributes — `[RegisterDependency<TInterface>]`
