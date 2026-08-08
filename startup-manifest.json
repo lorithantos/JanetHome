@@ -32,6 +32,8 @@
   "retrieval": {
     "graph": "research.json",
     "via": "scripts\\Get-Research.ps1",
+    "hint": "Run it with no arguments for kinds and tags; -Query for scored search, -Tag / -Id for exact lookup, -? for the full surface. Responses report their own truncation.",
+    "$comment.hint": "'hint' is the only prose from this block that reaches the trimmed brief. The fields below are reference material, emitted under -Full -- keep them accurate, but do not grow 'hint'. See notes\\startup-brief-budget.md.",
     "$comment.json": "These scripts emit compressed JSON by default -- the consumer is a model, not a terminal. Node boundaries are unambiguous, new schema fields arrive without a formatter change, and nothing is spent on alignment no reader uses. -Text opts into the formatted view; -Pretty indents the JSON for debugging.",
     "usage": [
       "Get-Research.ps1                          -- kinds and tag index only (cheap orientation)",
@@ -50,16 +52,52 @@
 
   "$comment.rules": "ENFORCED rules are backed by a mechanism that fails: startup validation, a hook that denies the tool call, or a linter that exits 1. ADVISORY rules hold only as long as the agent chooses to honour them -- they are marked so, because a rule claiming enforcement it does not have is worse than an honest suggestion. Do not rationalise past an advisory rule on the grounds that this particular case is small; that is the exact failure these were written after.",
 
+  "$comment.rules.enforcedBy": "A rule claiming ENFORCED may carry 'enforcedBy': the hook script that backs it, as the hook itself resolves it -- Join-Path <project dir> <enforcedBy>. Startup tests that path against the CURRENT project dir (CLAUDE_PROJECT_DIR, else cwd), because that is the only place the hook will look. If it does not resolve the hook is not wired, the rule is emitted as ADVISORY with a note, and the mismatch is listed under 'problems'. It does not fail startup: working in JanetHome from another repo's project dir is legitimate, and a brief that tells the truth is worth more than one that refuses to start. Discovered 2026-08-01, when both hook-backed rules read ENFORCED in a session where neither hook was loaded.",
+
+  "$comment.rules.shape": "Each rule is { text, why }. 'text' is the imperative and is always emitted; 'why' is the justification and appears only under -Full or -Text. The split keeps the reasoning on disk and reviewable without billing it to every session -- a bare imperative is easier to argue past, which is what the comment above warns against. Plain strings still parse, for anything that does not decompose. Keep 'text' to one line; put the argument in 'why'.",
+
   "rules": [
-    "ENFORCED: research.json is never edited directly. Use Add-ResearchNode.ps1 / Update-ResearchNode.ps1. A PreToolUse hook denies Write and Edit against it.",
-    "ENFORCED: every .ps1 you write or edit is linted against the house rules immediately, by a PostToolUse hook. Fix what it reports before moving on.",
-    "ENFORCED: startup fails if any manifest entry does not resolve. A broken contract stops the session rather than degrading it.",
-    "ADVISORY: Graph first, narrative second. Query a semantic model for the narrowest slice that answers the question; read source only to spot-check claims that matter (DESIGN-NOTES section 4).",
-    "ADVISORY: Before any expensive query, answer two questions: what exactly am I trying to learn, and what is the cheapest query that distinguishes the hypotheses (section 7).",
-    "ADVISORY: Push a thread before descending into a side investigation; pop it when done (section 3).",
-    "ADVISORY: For multi-file mechanical edits, emit a JSON plan and run Invoke-SurgicalEdit.ps1 rather than hand-editing (section 5).",
-    "ADVISORY: Wrap known-flaky external tools in an explicit timeout and fallback. A hung call is indistinguishable from thinking (section 8).",
-    "ADVISORY, AND THE ONE THAT MATTERS MOST: no employer source, internal architecture, production telemetry, security-posture detail, or personal data about former colleagues enters this repo (PROVENANCE.md). There is no mechanism behind this one and there cannot easily be -- the identifier list that would enforce it is itself employer information and must not live here. It rests entirely on judgement. Treat it as the hardest rule, not the softest.",
-    "ADVISORY: scripts target PowerShell 7 (pwsh). Add -Target Ps51 when a script may run on stock Windows 5.1 -- the hook lints at the Ps7 default. Rules and rationale: notes\\powershell-house-rules.md."
+    {
+      "text": "ENFORCED: never edit research.json directly -- use Add-ResearchNode.ps1 / Update-ResearchNode.ps1.",
+      "why": "A PreToolUse hook denies Write and Edit against it.",
+      "enforcedBy": "scripts\\Invoke-EditGuard.ps1"
+    },
+    {
+      "text": "ENFORCED: fix what the PowerShell linter reports before moving on.",
+      "why": "A PostToolUse hook lints every .ps1 you write or edit against notes\\powershell-house-rules.md.",
+      "enforcedBy": "scripts\\Invoke-LintHook.ps1"
+    },
+    {
+      "text": "ENFORCED: startup fails if any manifest entry does not resolve.",
+      "why": "A broken contract stops the session rather than degrading it quietly."
+    },
+    {
+      "text": "ADVISORY: graph first, narrative second.",
+      "why": "Query a semantic model for the narrowest slice that answers the question; read source only to spot-check the claims that matter (DESIGN-NOTES section 4)."
+    },
+    {
+      "text": "ADVISORY: before an expensive query, name what you are trying to learn and the cheapest query that distinguishes the hypotheses.",
+      "why": "Agents default to broad exploratory queries that time out or silently truncate. Making hypothesis-formation a prerequisite converts flailing into bisection (section 7)."
+    },
+    {
+      "text": "ADVISORY: push a thread before descending into a side investigation; pop it when done.",
+      "why": "Debugging is depth-first and working memory is not. The stack is the unwind path (section 3)."
+    },
+    {
+      "text": "ADVISORY: for multi-file mechanical edits, emit a JSON plan and run Invoke-SurgicalEdit.ps1 rather than hand-editing.",
+      "why": "Models decide well and perform dozens of mechanical edits unreliably. The plan is reviewable before anything touches disk (section 5)."
+    },
+    {
+      "text": "ADVISORY: wrap known-flaky external tools in an explicit timeout and fallback.",
+      "why": "A hung call is indistinguishable from thinking -- the worst failure mode, because it produces no output and no diagnosis (section 8)."
+    },
+    {
+      "text": "ADVISORY: keep employer material out of this repo -- source, internal architecture, production telemetry, security-posture detail, colleague personal data.",
+      "why": "Judgement only; no mechanism enforces it, since the identifier list that would is itself employer information. The 2026-07-27 extraction already excluded these categories, so this is a backstop against what gets added, not a gate to re-check on every edit (PROVENANCE.md)."
+    },
+    {
+      "text": "ADVISORY: scripts target PowerShell 7. Add -Target Ps51 when one may run on stock Windows 5.1.",
+      "why": "The hook lints at the Ps7 default, and the 5.1 differences fail in ways that print success. Rules and rationale: notes\\powershell-house-rules.md."
+    }
   ]
 }

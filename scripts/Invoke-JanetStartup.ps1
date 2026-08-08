@@ -31,6 +31,33 @@
     the brief lists paths and reasons, and the reader decides what to open.
     Progressive disclosure (section 2) applies to startup too.
 
+.PARAMETER Full
+    Emit every manifest field rather than the trimmed brief.  The default brief
+    carries the contract and drops reference material the session can retrieve on
+    demand -- see notes\startup-brief-budget.md, which measured the untrimmed
+    brief at 4525 characters, 84% of it prose that was not the contract.
+
+    Trimmed means: '$'-prefixed keys are dropped at every level (they are notes
+    for whoever edits the manifest, not payload); 'retrieval' reduces to the
+    pointer plus a one-line hint; rules emit their 'text' without the 'why'; and
+    a run entry's output is omitted when the identical string is already in
+    'captured'.  Nothing is lost that a query cannot recover.
+
+.PARAMETER OutFile
+    Where to persist the JSON brief.  Defaults to .janet\last-brief.json in the
+    repo root; pass '' to skip writing.
+
+    Written on every run, -Text included.  The console view and the persisted
+    brief are different consumers, not alternatives -- reading the formatted
+    output at a terminal is not a reason to leave the last brief on disk stale,
+    and it silently was until 2026-08-01.
+
+    The brief exists to be *ingested*, not pasted.  Handing it to a session on the
+    command line truncates it, cannot be re-run by the reader, and carries the
+    brief's text without the project context whose guarantees it describes -- a
+    pasted brief once claimed two hooks were enforcing rules in a session where
+    neither hook was loaded.  A file has none of those properties.
+
 .PARAMETER SkipRun
     Validate and report without executing the 'run' entries.  Use to lint the
     manifest.
@@ -39,7 +66,9 @@
     & "$env:JanetBase\scripts\Invoke-JanetStartup.ps1"
 
 .EXAMPLE
-    & "D:\Repos\JanetHome\scripts\Invoke-JanetStartup.ps1" -Json | ConvertFrom-Json
+    & "D:\Repos\JanetHome\scripts\Invoke-JanetStartup.ps1" | ConvertFrom-Json
+    JSON is the default; there is no -Json switch.  -Text opts into the
+    formatted view instead.
 
 .EXAMPLE
     & "$env:JanetBase\scripts\Invoke-JanetStartup.ps1" -SkipRun
@@ -51,6 +80,8 @@ param(
     [switch]$Text,
     [switch]$Pretty,
     [switch]$IncludeContent,
+    [switch]$Full,
+    [string]$OutFile,
     [switch]$SkipRun
 )
 
@@ -100,6 +131,71 @@ function Get-ManifestSection {
     return ,@($value)
 }
 
+function Select-PayloadFields {
+    # ASSIGN THE RESULT -- comma-wrapped, same reason as Get-ManifestSection.
+    # Drops '$'-prefixed keys ('$comment', '$comment.json', ...).  Those are notes
+    # for whoever edits the manifest; nothing stripped them before, so 303
+    # characters of editorial aside were billed to every session.  Returns an
+    # ordered hashtable so callers can drop or add fields before emitting.
+    # $Only defaults to an empty array, not $null: an omitted [string[]] is $null,
+    # and $null.Count is a terminating error under StrictMode (house rule 2).
+    param($Object, [string[]]$Only = @())
+    $out = [ordered]@{}
+    if ($null -eq $Object) { return ,$out }
+    foreach ($prop in $Object.PSObject.Properties) {
+        if ($prop.Name.StartsWith('$')) { continue }
+        if ($Only.Count -gt 0 -and $Only -notcontains $prop.Name) { continue }
+        $out[$prop.Name] = $prop.Value
+    }
+    return ,$out
+}
+
+function Test-RuleEnforced {
+    # A rule's 'enforcedBy' names the hook script backing it.  Two wirings can arm
+    # it, mirroring where the harness actually loads hooks from:
+    #
+    #   1. Project-level: .claude\settings.json in the project dir resolves the
+    #      script as Join-Path <project dir> <enforcedBy>.  Only live when the
+    #      session's project dir is this repo.
+    #   2. User-level: ~\.claude\settings.json (wired 2026-08-01) runs the script by
+    #      absolute path from this repo whenever the project dir is NOT this repo.
+    #      Tested the same way the wiring works: the settings file names the script
+    #      and the absolute script exists.  The name match is textual, so a hook
+    #      commented out by renaming would still read as wired -- accepted; the
+    #      check is against the config the harness actually loads, and settings
+    #      files have no comment syntax to hide behind.
+    #
+    # Without this check a rule reads ENFORCED while nothing enforces it, which the
+    # manifest's own $comment.rules calls worse than an honest suggestion.
+    param($Rule, [string]$ProjectDir)
+    if ($Rule -is [string]) { return $true }
+    $backing = Get-Prop $Rule 'enforcedBy'
+    if (-not $backing) { return $true }
+    if (Test-Path (Join-Path $ProjectDir $backing) -PathType Leaf) { return $true }
+    $userSettings = Join-Path $env:USERPROFILE '.claude\settings.json'
+    if (-not (Test-Path $userSettings -PathType Leaf)) { return $false }
+    if (-not (Test-Path (Join-Path $repoRoot $backing) -PathType Leaf)) { return $false }
+    $leaf = Split-Path $backing -Leaf
+    return ((Get-Content $userSettings -Raw -Encoding UTF8) -like "*$leaf*")
+}
+
+function Get-RuleText {
+    # A rule is either a plain string or { text, why }.  The split exists so the
+    # justification stays on disk and reviewable without being billed every
+    # session -- an advisory rule stripped to a bare imperative is easier to argue
+    # past, which is the failure the manifest's own $comment.rules warns about.
+    param($Rule, [switch]$WithWhy)
+    if ($Rule -is [string]) { return $Rule }
+    # $ruleText, not $text: see the $fullPath note below. A function-local would
+    # shadow rather than collide, but keeping the convention costs nothing and the
+    # collision is invisible when it does bite.
+    $ruleText = Get-Prop $Rule 'text'
+    if (-not $ruleText) { return $null }
+    $why = Get-Prop $Rule 'why'
+    if ($WithWhy -and $why) { return "$ruleText -- $why" }
+    return $ruleText
+}
+
 $readEntries = Get-ManifestSection $manifest 'read'
 $runEntries  = Get-ManifestSection $manifest 'run'
 $rules       = Get-ManifestSection $manifest 'rules'
@@ -114,12 +210,15 @@ $reads = @()
 foreach ($entry in $readEntries) {
     $path = Get-Prop $entry 'path'
     if (-not $path) { $problems += "read: entry with no 'path'"; continue }
-    $full = Join-Path $repoRoot $path
-    $exists = Test-Path $full -PathType Leaf
+    # $fullPath, not $full: PowerShell variable names are case-insensitive, so a
+    # local $full and the -Full switch parameter are the same variable, and
+    # assigning a path to a typed [switch] throws at the assignment.
+    $fullPath = Join-Path $repoRoot $path
+    $exists = Test-Path $fullPath -PathType Leaf
     if (-not $exists) { $problems += "read: missing file '$path'" }
     $reads += [PSCustomObject]@{
         path   = $path
-        full   = $full
+        full   = $fullPath
         why    = (Get-Prop $entry 'why' '')
         exists = $exists
     }
@@ -129,12 +228,12 @@ $runs = @()
 foreach ($entry in $runEntries) {
     $cmd = Get-Prop $entry 'cmd'
     if (-not $cmd) { $problems += "run: entry with no 'cmd'"; continue }
-    $full = Join-Path $repoRoot $cmd
-    $exists = Test-Path $full -PathType Leaf
+    $fullPath = Join-Path $repoRoot $cmd
+    $exists = Test-Path $fullPath -PathType Leaf
     if (-not $exists) { $problems += "run: missing command '$cmd'" }
     $runs += [PSCustomObject]@{
         cmd       = $cmd
-        full      = $full
+        full      = $fullPath
         why       = (Get-Prop $entry 'why' '')
         captureAs = (Get-Prop $entry 'captureAs' '')
         exists    = $exists
@@ -154,6 +253,42 @@ if ($null -ne $retrieval) {
     }
 }
 
+# A rule that emits nothing is a rule the session never sees, which is exactly the
+# quiet degradation the manifest contract exists to prevent.
+for ($i = 0; $i -lt $rules.Count; $i++) {
+    if ($null -eq (Get-RuleText $rules[$i])) {
+        $problems += "rules: entry $i has neither string form nor a 'text' field"
+    }
+}
+
+# Hooks load from the project dir, which is not necessarily this repo.
+$projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
+$unwired = @()
+foreach ($rule in $rules) {
+    if (-not (Test-RuleEnforced $rule $projectDir)) {
+        $unwired += (Get-Prop $rule 'enforcedBy')
+    }
+}
+# Reported, never fatal -- deliberately kept out of $problems, which onMissing
+# governs. An unwired hook is not a manifest entry failing to resolve: the
+# manifest is intact and every path in it still resolves. What is false is one
+# rule's ENFORCED label, and the honest repair is to relabel that rule (which the
+# brief does, below) and say so here -- not to refuse to start.
+#
+# Working on this repo from another repo's project dir is legitimate, and a
+# session that starts with an accurate brief beats one that will not start at all.
+# This check exists because on 2026-08-01 both hook-backed rules read ENFORCED in
+# a session where neither hook was loaded; the fix for that is truthful labelling,
+# and briefly was over-corrected into a hard stop that made startup depend on the
+# caller's working directory.
+$enforcementNotes = @()
+if ($unwired.Count -gt 0) {
+    $enforcementNotes += "enforcement: $($unwired.Count) rule(s) labelled ENFORCED are not wired " +
+                         "for project dir '$projectDir' (missing: $($unwired -join ', ')). " +
+                         "They are emitted as ADVISORY. Launch with '$repoRoot' as the project " +
+                         "dir to arm them."
+}
+
 if ($problems.Count -gt 0) {
     $detail = ($problems | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
     $summary = "Startup manifest has $($problems.Count) unresolved entr$(if ($problems.Count -eq 1) {'y'} else {'ies'}):"
@@ -162,6 +297,11 @@ if ($problems.Count -gt 0) {
     }
     Write-Warning "$summary$([Environment]::NewLine)$detail"
 }
+
+# Startup continues, so the caller gets this on the warning stream as well as in
+# the brief -- an unarmed guard is worth noticing even when it is not worth
+# stopping for.
+foreach ($note in $enforcementNotes) { Write-Warning $note }
 
 # ---- Execution pass --------------------------------------------------------
 
@@ -198,24 +338,89 @@ foreach ($run in $runs) {
 
 # ---- Brief -----------------------------------------------------------------
 
+# Built unconditionally.  -Text selects how this run is *displayed*; it does not
+# mean no brief was produced, and persisting it is not the JSON path's private
+# business -- see the OutFile note above.
+
+$readOut = $reads | ForEach-Object {
+    $o = [ordered]@{ path = $_.path; why = $_.why; exists = $_.exists }
+    if ($IncludeContent -and $_.exists) { $o.content = (Get-Content $_.full -Raw -Encoding UTF8) }
+    [PSCustomObject]$o
+}
+
+# Emitting output here as well as in 'captured' sends the identical string
+# twice.  Cheap today because the thread stack is small; it scales with every
+# future startup command's output, and the duplicate carries nothing.
+$runOut = $runResults | ForEach-Object {
+    $o = [ordered]@{ cmd = $_.cmd; captureAs = $_.captureAs; status = $_.status }
+    if ($Full -or -not $_.captureAs) { $o.output = $_.output }
+    [PSCustomObject]$o
+}
+
+# The pointer replaced an eagerly-loaded inventory; untrimmed it became an
+# eagerly-loaded manual for the retrieval tool, at 44% of the whole brief.
+# 'add' and 'update' restate parameter lists that -? and the graph node hold,
+# and 'envelope' describes a shape every query response demonstrates.
+$retrievalOut = $null
+if ($null -ne $retrieval) {
+    $fields = if ($Full) {
+        Select-PayloadFields $retrieval
+    } else {
+        Select-PayloadFields $retrieval -Only @('graph', 'via', 'hint')
+    }
+    $retrievalOut = [PSCustomObject]$fields
+}
+
+# The label must not overstate itself.  This is the ordinary path, not a
+# leftover: an unwired hook downgrades its rule and startup carries on.
+$rulesOut = @()
+foreach ($rule in $rules) {
+    $line = Get-RuleText $rule -WithWhy:$Full
+    if (-not $line) { continue }
+    if (-not (Test-RuleEnforced $rule $projectDir)) {
+        $line = $line -replace '^ENFORCED:', 'ADVISORY (claims ENFORCED; hook not wired here):'
+    }
+    $rulesOut += $line
+}
+
+# 'problems' and 'enforcement' are separate fields because they carry different
+# severities and consumers act on that difference: Start-Janet refuses to launch
+# on any 'problems' entry, which is right for a manifest that failed to resolve
+# and wrong for a hook that is not wired -- launching from another repo is that
+# launcher's documented primary case. Folding both into 'problems' re-fatalized
+# the exact condition the 2026-08-01 fix made non-fatal, one layer up. A brief
+# field is a contract with every consumer, not just the session model.
+$brief = [PSCustomObject]@{
+    janetBase   = $repoRoot
+    manifest    = $ManifestPath
+    read        = @($readOut)
+    run         = @($runOut)
+    captured    = [PSCustomObject]$captured
+    retrieval   = $retrievalOut
+    rules       = @($rulesOut)
+    problems    = @($problems)
+    enforcement = @($enforcementNotes)
+}
+$json = if ($Pretty) { $brief | ConvertTo-Json -Depth 6 }
+        else { $brief | ConvertTo-Json -Depth 6 -Compress }
+
+# Unbound means "use the default"; an explicitly empty string means "do not
+# write", which is why this tests the bound parameters rather than truthiness.
+if (-not $PSBoundParameters.ContainsKey('OutFile')) {
+    $OutFile = Join-Path $repoRoot '.janet\last-brief.json'
+}
+if ($OutFile) {
+    $outDir = Split-Path $OutFile -Parent
+    if ($outDir -and -not (Test-Path $outDir)) {
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+    }
+    # UTF8Encoding($false), not -Encoding utf8NoBOM: correct on 5.1 and 7 alike
+    # (house rules section 8).
+    [System.IO.File]::WriteAllText($OutFile, $json, (New-Object System.Text.UTF8Encoding $false))
+}
+
 if (-not $Text) {
-    $readOut = $reads | ForEach-Object {
-        $o = [ordered]@{ path = $_.path; why = $_.why; exists = $_.exists }
-        if ($IncludeContent -and $_.exists) { $o.content = (Get-Content $_.full -Raw -Encoding UTF8) }
-        [PSCustomObject]$o
-    }
-    $brief = [PSCustomObject]@{
-        janetBase = $repoRoot
-        manifest  = $ManifestPath
-        read      = @($readOut)
-        run       = @($runResults)
-        captured  = [PSCustomObject]$captured
-        retrieval = $retrieval
-        rules     = @($rules)
-        problems  = @($problems)
-    }
-    if ($Pretty) { $brief | ConvertTo-Json -Depth 6 }
-    else { $brief | ConvertTo-Json -Depth 6 -Compress }
+    $json
     return
 }
 
@@ -277,8 +482,24 @@ if ($null -ne $retrieval) {
     Write-Host ''
 }
 
+if ($enforcementNotes.Count -gt 0) {
+    Write-Host 'ENFORCEMENT' -ForegroundColor Yellow
+    foreach ($note in $enforcementNotes) { Write-Host "  $note" -ForegroundColor Yellow }
+    Write-Host ''
+}
+
 if ($rules.Count -gt 0) {
+    # Always with the 'why': the terminal reader scrolls, and this is the view
+    # someone uses when deciding whether a rule still earns its place.
     Write-Host 'OPERATING RULES' -ForegroundColor Cyan
-    foreach ($rule in $rules) { Write-Host "  - $rule" }
+    foreach ($rule in $rules) {
+        $ruleText = Get-RuleText $rule
+        if (-not (Test-RuleEnforced $rule $projectDir)) {
+            $ruleText = $ruleText -replace '^ENFORCED:', 'ADVISORY (claims ENFORCED; hook not wired here):'
+        }
+        Write-Host "  - $ruleText"
+        $why = if ($rule -is [string]) { $null } else { Get-Prop $rule 'why' }
+        if ($why) { Write-Host "      $why" -ForegroundColor DarkGray }
+    }
     Write-Host ''
 }

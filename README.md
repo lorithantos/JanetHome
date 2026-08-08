@@ -7,14 +7,28 @@ Started 2026-07-27.
 
 ## Start a session
 
+Launch with **this repo as the project dir**, then let the session run startup itself:
+
 ```powershell
 & .\scripts\Invoke-JanetStartup.ps1
 ```
+
+Do not paste the brief in on the command line. It truncates, it can't be re-run by the
+reader, and it carries the contract's text without the project context that backs it —
+a pasted brief once claimed two `ENFORCED` rules in a session where neither hook was
+loaded. `CLAUDE.md` states this for the agent; `notes\startup-brief-budget.md` has the
+incident. Every run also writes `.janet\last-brief.json` for ingestion without a re-run.
 
 Reads `startup-manifest.json`, sets `$env:JanetBase`, verifies every entry resolves
 before running anything, and emits the session brief as JSON. A broken entry is a hard
 failure, not a quiet degradation — see DESIGN-NOTES §1. Use `-SkipRun` to lint the
 manifest, `-Text` to read it at a terminal, `-Pretty` to indent the JSON.
+
+The brief is **trimmed** by default: it carries the contract and drops reference material
+the session can retrieve on demand. `-Full` restores everything. The untrimmed brief was
+measured at 4525 characters with 84% of it prose that wasn't the contract — see
+`notes\startup-brief-budget.md`, which also records the switch-parameter collision that
+adding `-Full` exposed.
 
 The brief deliberately does **not** include the tool inventory. Everything in the repo is
 a node in `research.json`; startup carries only a pointer, and you pull what you need:

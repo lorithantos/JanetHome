@@ -5,8 +5,8 @@ The checkable subset is enforced by `scripts\Test-PowerShellRules.ps1` -- prefer
 a check there over adding a paragraph here. A style guide nobody runs degrades quietly,
 which is the exact failure mode DESIGN-NOTES section 1 argues against.
 
-**Target: PowerShell 7 (pwsh).** Installed 2026-07-27; 7.6.4. Sections 1-6 below are
-edition-independent -- 7 does not rescue you from any of them. Section 7 is
+**Target: PowerShell 7 (pwsh).** Installed 2026-07-27; 7.6.4. Sections 1-7 below are
+edition-independent -- 7 does not rescue you from any of them. Section 8 is
 backward-compatibility only, for scripts that may land on a machine with just the
 shipped-in-Windows 5.1.
 
@@ -86,6 +86,30 @@ how the `Get-Help` bug in `Get-ScriptCatalog.ps1` finally surfaced.
   `.github\scripts` paths still appear in eight scripts' `.EXAMPLE` blocks -- harmless to
   run, wrong to copy.
 
+### 7. Adding a parameter renames every same-named local
+
+Variable names are case-insensitive, so a new `[switch]$Full` parameter and an existing
+local `$full` are **the same variable**. Assigning a string to a typed switch throws, and
+the message names the wrong culprit entirely:
+
+```
+Cannot convert the "D:\Repos\JanetHome\README.md" value of type "System.String"
+to type "System.Management.Automation.SwitchParameter".
+```
+
+That points at a *file path*, and at the call site of the whole script, for a line that
+has worked unchanged for weeks. `Invoke-JanetStartup.ps1` hit it twice in one edit:
+`-Full` against a local `$full` holding a resolved path, then `-Text` against a local
+`$text` holding rule text.
+
+**Before adding a parameter, grep the script for its name, case-insensitively.** Treat
+every hit as a rename. A function-local shadows rather than collides so it survives, but
+only by accident -- the same name at script scope later will not.
+
+Worth adding to `Test-PowerShellRules.ps1`: flag any assignment to a variable whose name
+matches a `param()` entry of a different type. Cheap AST check, and this class of bug is
+invisible on review. Full write-up in `notes\startup-brief-budget.md`.
+
 ---
 
 ## Part 2 -- Backward compatibility (only if 5.1 must run it)
@@ -93,7 +117,7 @@ how the `Get-Help` bug in `Get-ScriptCatalog.ps1` finally surfaced.
 Now optional. `Test-PowerShellRules.ps1 -Target Ps51` turns these on. Worth running
 before sharing a script, since 5.1 is what a stock Windows box has.
 
-### 7. 5.1-only hazards
+### 8. 5.1-only hazards
 
 - **PowerShell 7-only encoding names.** `utf8NoBOM`, `utf8BOM`, `ansi`, `oem` are not
   valid `-Encoding` values in 5.1. The binding error is thrown at the pipeline element,

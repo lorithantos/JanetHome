@@ -3,3 +3,7 @@
 
 # The thread stack lives in %TEMP%, not here -- but guard against a stray copy.
 thread-stack.json
+
+# Last session brief, written by Invoke-JanetStartup.ps1. Machine-local and
+# regenerated on every run; the manifest is the source of truth, not this.
+.janet/

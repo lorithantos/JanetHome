@@ -28,13 +28,23 @@
 .PARAMETER IncludeContent
     Embed the full text of the manifest's 'read' files in the prompt instead of
     listing their paths.  Off by default: progressive disclosure applies (DESIGN-NOTES
-    section 2), and the session's own Read tool reports what it opened.  Turning this
-    on pushes the prompt past the Windows command-line limit, which is handled by
-    handing off through a temp file -- see -PromptFile.
+    section 2), and the session's own Read tool reports what it opened.
 
 .PARAMETER PromptFile
-    Where the prompt is staged when it is too long to pass as an argument.
-    Defaults to $env:TEMP\Janet\startup-prompt.md, overwritten each launch.
+    Where the full prompt is staged.  Defaults to $env:TEMP\Janet\startup-prompt.md,
+    overwritten each launch.
+
+    The prompt is ALWAYS handed to claude through this file; what goes on the
+    command line is a one-line pointer to it.  The prompt embeds the JSON brief,
+    so it always contains double quotes -- and a quoted argument does not survive
+    every shell's native-argument passing.  Windows PowerShell 5.1 does not escape
+    embedded quotes when building the child's command line, so the string shreds
+    into tokens at the first quote and claude's parser reads fragments of the
+    brief as options: 'error: unknown option -Query', 2026-08-01, where -Query
+    was a substring of the brief's own retrieval hint.  The pointer line contains
+    no quotes, which makes it safe under every argument-passing convention this
+    launcher might run under.  (Length was never the real constraint; the 32767-
+    char command-line cap just made the file path exist already.)
 
 .PARAMETER ManifestPath
     Alternate startup manifest, passed through to Invoke-JanetStartup.ps1.  Defaults
@@ -75,10 +85,6 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-# Windows caps a command line at 32767 characters and the failure mode is a truncated
-# prompt, not an error -- so stay well clear and hand off through a file instead.
-$MaxInlinePrompt = 24000
 
 if (-not $Path) { $Path = (Get-Location).Path }
 if (-not (Test-Path $Path -PathType Container)) {
@@ -158,6 +164,19 @@ if ($reported.Count -gt 0) {
     exit 1
 }
 
+# Enforcement notes are the brief's other list: hooks not wired for the current
+# project dir. Deliberately not a launch blocker -- this launcher's primary case
+# is starting a session in some other repo, which is exactly when the hooks are
+# absent. The brief has already relabelled the affected rules ADVISORY, so the
+# session is not deceived; the note here is for the human at the terminal.
+# (PSObject lookup, not $parsed.enforcement: absent on pre-split briefs via
+# -ManifestPath testing, and StrictMode makes an absent property a hard error.)
+$enforcementProp = $parsed.PSObject.Properties['enforcement']
+$enforcement = if ($enforcementProp) { @($enforcementProp.Value) } else { @() }
+foreach ($note in $enforcement) {
+    Write-Host "  ! $note" -ForegroundColor Yellow
+}
+
 # ---- Prompt ----------------------------------------------------------------
 
 $closing = if ($Prompt) { $Prompt } else {
@@ -186,18 +205,15 @@ $closing
 $brief
 "@
 
-$staged = $false
-$initialPrompt = $instructions
-if ($initialPrompt.Length -gt $MaxInlinePrompt) {
-    $promptDir = Split-Path $PromptFile -Parent
-    if ($promptDir -and -not (Test-Path $promptDir)) {
-        New-Item -ItemType Directory -Path $promptDir -Force | Out-Null
-    }
-    # UTF8Encoding over -Encoding utf8NoBOM: correct on 5.1 and 7 alike.
-    [System.IO.File]::WriteAllText($PromptFile, $instructions, (New-Object System.Text.UTF8Encoding $false))
-    $initialPrompt = "Read $PromptFile in full and follow it before anything else. It is your startup brief, not a document to summarise."
-    $staged = $true
+# Always staged, never inline -- see the -PromptFile note above.  The command
+# line carries only this quote-free pointer.
+$promptDir = Split-Path $PromptFile -Parent
+if ($promptDir -and -not (Test-Path $promptDir)) {
+    New-Item -ItemType Directory -Path $promptDir -Force | Out-Null
 }
+# UTF8Encoding over -Encoding utf8NoBOM: correct on 5.1 and 7 alike.
+[System.IO.File]::WriteAllText($PromptFile, $instructions, (New-Object System.Text.UTF8Encoding $false))
+$initialPrompt = "Read $PromptFile in full and follow it before anything else. It is your startup brief, not a document to summarise."
 
 # ---- Launch ----------------------------------------------------------------
 
@@ -208,7 +224,7 @@ if ($DryRun) {
     Write-Host "claude:   $claude" -ForegroundColor Cyan
     Write-Host "cwd:      $Path" -ForegroundColor Cyan
     Write-Host "args:     $($ClaudeArgs -join ' ')" -ForegroundColor Cyan
-    if ($staged) { Write-Host "staged:   $PromptFile" -ForegroundColor Cyan }
+    Write-Host "staged:   $PromptFile" -ForegroundColor Cyan
     Write-Host "prompt:   $($instructions.Length) characters" -ForegroundColor Cyan
     Write-Host ''
     Write-Host $instructions
@@ -216,7 +232,7 @@ if ($DryRun) {
 }
 
 Write-Host "Janet loaded from $janetBase -- starting claude in $Path" -ForegroundColor Cyan
-if ($staged) { Write-Host "Brief staged at $PromptFile (too long to pass inline)." -ForegroundColor DarkGray }
+Write-Host "Brief staged at $PromptFile." -ForegroundColor DarkGray
 
 Push-Location $Path
 try { & $claude @invocationArgs }
