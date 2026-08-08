@@ -41,7 +41,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -527,18 +527,19 @@
       "id": "note.razorgraph-mcp-server",
       "kind": "note",
       "path": "notes\\razorgraph-mcp-server.md",
-      "summary": "MCP stdio server over the RazorGraphTool code graph (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 21 tools, Janet JSON envelope conventions. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise (full call closure, depth carried on each edge). Method-level detail: explicit constructors are Method nodes, using/await-using disposal is a Calls edge, bodyDepth nesting metric feeds deep_methods (the christmas-tree report), method_body_graph exposes one method's CFG with guard depths, method_body_diff proves two bodies flow-equivalent by bisimulation. Traversal takes a direction (outgoing/incoming/both) and descends containment for free. Extraction covers Razor/Roslyn topology, Class/Method nodes, wwwroot assets, and inline <script> blocks (2026-08-03).",
+      "summary": "MCP stdio server over the RazorGraphTool code graph (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 22 tools (exception_escapes added 2026-08-07), Janet JSON envelope conventions. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise (full call closure, depth carried on each edge). Method-level detail: explicit constructors are Method nodes, using/await-using disposal is a Calls edge, bodyDepth nesting metric feeds deep_methods (the christmas-tree report), method_body_graph exposes one method's CFG with guard depths, method_body_diff proves two bodies flow-equivalent by bisimulation. Member-level detail since cd12114 (2026-08-08): Property and Field nodes (statics included, isStatic/isConst marked), Reads/Writes edges from the accessing code, References edges to member declared types. Traversal takes a direction (outgoing/incoming/both) and descends containment for free. Extraction covers Razor/Roslyn topology, Class/Method/Property/Field nodes, wwwroot assets, and inline <script> blocks.",
       "caveats": [
         "build_graph and build_solution are slow (full Roslyn compile); build_solution compiles every project in the solution. Solution graphs scope Razor and client-asset ids by project name (page:<Project>/<relPath>, js:<Project>/<relPath>), so ids differ from single-project graphs of the same code.",
         ".mcp.json launches a PUBLISHED copy -- D:/Repos/RazorGraphTool/.mcp-bin/RazorGraph.Mcp.exe, absolute path, gitignored -- refreshed with: dotnet publish src\\RazorGraph.Mcp -c Release -o .mcp-bin. It used to launch the live bin/Debug output, which a running server locks, so any rebuild of that configuration failed with MSB3021 while a Claude session was up. Verified 2026-08-01 that Debug and Release solution builds both succeed with the server live. Residual: .mcp-bin itself is locked while a session runs, so re-publishing needs those sessions closed, and code changes reach the MCP tools only after re-publish AND a session restart.",
         "Covers edges are call-graph reachability to the FULL call closure (since 73ddf10, 2026-08-02; was depth 3), not runtime coverage - a covered method is one some test can reach, not one a test asserted on. Each edge carries the depth it was reached at; filter on depth for direct exercise. Traversal seeds from the test and from its class lifecycle hooks and constructor. uncovered_methods excludes bodiless interface/abstract declarations, which never carry Covers edges.",
         "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion. Still present as of 2026-08-03; the planned attribute-driven DI detection would fix it as a side effect.",
-        "No type-usage edges (return types, parameter types, property types): a DTO returned by a controller has zero edges even in a solution graph, so \"who uses this type\" is unanswerable for non-service classes - grep finds 6 files, the graph finds 0. Found 2026-08-01 querying ImageSelectorV2 saved graphs.",
-        "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first.",
-        "The published .mcp-bin predates exception_escapes (added 2026-08-07) until re-published; publish fails while any session holds the server open - close sessions first, then dotnet publish src/RazorGraph.Mcp -c Release -o .mcp-bin. The CLI twin (query --escapes) works immediately."
+        "Type-usage edges are PARTIAL: since cd12114 (2026-08-08) property/field declared types emit References edges (unwrapping List<>/array wrappers), so \"who uses this type\" IS answerable for member-typed usage. Return types and parameter types still carry no edges - a type used only in method signatures still shows nothing.",
+        "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, prop:, field:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first.",
+        "The published .mcp-bin predates exception_escapes (2026-08-07) AND the member extraction (cd12114, 2026-08-08) until re-published; publish fails while any session holds the server open - close sessions first, then dotnet publish src/RazorGraph.Mcp -c Release -o .mcp-bin. The CLI twin sees both immediately.",
+        "Zero-Property-node gap RESOLVED IN SOURCE at cd12114 (2026-08-08): Property and Field nodes (statics included), Reads/Writes edges (method/ctor/property-attributed), and member->declared-type References edges are now emitted; verified by 11 integration tests over the MultiProject fixture. Graphs built by the published server, and ANY saved graph predating cd12114, still contain zero Property/Field nodes - date-check a saved graph before trusting an empty incoming list."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli"]
     },
 
     {
@@ -582,11 +583,11 @@
       "kind": "script",
       "path": "scripts\\Search-Json.ps1",
       "summary": "Generic JSON-blob search with Get-Research conventions: orientation view (arrays + field census), scored -Query, prop=value -Where filters with wildcards and dotted paths, -Select projection, { returned, totalMatches, truncated, items } envelope, -Text opt-in. Built 2026-08-01 for querying saved RazorGraph graphs without the MCP server; works on any JSON file whose interesting content is an array of objects.",
-      "tags": ["retrieval", "json", "code-analysis", "powershell"],
       "caveats": [
         "Loads the whole file into memory (fine for MB-scale graphs). Unlike Get-Research it caps -Where results too (default -First 10) because blob arrays can hold tens of thousands of items; -All lifts the cap and the envelope always says when it was applied."
       ],
-      "links": ["script.get-research", "note.razorgraph-mcp-server"]
+      "tags": ["retrieval", "json", "code-analysis", "powershell"],
+      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli"]
     },
 
     {
@@ -662,7 +663,7 @@
       "path": "notes\\christmas-tree-flattening.md",
       "summary": "The move table for flattening deep nesting (christmas-tree code): guard inversion (universally legal, prover-blessable via method_body_diff), extract-method (only real fix for loop pyramids; prover correctly refuses, gate with tests + graph edge-set diff), compute-and-return (ctor fallback). Extract-method is compiler-forbidden in ctors assigning readonly fields (CS0191) or init-only properties (CS8852) - an auto-flattener must check MethodKind.Constructor plus what the block assigns. Includes the worked workflow from the prover's first production run (RazorGraphTool bc6693f, 2026-08-03).",
       "tags": ["refactoring", "style-gate", "csharp", "roslyn", "code-analysis"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.discriminator-front-end"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.discriminator-front-end", "note.razorgraph-cli"]
     },
 
     {
@@ -820,6 +821,23 @@
       "summary": "When complex conditional logic is really dispatch in disguise, split it: one discriminator front end that only routes, and a catalog of well-known fixed back ends that only compute, selected by the front end and never selecting themselves. Deep nesting is a discriminator tangled into its computations, so pulling the routing out flattens the back ends on their own; the tell is a method whose nesting depth grows every time the business adds a case. Carries the duplication corollary that cuts against the DRY reflex -- duplication behind a discriminator is inventory because the copies are a named catalog and drift is detectable, while duplication scattered through nested conditionals is contraband -- and what a flow-equivalence prover adds: merge versus parameterisation candidates separated by proof, and conformance as a graph invariant rather than a review-time opinion. Was DESIGN-NOTES section 12; moved out 2026-08-08.",
       "tags": ["architecture", "refactor", "patterns", "code-analysis"],
       "links": ["file.design-notes", "skill.christmas-tree-flattening", "note.pre-checkin-style-janet-level"]
+    },
+
+    {
+      "id": "note.razorgraph-cli",
+      "kind": "note",
+      "path": "notes\\razorgraph-cli.md",
+      "summary": "Command-line twin of RazorGraph.Mcp over the same Core+Extractor engine (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Cli). Six commands: build (one project; a .sln needs --project), build-solution (spans every project - the only source of cross-project edges), query (--id/--type/--uncovered/--deep/--mismatches/--escapes), body and body-diff (compile the project, emit a method CFG / prove two bodies flow-equivalent, exit 0 equivalent 1 different 2 error), research (relevance-scored subgraph). Matters because it has NO publish cycle: dotnet run sees the change you just made, while the MCP server reports on the last .mcp-bin publish - so the CLI is the only surface that can observe RazorGraph while RazorGraph itself is being changed, and CLI-vs-MCP disagreement is expected mid-development.",
+      "caveats": [
+        "query mode precedence is silent and fixed (mismatches > escapes > uncovered > deep > id > type): pass two modes and the earlier wins with no warning the other was ignored. --deep 0 is gated on Deep > 0, so it is indistinguishable from not passing --deep.",
+        "The research command defaults -o to research.json IN THE CURRENT DIRECTORY. Run it from D:\\Repos\\JanetHome without -o and it overwrites the Janet research graph - the file the never-hand-edit rule protects. Unrelated file, same name. Always pass -o.",
+        "build <sln> --project Foo and build-solution <sln> are different graphs, not two spellings: the former uses the solution only for context and yields no cross-project Calls/Covers edges, which reads as missing data rather than the wrong command.",
+        "Output is human text, not the Janet JSON envelope - query has no --json flag; only body and body-diff emit JSON and research writes a file. Use Search-Json.ps1 against the saved graph for scripted queries. --uncovered caps its listing at 200 (reported, not silent).",
+        "body and body-diff do not read a saved graph: they run a real compile every invocation, like build/build-solution. Only query and research load JSON and are fast.",
+        "Property/Field gap RESOLVED at cd12114 (2026-08-08): prop:/field: nodes (statics included), Reads/Writes edges, and member->declared-type References edges are emitted by builds from source. Saved graphs built before cd12114 still hold zero member nodes, and the published .mcp-bin serves the old extractor until re-published - the CLI/MCP disagreement this note predicts is live right now."
+      ],
+      "tags": ["code-analysis", "csharp", "roslyn", "cli", "refactoring"],
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json"]
     }
   ]
 }
