@@ -90,8 +90,8 @@
       "why": "A hung call is indistinguishable from thinking -- the worst failure mode, because it produces no output and no diagnosis (section 8)."
     },
     {
-      "text": "ADVISORY: keep employer material out of this repo -- source, internal architecture, production telemetry, security-posture detail, colleague personal data. PROVENANCE.md holds the standard; read it before adding anything.",
-      "why": "Judgement only; no mechanism enforces it, since the identifier list that would is itself employer information. The 2026-07-27 extraction already excluded these categories, so this is a backstop against what gets added, not a gate to re-check on every edit. PROVENANCE.md left the read list on 2026-08-08 because this rule already carries its contract; the file remains the record and is retrievable as file.provenance."
+      "text": "ADVISORY: do not write employer material into this repo -- source, internal architecture, production telemetry, security-posture detail, colleague personal data -- including anything reconstructed from memory or from a description.",
+      "why": "Judgement only; no mechanism enforces it, since the identifier list that would is itself employer information. Not a per-edit gate -- the 2026-07-27 extraction settled what was carried over, and the author who made that call is not the risk. The live failure mode is an AGENT with no memory of that decision offering to rebuild an internal tool from a description, which is why one line of it belongs in every brief. Rewritten 2026-08-08 to say so: the subject is what gets WRITTEN here, not what gets imported. PROVENANCE.md is the standard and the record; it left the read list the same day and is retrievable as file.provenance."
     },
     {
       "text": "ADVISORY: scripts target PowerShell 7. Add -Target Ps51 when one may run on stock Windows 5.1.",
