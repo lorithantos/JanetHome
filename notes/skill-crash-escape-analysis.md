@@ -68,5 +68,5 @@ all — no catch reaches them; that investigation is dumps and event logs, not
 this skill.
 
 Related: [[skill.graph-first-code-analysis]] for the query discipline this
-leans on, [[pattern.thread-stack]] for keeping the descent honest,
+leans on, [[pattern.thread-items]] for keeping the descent honest,
 [[note.razorgraph-mcp-server]] for tool caveats.

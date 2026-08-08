@@ -64,8 +64,8 @@
     The encoding-related nodes, ranked, as JSON.
 
 .EXAMPLE
-    & "$env:JanetBase\scripts\Get-Research.ps1" -Id pattern.thread-stack -Expand
-    The pattern plus the three scripts that implement it.
+    & "$env:JanetBase\scripts\Get-Research.ps1" -Id pattern.thread-items -Expand
+    The pattern plus the six scripts that implement it.
 
 .EXAMPLE
     & "$env:JanetBase\scripts\Get-Research.ps1" -Kind script -Text -Full

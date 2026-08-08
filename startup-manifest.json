@@ -20,7 +20,7 @@
 
   "run": [
     {
-      "cmd": "scripts\\Show-ThreadStack.ps1",
+      "cmd": "scripts\\Show-ThreadItems.ps1",
       "captureAs": "threadStack",
       "why": "Unfinished investigations from the last session. Small, stateful, and useless if fetched late -- so it runs at startup rather than on demand"
     }
@@ -37,7 +37,7 @@
       "Get-Research.ps1                          -- kinds and tag index only (cheap orientation)",
       "Get-Research.ps1 -Query 'thread stack'    -- scored top 5. -First N / -All to widen",
       "Get-Research.ps1 -Tag thread-stack        -- by tag (never truncated)",
-      "Get-Research.ps1 -Id pattern.thread-stack -Expand  -- a node plus its linked neighbours",
+      "Get-Research.ps1 -Id pattern.thread-items -Expand  -- a node plus its linked neighbours",
       "Get-Research.ps1 -Kind script             -- every node of a kind",
       "Add -Text for a human-readable form at the terminal; -Pretty to indent the JSON."
     ],
@@ -78,8 +78,8 @@
       "why": "Agents default to broad exploratory queries that time out or silently truncate. Making hypothesis-formation a prerequisite converts flailing into bisection (section 7)."
     },
     {
-      "text": "ADVISORY: push a thread before descending into a side investigation; pop it when done.",
-      "why": "Debugging is depth-first and working memory is not. The stack is the unwind path (section 3)."
+      "text": "ADVISORY: add a thread item for work you surface but are not doing now; switch focus deliberately, and complete rather than abandon.",
+      "why": "Debugging is depth-first and working memory is not, so the list is the unwind path. It replaced a push/pop stack on 2026-08-08: adding no longer displaces what is active, items can be amended in place, and completing retains the item instead of deleting it -- so recording work costs nothing and finishing it leaves a record (section 3)."
     },
     {
       "text": "ADVISORY: for multi-file mechanical edits, emit a JSON plan and run Invoke-SurgicalEdit.ps1 rather than hand-editing.",

@@ -4,7 +4,7 @@
       "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Invoke-JanetStartup.ps1\" *)",
       "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Test-PowerShellRules.ps1\" *)",
       "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Get-Research.ps1\" *)",
-      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Show-ThreadStack.ps1\" *)",
+      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Show-ThreadItems.ps1\" *)",
       "Bash(Get-ChildItem *)",
       "Bash(Get-Content *)",
       "Bash(Test-Path *)",

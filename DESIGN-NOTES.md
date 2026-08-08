@@ -59,18 +59,42 @@ additive rather than multiplicative.
 
 ---
 
-## 3. Thread stack
+## 3. Thread items
 
-**Pattern.** A push/pop/show stack of investigation topics (`Push-ThreadStack.ps1` et al.,
-included in `scripts\`).
+**Pattern.** A list of investigation topics with explicit focus — `Add-ThreadItem.ps1`,
+`Set-ActiveThread.ps1`, `Update-ThreadItem.ps1`, `Complete-ThreadItem.ps1` and
+`Show-ThreadItems.ps1`, in `scripts\`.
 
 **Why it exists.** Debugging is a depth-first search and human working memory is not.
 You start on A, notice B, chase B into C, fix C — and then have no idea whether you
-ever finished A. The stack makes the descent explicit and gives you an unwind path.
+ever finished A. Writing the descent down is what gives you an unwind path.
 
-This is the single most-used thing in the toolkit and it is about 40 lines of code.
-Ratio of value to complexity is the highest in the whole framework. Worth remembering
-as a general lesson about which tools actually get used.
+**It was a push/pop stack until 2026-08-08, and the stack shape was wrong.** Three
+failures, none of them bugs — each was the data structure behaving exactly as designed:
+
+- **Recording and descending were the same operation.** Pushing a topic made it active
+  and parked whatever was. There was no way to note "this needs doing" without losing
+  your place, so the cheapest correct action — write it down — cost you your context.
+- **There was no way to amend an item.** A session wanting to update its own entry had
+  only push and pop, popped to reach it, and destroyed a concurrent session's notes
+  irrecoverably. A missing operation does not leave callers stuck; it makes them
+  improvise with a destructive one.
+- **Completing dropped the item.** Finishing a topic deleted its notes, so the list
+  could say what was outstanding and never what had been done.
+
+The list separates what the stack conflated: position carries order, `status` carries
+focus, and nothing is ever removed. Adding appends without displacing, `Set-ActiveThread`
+is the only thing that moves focus, and completing is a status change. Writers serialise
+on a named mutex — it is shared mutable state with genuinely concurrent sessions, and the
+loss above happened inside an unlocked read-modify-write.
+
+**The general lesson, which outlives this tool.** A structure chosen for the operation you
+first imagined — descend, unwind — will quietly forbid the operations you actually turn
+out to need: note, amend, finish. The tell is callers reaching for a destructive operation
+to accomplish a harmless one. That is not user error; it is a missing verb.
+
+Still the highest value-to-complexity ratio in the toolkit, which is the more durable
+observation: the most-used thing here is list manipulation and a lock.
 
 ---
 

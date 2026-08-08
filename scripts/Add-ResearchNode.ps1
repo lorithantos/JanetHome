@@ -229,7 +229,7 @@ if ($newCount -ne ($nodes.Count + 1)) {
 
 # ---- Reverse links ---------------------------------------------------------
 
-# The graph's convention is bidirectional -- pattern.thread-stack and
+# The graph's convention is bidirectional -- pattern.thread-items and
 # skill.crash-escape-analysis each name the other -- so writing only the forward
 # direction leaves the new node invisible from its own neighbours. Doing it here
 # rather than leaving a reminder in the output is the difference between an

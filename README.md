@@ -32,7 +32,7 @@ exists, then open only what it points at.
 ```powershell
 & .\scripts\Get-Research.ps1                            # kinds + tag index (cheap)
 & .\scripts\Get-Research.ps1 -Query 'thread stack'      # scored top 5; -First N / -All
-& .\scripts\Get-Research.ps1 -Id pattern.thread-stack -Expand   # a node plus neighbours
+& .\scripts\Get-Research.ps1 -Id pattern.thread-items -Expand  # a node plus neighbours
 ```
 
 That is why this README no longer carries a script inventory or a parameter manual.
@@ -54,7 +54,7 @@ they splice.
 
 | Path | Contents |
 |---|---|
-| `DESIGN-NOTES.md` | The transferable patterns — manifest startup, progressive disclosure, thread stack, graph-first analysis, deterministic edits, circuit-breakers. The operating rules live here, not in a system prompt |
+| `DESIGN-NOTES.md` | The transferable patterns — manifest startup, progressive disclosure, thread items, graph-first analysis, deterministic edits, circuit-breakers. The operating rules live here, not in a system prompt |
 | `PROVENANCE.md` | What was carried over from the departure corpus, from where, and on what basis — and what was deliberately left behind. Read before adding anything |
 | `startup-manifest.json` | The startup contract: what to read, what to run, the operating rules |
 | `research.json` | Node graph of every script, pattern, note, and file. Queried on demand, never loaded wholesale |

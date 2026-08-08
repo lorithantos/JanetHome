@@ -125,7 +125,8 @@ before sharing a script, since 5.1 is what a stock Windows box has.
 
   Not hypothetical: `Push-ThreadStack.ps1` used `-Encoding utf8NoBOM`, printed
   `Pushed: <topic>` on every call, and never once persisted the stack under 5.1. The
-  toolkit's most-used tool was silently inert. Both thread-stack scripts now use
+  toolkit's most-used tool was silently inert. Its replacement (the thread *item*
+  scripts, 2026-08-08) centralises the single write in `ThreadItems.Common.ps1`, which uses
   `[System.IO.File]::WriteAllText($p, $json, (New-Object System.Text.UTF8Encoding $false))`,
   which is correct on either edition -- keep it that way rather than reverting to
   `utf8NoBOM` now that 7 is the default.
