@@ -761,6 +761,19 @@
         "Full dumps are large -- a UI process with native rendering can produce hundreds of MB each, which is why DumpCount defaults to 3 rather than the usual 10. Remove the key once diagnosis is done."
       ],
       "links": ["note.wpf-app-architecture", "skill.crash-escape-analysis"]
+    },
+
+    {
+      "id": "script.git",
+      "kind": "script",
+      "path": "scripts\\git.ps1",
+      "summary": "Resolves git.exe and forwards all arguments to it. git is not on PATH in every shell this repo is used from -- an agent session does not load the user profile that adds it -- and Visual Studio bundles a copy, so this finds it once rather than each caller rediscovering the path. Run with no arguments to get the resolved path on the SUCCESS stream, so \"$g = & .\\git.ps1\" actually captures it; the RetirementCore counterpart uses Write-Host, which goes to the information stream and silently yields nothing. Git's own \"-C <path>\" forwards correctly (verified), which is how to operate on another repo without changing directory. Targets 5.1 as well as 7, since a shim that resolves a tool is exactly what gets run from whatever shell is open.",
+      "params": ["GitArgs"],
+      "tags": ["git", "powershell", "entrypoint"],
+      "caveats": [
+        "The candidate list leads with this machine's VS 18 Enterprise path. On another machine that misses and the fallback is a recursive Get-ChildItem over the Visual Studio install root, which is slow but only reached once per invocation."
+      ],
+      "links": []
     }
   ]
 }
