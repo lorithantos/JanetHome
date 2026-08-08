@@ -719,7 +719,7 @@
         "Escapes are prove-me-safe prompts, not confirmed bugs: value guards are invisible (a labeler that checks IsFinite before FromDouble still reports), and a process-level backstop like DispatcherUnhandledException is not a catch on any chain - an escape may surface as a dialog, not an exit."
       ],
       "tags": ["debugging", "csharp", "code-analysis", "roslyn"],
-      "links": ["pattern.thread-stack", "skill.graph-first-code-analysis", "note.razorgraph-mcp-server"]
+      "links": ["pattern.thread-stack", "skill.graph-first-code-analysis", "note.razorgraph-mcp-server", "script.set-crash-dump-capture"]
     },
 
     {
@@ -740,12 +740,26 @@
       "kind": "note",
       "path": "notes\\wpf-app-architecture.md",
       "summary": "WPF plumbing lessons and what they imply for app structure, from a thread-affinity and rebuild-churn audit. Bindings are pull, so a PropertyChanged into an unmaterialized binding is free - which makes lazy getters the whole demand mechanism and an IsActive/activation signal unnecessary; template materialization means only the selected page has live bindings. Compose a lazy cell per bindable output rather than hoisting a chart-page base class (one dirty flag models the very problem it should fix). CommunityToolkit [ObservableProperty] routes every setter through one overridable OnPropertyChanged, and [NotifyPropertyChangedFor] means notification count exceeds property count. WPF marshals scalar binding updates but NOT collection changes nor the object graph a control renders. DispatcherPriority gives ordering with no latency bound (Normal-priority floods starve Background indefinitely) - prefer an explicit time window. Progress<T> captures context at construction, never conflates, and can deliver out of order so counters run backwards. Make thread affinity structural: start the loop on the UI thread and never ConfigureAwait(false). Static events leak handlers. Native-backed rendering turns churn into a use-after-free hazard, and a native AV bypasses every managed handler, so an empty crash log says nothing about threading - WER LocalDumps is the tool. Ends with a checklist for a new WPF app.",
-      "tags": ["wpf", "csharp", "ui", "architecture", "concurrency", "debugging"],
       "caveats": [
         "Distilled from one app (charts over LiveCharts/SkiaSharp, CommunityToolkit.Mvvm 8.4, .NET 10) - the platform facts generalize, the emphasis reflects that codebase.",
         "DataTemplate resolution walking the type hierarchy for implicit templates is asserted from reasoning, not tested here; verify before relying on a base-class template."
       ],
-      "links": ["pattern.change-coalescing"]
+      "tags": ["wpf", "csharp", "ui", "architecture", "concurrency", "debugging"],
+      "links": ["pattern.change-coalescing", "script.set-crash-dump-capture"]
+    },
+
+    {
+      "id": "script.set-crash-dump-capture",
+      "kind": "script",
+      "path": "scripts\\Set-CrashDumpCapture.ps1",
+      "summary": "Configure WER LocalDumps so a crash leaves a dump instead of only an event-log entry. Exists because a native access violation is not a managed exception: it bypasses DispatcherUnhandledException, UnobservedTaskException and AppDomain.UnhandledException alike, so a crash log written from those handlers stays empty -- an empty log is the signature of ANY native fault and says nothing about the cause. DumpType Mini gives stacks and modules (small, names the faulting module); Full adds process memory, which is what a use-after-free needs since the question is what the memory at the faulting address used to be. DumpFolder is written REG_EXPAND_SZ so %LOCALAPPDATA% expands per-user at fault time -- pass it unexpanded. Reads back after writing rather than trusting the write. -List needs no elevation; -Remove restores default behaviour. WER reads the key at fault time, so nothing restarts.",
+      "params": ["Executable", "DumpFolder", "DumpCount", "DumpType", "Remove", "List", "DryRun", "Text"],
+      "tags": ["debugging", "windows", "powershell", "failure-modes"],
+      "caveats": [
+        "Setting or removing needs an elevated shell (LocalDumps is under HKLM); the script checks first and throws a clear message rather than surfacing an access-denied that reads like a missing key. -List works unelevated.",
+        "Full dumps are large -- a UI process with native rendering can produce hundreds of MB each, which is why DumpCount defaults to 3 rather than the usual 10. Remove the key once diagnosis is done."
+      ],
+      "links": ["note.wpf-app-architecture", "skill.crash-escape-analysis"]
     }
   ]
 }
