@@ -22,6 +22,23 @@ A file was carried over only if it met **all** of:
 5. Generic utility or original analysis — not coupled to employer systems, and not
    derived from proprietary internals.
 
+**Derivation is the test; resemblance is not evidence of it.** *(Clarified 2026-08-08.)*
+Point 5 turns on where a thing came from, not what it looks like when finished.
+Rebuilding a general technique from its principles is legitimate even when you first
+built one at an employer and the result resembles it — an SWR cache, an LSP-backed
+tool, a coalescing queue, a code graph over a compiler's semantic model are all
+techniques belonging to the field, and knowing one works is not proprietary knowledge.
+`RazorGraph.Mcp` is exactly this and is the strongest thing in the collection: the
+original was employer work product and stayed behind; the pattern was rebuilt from
+scratch on public codebases and a public SDK (DESIGN-NOTES §4).
+
+What the standard actually excludes is employer-*specific* content — their source,
+the topology of their systems, their data, their people. "Architecture" was used
+loosely in earlier wording and read far wider than intended; it means *how their
+systems are wired*, never architecture as a discipline. A rule broad enough to forbid
+reimplementing a known-good pattern would forbid most of this repo, and would be
+wrong on the merits rather than merely inconvenient.
+
 Verified mechanically after extraction: a 31-term identifier sweep over all 27 files
 returns zero hits. All 22 scripts parse cleanly. All files are UTF-8 without BOM.
 
