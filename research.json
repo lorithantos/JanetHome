@@ -129,7 +129,7 @@
         "-Text is denser than the JSON for multi-node results (75% of the size: it drops the per-node field names), so it is the cheaper form for a model scanning a shortlist -- the opposite of Invoke-JanetStartup, where -Text is 251% because it adds every rule why. Choose by what the projection contains, not the flag name. -Text is written with Write-Host, so it cannot be captured by pipe, > redirection, or assignment; use 6>&1. See note.startup-brief-budget."
       ],
       "tags": ["retrieval", "research", "index", "entrypoint"],
-      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json", "note.startup-brief-budget"]
+      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json", "note.startup-brief-budget", "script.get-api-doc"]
     },
     {
       "id": "script.push-thread-stack",
@@ -783,6 +783,20 @@
       "summary": "Deferred LINQ over a side-effecting projection re-runs the side effect on every enumeration, and Count() IS an enumeration. Enumerable.Count() on a Select iterator does not take a cheap path: SelectListIterator.GetCount(onlyIfCheap:false) deliberately re-invokes the selector so side effects and exceptions are preserved. Found 2026-08-08 in ImageSelectorV2 PreloadThumbnails, where an IEnumerable<Task> was enumerated by Task.WhenAll and again by a .Count() in the finally, silently doubling dispatcher load with a second unawaited set of fetches. Tell: an IEnumerable<Task<T>> local is almost always a latent bug -- materialize at point of creation. Symptom is load, not an exception, so it survives review.",
       "tags": ["csharp", "linq", "async", "anti-pattern", "code-review"],
       "links": ["pattern.reviewer-principles"]
+    },
+
+    {
+      "id": "script.get-api-doc",
+      "kind": "script",
+      "path": "scripts\\Get-ApiDoc.ps1",
+      "summary": "Queries a .NET XML documentation file the way Get-Research queries research.json: ranked free-text search returning parsed members (kind, declaring type, readable signature, summary, per-parameter docs) instead of grep hits. Exists because researching a library from raw doc XML is expensive and bad at the job -- the file is one stream of hard-wrapped indented <member> elements, so a match costs dozens of context lines and the answer arrives split across them. Flattens doc markup (see cref, paramref, c) into prose, shortens fully-qualified argument lists, and follows <inheritdoc/> chains transitively (BarSeries -> Series -> ISeries is the ordinary shape, and one hop makes results depend on document order). Resolves the .xml from the NuGet cache by package id, newest version and newest TFM, so callers never hunt for the path. JSON by default with the standard envelope; -Text to read at a terminal; -Package alone gives cheap orientation (counts by kind, largest types).",
+      "caveats": [
+        "A bare <inheritdoc/> with no cref is NOT resolved -- implicit inheritance needs the type hierarchy, which an XML doc file does not carry. Those members read as undocumented even though the base or interface documents them; check the base type by name when a result looks empty.",
+        "Only reads XML that ships inside the package under lib\\<tfm>\\. Packages built without GenerateDocumentationFile throw a clear error rather than returning nothing, and a package documenting only some members will honestly report the rest as undocumented.",
+        "Generic arity survives in names as it does in the file (Series`3, CoreAxis`2), so query by simple name rather than pasting a C# generic."
+      ],
+      "tags": ["api", "research", "dotnet", "powershell", "retrieval", "context-budget"],
+      "links": ["script.get-research"]
     }
   ]
 }

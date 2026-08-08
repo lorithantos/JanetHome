@@ -116,6 +116,19 @@ across in the extraction.
 
 - `Push-ThreadStack.ps1` / `Pop-ThreadStack.ps1` / `Show-ThreadStack.ps1` — investigation
   topic stack. Highest value-to-complexity ratio in the toolkit; see DESIGN-NOTES §3
+- `Get-ApiDoc.ps1` — the retrieval contract above, pointed at a .NET XML doc file
+  instead of `research.json`. Researching a library by grepping its docs is
+  expensive and bad at the job: the file is one stream of hard-wrapped `<member>`
+  elements, so a hit costs dozens of context lines and the answer arrives split
+  across them. This returns parsed members — signature, summary, per-parameter
+  docs — resolves the `.xml` out of the NuGet cache by package id, and follows
+  `<inheritdoc/>` chains so a member documented on its interface still answers
+
+  ```powershell
+  & .\scripts\Get-ApiDoc.ps1 -Package LiveChartsCore                          # orientation
+  & .\scripts\Get-ApiDoc.ps1 -Package LiveChartsCore -Query 'tooltip formatter'
+  ```
+
 - `New-TextFile.ps1` — writes files from PowerShell without here-string, escaping, or
   BOM pain. Base64 input mode sidesteps quoting entirely
 - `Fix-FileEncoding.ps1` — two-pass encoding repair that survives raw Windows-1252
