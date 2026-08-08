@@ -4,8 +4,8 @@ A pattern for the boundary between **input-side changes** and **output-side
 representations**. Distilled 2026-08-07 from a WPF chart-rebuild problem, but the machine is
 not WPF-specific and has at least two independent instances (see *Second instance*, below).
 
-Status: **pattern, not code.** No implementation exists yet. The first is planned in
-`D:\Repos\RetirementCore\DESIGN-COALESCING.md`, which carries the application-specific half.
+Status: **pattern, not code.** No implementation exists yet. The first is planned in the
+RetirementCore repo's `DESIGN-COALESCING.md`, which carries the application-specific half.
 
 ---
 
@@ -237,6 +237,103 @@ notoriously flaky, and sleeping tests are a regression in kind.
 
 ---
 
+## The same move, in a place you meet it sooner: a concurrency cap
+
+*"N items to fetch, but the remote allows only K simultaneous calls."* This is the
+question people actually arrive with, and it is the same principle as everything above,
+which is why it lives here.
+
+**The book answer is `SemaphoreSlim(K)`** — fire all N tasks, each awaits a permit inside
+its own body. Asked cold, this is where most answers stop, and the reason is instructive:
+**it is correct.** It really does cap concurrency at K, so nothing pushes past it. Every
+weakness is second-order and invisible in the question as posed — a permit leaked forever
+the one time someone omits a `finally`, N state machines materialized to run K, nowhere
+natural for results to land, nowhere for retry to live, no way to change K while running,
+and no ordering guarantee. It also *reads* as the expert answer because it reaches for a
+synchronization primitive. The alternatives look simpler and are therefore assumed weaker,
+which is backwards.
+
+**Chunking into batches of K is worse still** — `WhenAll` a batch, then start the next.
+It reintroduces a barrier: one slow item leaves K−1 slots idle until it finishes, and the
+wall clock becomes the sum of per-batch maxima rather than total work over K. It has a
+particular affinity for poison pills, because it **converts a local stall into a global
+one**: under slots a hung item costs 1/K of capacity, under `WhenAll` it costs all of it.
+And a retried batch re-runs the items that already succeeded, which is wasted work at best
+and a correctness bug the moment anything is not idempotent.
+
+**But chunking is not naive when the batch *is* the request.** "K at a time" is ambiguous:
+it can mean K *per call* or K *in flight*. If the remote accepts many entries per call,
+batching is the whole point and slots would be actively worse — you would issue N calls
+where N/K would do. Answer the constraint you actually have.
+
+### The shapes that put the limit in the structure
+
+**K persistent workers** pulling from a shared queue:
+
+```
+queue = ConcurrentQueue(items)
+workers = K × async () => { while (queue.TryDequeue(out item)) await Process(item) }
+await WhenAll(workers)
+```
+
+There is no permit and no counter. **K loops *is* the limit** — nothing can exceed it,
+because nothing exists that could. K state machines regardless of item count, a slot
+refills the instant it frees, and it works unchanged on a stream.
+
+**A K-slot list**, which is better against a remote:
+
+```
+fill empty slots from the queue
+loop:
+    await WhenAny(active slots)      # a wake-up signal, NOT an identifier - discard it
+    sweep the list for completed slots:
+        observe the result or exception
+        refill from the queue, or remove the slot if the queue is empty
+until no slots remain
+```
+
+The limit here is a guarded count (`while slots < K`) rather than an impossibility — but
+it is one auditable line, not an acquire and a release separated by the whole body.
+
+### Why the slot list wins for a remote
+
+It has a **coordinator**, and four things fall out of that rather than being designed in:
+
+- **Results need no synchronization.** One loop sees every completion, single-threaded.
+- **Errors arrive somewhere that can act.** Per-item retry means putting the item back on
+  the queue — the back so a poison item cannot block the rest, the front when it is
+  genuinely urgent. A decision rather than an inherited behavior.
+- **K can change while running.** Shrink on a 429, grow back on sustained success. With
+  fixed worker loops you would need to signal workers to park.
+- **Starts are deterministically in queue order**, because one thread does every dequeue
+  and every start. Racing workers dequeue FIFO but can invert adjacent items in the
+  scheduling gap before `Process` is invoked. Determinism here makes a priority queue
+  genuinely honored, leaves a well-defined attempted prefix on cancellation, and removes a
+  source of run-to-run variance. (Start order, not completion order — results still arrive
+  whenever they arrive.)
+
+### Details that are easy to get wrong
+
+- `WhenAny` returns a task; **ignore it**. The slot's index is the identity, so there is no
+  task-to-item lookup to build.
+- **Sweep, do not act on the return.** If three completed while parked, `WhenAny` surfaces
+  one; acting on it alone spins the loop once per completion. The sweep refills all three
+  in a pass that costs a scan of K.
+- **Observe every completed task in the sweep**, or a faulted one goes unobserved.
+- `WhenAny` is O(list) per call, which is the usual objection to it in a loop — and it does
+  not apply, because the list is capped at K. The bound that makes the pattern correct also
+  makes the objection inapplicable.
+- `Parallel.ForEachAsync` with `MaxDegreeOfParallelism` is the worker-pool shape built in.
+  Prefer it over hand-rolling; know the shape anyway, because it is what makes it correct.
+- **A concurrency cap is not a rate cap.** K slots says nothing about requests per second;
+  services usually enforce both, and the second wants a token bucket alongside, not
+  instead.
+- **Batching and slots compose.** Batch to form requests, slots to bound batches in flight.
+  Batch size is then a knob shaped exactly like `FrameLength`: larger means more
+  amortization and worse tail latency and a bigger failure blast radius.
+
+---
+
 ## Why this kept getting simpler
 
 Worth recording as method, not just result. Every revision **removed** a mechanism:
@@ -246,7 +343,17 @@ Worth recording as method, not just result. Every revision **removed** a mechani
 - an `armed` flag and its race → dissolved into the consumer loop
 - a merge function on the key → moved to the destination, deleting an associativity rule
 - a shared base class → replaced by one cell per output, gaining granularity
+- a semaphore permit → dissolved into K loops, or K slots
+- a task-to-item map → dissolved into the slot's index
 
-The consistent direction was **state moving out of explicit bookkeeping and into structure**.
-When a design needs a flag to describe where it is, ask whether some structure could *be*
-there instead.
+The consistent direction is **state moving out of explicit bookkeeping and into
+structure**. When a design needs a flag to describe where it is, ask whether some structure
+could *be* there instead.
+
+The sharpest portable tell: **when correctness depends on a paired acquire and release,
+there is usually a version where the thing is not a resource at all.** A permit you must
+remember to return becomes K loops that cannot overrun. A flag saying a window is open
+becomes a loop parked at a delay. A side table mapping tasks to items becomes a slot whose
+position is the identity. The trained, textbook answer sits on the near side of that move
+almost every time — not because it is wrong, but because it works, and working is where
+looking stops.
