@@ -5,18 +5,16 @@
   "order": "sequential",
   "onMissing": "fail",
 
+  "$comment.read": "Kept to what the session cannot retrieve, because the read list is billed on EVERY start while the graph is billed only when asked. PROVENANCE.md left on 2026-08-08: its contract is already the boundary rule below, its detail is file.provenance, and its own manifest reason said 'read before adding anything' -- conditional by its own description, which is the definition of retrievable. README is the bootstrap: it must survive alone, because it is what tells the session the graph exists.",
+
   "read": [
     {
       "path": "README.md",
-      "why": "Orientation: layout, which scripts matter, the boundary rule"
+      "why": "Bootstrap: how to start, the boundary, and that research.json is the entry point for everything else"
     },
     {
       "path": "DESIGN-NOTES.md",
       "why": "The transferable patterns. Operating rules live here, not in a system prompt"
-    },
-    {
-      "path": "PROVENANCE.md",
-      "why": "What is in scope and what was deliberately left out. Read before adding anything"
     }
   ],
 
@@ -92,8 +90,8 @@
       "why": "A hung call is indistinguishable from thinking -- the worst failure mode, because it produces no output and no diagnosis (section 8)."
     },
     {
-      "text": "ADVISORY: keep employer material out of this repo -- source, internal architecture, production telemetry, security-posture detail, colleague personal data.",
-      "why": "Judgement only; no mechanism enforces it, since the identifier list that would is itself employer information. The 2026-07-27 extraction already excluded these categories, so this is a backstop against what gets added, not a gate to re-check on every edit (PROVENANCE.md)."
+      "text": "ADVISORY: keep employer material out of this repo -- source, internal architecture, production telemetry, security-posture detail, colleague personal data. PROVENANCE.md holds the standard; read it before adding anything.",
+      "why": "Judgement only; no mechanism enforces it, since the identifier list that would is itself employer information. The 2026-07-27 extraction already excluded these categories, so this is a backstop against what gets added, not a gate to re-check on every edit. PROVENANCE.md left the read list on 2026-08-08 because this rule already carries its contract; the file remains the record and is retrievable as file.provenance."
     },
     {
       "text": "ADVISORY: scripts target PowerShell 7. Add -Target Ps51 when one may run on stock Windows 5.1.",

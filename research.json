@@ -55,8 +55,8 @@
     {
       "id": "pattern.reviewer-principles",
       "kind": "pattern",
-      "path": "DESIGN-NOTES.md",
-      "section": "6",
+      "path": "notes\\build-retrospective.md",
+      "section": "Reviewer personas",
       "summary": "Depersonalized review principles: capture why in comments, tests must be able to fail, move/rename PRs owe evidence, warning fixes must not change runtime defaults, runbooks never route to a named person.",
       "tags": ["review", "testing", "ethics", "process"],
       "links": ["script.test-pre-commit", "pattern.handoff-corpus", "note.linq-deferred-side-effects"]
@@ -91,8 +91,8 @@
     {
       "id": "pattern.handoff-corpus",
       "kind": "pattern",
-      "path": "DESIGN-NOTES.md",
-      "section": "10",
+      "path": "notes\\build-retrospective.md",
+      "section": "The handoff-corpus format",
       "summary": "Handoff corpus format: one note per file, topic-prefixed filenames as the index, H1 plus one-sentence summary, cross-reference without deduplicating, machine-readable manifest as source of truth, density over polish, written for an LLM reader.",
       "tags": ["documentation", "retrieval", "handoff", "format"],
       "links": ["pattern.progressive-disclosure", "file.provenance"]
@@ -100,8 +100,8 @@
     {
       "id": "pattern.lessons-learned",
       "kind": "pattern",
-      "path": "DESIGN-NOTES.md",
-      "section": "11",
+      "path": "notes\\build-retrospective.md",
+      "section": "What I'd do differently",
       "summary": "What to do differently: classify files portable/confidential/personal at authoring time, keep personal tooling in a personal repo from day one, never profile named colleagues durably, write operational discipline down early.",
       "tags": ["retrospective", "process", "ethics"],
       "links": ["file.provenance", "pattern.handoff-corpus"]
@@ -432,17 +432,23 @@
       "id": "file.provenance",
       "kind": "file",
       "path": "PROVENANCE.md",
-      "summary": "What was carried over from the departure corpus, from where, on what basis, and what was deliberately left behind. The boundary rule for anything added here.",
+      "summary": "What was carried over from the departure corpus, from where, on what basis, and what was deliberately left behind. The boundary rule for anything added here. Left the startup read list on 2026-08-08: the boundary itself already ships as an ADVISORY rule in every brief, and this file is the evidence and the standard behind it -- consulted when adding something, which is what its own manifest reason (\"read before adding anything\") always described.",
+      "caveats": [
+        "No longer read at startup, so nothing puts it in front of you automatically. It is the standard for what may be added to this repo -- pull it before adding material of uncertain origin rather than reasoning from the one-line rule alone."
+      ],
       "tags": ["provenance", "boundary", "ethics", "compliance"],
-      "links": ["pattern.lessons-learned", "pattern.handoff-corpus"]
+      "links": ["pattern.lessons-learned", "pattern.handoff-corpus", "note.build-retrospective"]
     },
     {
       "id": "file.design-notes",
       "kind": "file",
       "path": "DESIGN-NOTES.md",
-      "summary": "The eleven transferable patterns from the 2024-2026 build, written from memory rather than copied from employer artifacts.",
+      "summary": "The transferable patterns from the 2024-2026 build, written from memory rather than copied from employer artifacts. One of only two files startup reads, so it carries the patterns that govern how a session WORKS -- manifest-driven startup, progressive disclosure, the thread stack, graph-first analysis, deterministic edits via JSON plan, two-question query routing, circuit-breakers, per-scope storage -- and no longer the material you consult once. Sections 6, 10, 11 and 12 are now one-paragraph pointers to note.build-retrospective and note.discriminator-front-end (2026-08-08); section numbering was deliberately kept stable because three other notes cite section 12 by number.",
+      "caveats": [
+        "Section numbers are load-bearing: rules in startup-manifest.json and at least three notes cite DESIGN-NOTES sections by number. Renumbering breaks those references silently -- add or repoint, never renumber."
+      ],
       "tags": ["patterns", "architecture", "agent"],
-      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-stack"]
+      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-stack", "note.build-retrospective", "note.discriminator-front-end"]
     },
 
     {
@@ -638,7 +644,7 @@
       "path": "notes\\pre-checkin-style-janet-level.md",
       "summary": "Decision 2026-08-02: pre-checkin style fixing is a Janet-level, language-plugged gate for all code in every repo; Test-PreCommit.ps1 is the broken natural host.",
       "tags": ["pre-commit", "quality", "code-analysis"],
-      "links": ["script.test-pre-commit", "script.test-powershell-rules", "script.test-file-encoding", "pattern.graph-first-analysis"]
+      "links": ["script.test-pre-commit", "script.test-powershell-rules", "script.test-file-encoding", "pattern.graph-first-analysis", "note.discriminator-front-end"]
     },
 
     {
@@ -656,7 +662,7 @@
       "path": "notes\\christmas-tree-flattening.md",
       "summary": "The move table for flattening deep nesting (christmas-tree code): guard inversion (universally legal, prover-blessable via method_body_diff), extract-method (only real fix for loop pyramids; prover correctly refuses, gate with tests + graph edge-set diff), compute-and-return (ctor fallback). Extract-method is compiler-forbidden in ctors assigning readonly fields (CS0191) or init-only properties (CS8852) - an auto-flattener must check MethodKind.Constructor plus what the block assigns. Includes the worked workflow from the prover's first production run (RazorGraphTool bc6693f, 2026-08-03).",
       "tags": ["refactoring", "style-gate", "csharp", "roslyn", "code-analysis"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.graph-first-code-analysis", "pattern.discriminator-backends"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.discriminator-front-end"]
     },
 
     {
@@ -671,8 +677,7 @@
     {
       "id": "pattern.discriminator-backends",
       "kind": "pattern",
-      "path": "DESIGN-NOTES.md",
-      "section": "12",
+      "path": "notes\\discriminator-front-end.md",
       "summary": "Split conditional tangles that are really dispatch: a discriminator front end that only routes, over a catalog of well-known fixed back ends (state machines as declarative queries) that only compute. Duplication corollary: copies behind a discriminator are enumerable inventory, not silently-drifting contraband - deliberately anti-DRY-reflex. RazorGraph-era tooling upgrades it: method_body_diff proves which back ends are merge candidates, coverage prices refactor risk upfront, and conformance (every path lands in exactly one back end, nothing routes around the front end) is a graph query. The tell: a method whose nesting grows every time the business adds a case.",
       "tags": ["architecture", "refactoring", "code-analysis", "csharp"],
       "links": ["skill.christmas-tree-flattening", "pattern.graph-first-analysis"]
@@ -797,6 +802,24 @@
       ],
       "tags": ["api", "research", "dotnet", "powershell", "retrieval", "context-budget"],
       "links": ["script.get-research"]
+    },
+
+    {
+      "id": "note.build-retrospective",
+      "kind": "note",
+      "path": "notes\\build-retrospective.md",
+      "summary": "Retrospective material from the 2024-2026 build, moved out of DESIGN-NOTES on 2026-08-08 (was sections 6, 10 and 11) because it is read once when the question arises, not on every session start. Reviewer personas and why the depersonalised form is the only durable one, plus the six generic review principles that survive it (capture why in comments; a test that cannot fail is worse than none; move/rename PRs owe evidence; a warnings fix must not change runtime defaults; no machine-specific values in shared content; runbooks never route to a named individual). The handoff-corpus format: one note per file, filename as index entry, cross-reference without deduplicating, manifest as source of truth, written for an LLM reader. And the retrospective itself, led by classifying every file portable/employer-confidential/personal at authoring time rather than sorting 640 by hand after departure.",
+      "tags": ["patterns", "review", "documentation", "retrieval", "retrospective"],
+      "links": ["file.design-notes", "file.provenance"]
+    },
+
+    {
+      "id": "note.discriminator-front-end",
+      "kind": "note",
+      "path": "notes\\discriminator-front-end.md",
+      "summary": "When complex conditional logic is really dispatch in disguise, split it: one discriminator front end that only routes, and a catalog of well-known fixed back ends that only compute, selected by the front end and never selecting themselves. Deep nesting is a discriminator tangled into its computations, so pulling the routing out flattens the back ends on their own; the tell is a method whose nesting depth grows every time the business adds a case. Carries the duplication corollary that cuts against the DRY reflex -- duplication behind a discriminator is inventory because the copies are a named catalog and drift is detectable, while duplication scattered through nested conditionals is contraband -- and what a flow-equivalence prover adds: merge versus parameterisation candidates separated by proof, and conformance as a graph invariant rather than a review-time opinion. Was DESIGN-NOTES section 12; moved out 2026-08-08.",
+      "tags": ["architecture", "refactor", "patterns", "code-analysis"],
+      "links": ["file.design-notes", "skill.christmas-tree-flattening", "note.pre-checkin-style-janet-level"]
     }
   ]
 }

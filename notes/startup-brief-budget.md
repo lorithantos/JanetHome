@@ -233,6 +233,66 @@ channel for the session model.** `problems` had one meaning to a consumer — do
 proceed — and appending softer content to it changed that meaning silently, in exactly
 the way this note keeps warning that prose drifts.
 
+## It happened again, one level further out (2026-08-08)
+
+The fix above trimmed the brief from 4525 to 2105 characters. Nobody audited the
+`read` list the brief points *at*. Measured 2026-08-08:
+
+| File | Chars | Share |
+|---|---|---|
+| `DESIGN-NOTES.md` | 12,993 | 46% |
+| `README.md` | 8,226 | 29% |
+| `PROVENANCE.md` | 7,280 | 26% |
+| **Total** | **28,499** | **~7,125 tokens, every session** |
+
+So the 2420 characters saved in the brief sat in front of 28,499 characters of prose
+loaded on the same schedule. The pattern was defeated one level out from where it was
+last applied — which is exactly what this note already said had happened once.
+
+**The same duplication, too.** README carried a 13-script inventory and a parameter
+manual for `Add-`/`Update-ResearchNode` — 41% of the file. Every one of those 13
+scripts was already a node. The section above condemned precisely this
+(*"`add` and `update` reproduce parameter lists that `Get-Research.ps1 -?` and the
+graph node already hold"*), and README's own Layout table said *"Ask the graph for the
+current inventory rather than trusting a count here"* ten lines above the inventory.
+
+### What changed
+
+- `PROVENANCE.md` left the read list. Its contract already ships as an ADVISORY rule,
+  and its own manifest reason — "read before adding anything" — describes a
+  conditional read, which is the definition of retrievable.
+- README became a **bootstrap**: how to start, the boundary, and that `research.json`
+  is the entry point. Inventory and parameter manuals are gone.
+- `DESIGN-NOTES.md` kept the sections that govern how a session *works* and moved the
+  ones you consult once (6, 10, 11, 12) to `note.build-retrospective` and
+  `note.discriminator-front-end`.
+
+28,499 → 12,300 characters, a 57% cut, ~4,050 tokens back per session. Not the ~10,000
+first estimated: cutting to that would have meant taking out operating content, and
+the sections that govern session behaviour are the ones worth paying for.
+
+**Section numbers were deliberately NOT renumbered.** Three notes cite "DESIGN-NOTES
+section 12" by number, and `startup-manifest.json` rules cite sections 3, 4, 5, 7 and
+8. Renumbering would have broken every one silently — the drift failure section 1
+exists to prevent. Sections 6 and 10–12 are now one-paragraph pointers, so the
+identifiers stay valid and cost a few hundred characters instead of six thousand.
+
+**The move surfaced its own drift.** Four `pattern.*` nodes pointed at
+`DESIGN-NOTES.md` with a section number that no longer held the content. Moving prose
+out of a file that nodes index means repointing those nodes in the same change, or the
+graph starts lying — the retrieval layer is not automatically consistent with the
+files it describes.
+
+### The rule this yields
+
+**Progressive disclosure has to be re-applied at every layer that expands.** A pointer
+becomes a manual, a manual becomes a read list, a read list becomes a corpus. Each
+layer looks small when you edit it and none of them has a reviewer. Audit the transitive
+cost — what does startup *actually* put in the context window, end to end — not the
+layer you happen to be editing.
+
+---
+
 ## The general lesson
 
 A brief is a budget, not a bucket. Anything that passes structured config straight to a

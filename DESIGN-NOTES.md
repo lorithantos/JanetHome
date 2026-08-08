@@ -95,11 +95,8 @@ graph turns speculation into evidence.
 "expose the compiler's model as agent tools," not anything C#-specific.
 
 **Note:** the original implementation was employer work product and was left behind.
-The pattern has since been rebuilt clean-room as `RazorGraph.Mcp` in
-`D:\Repos\RazorGraphTool` (2026-07-27) — an MCP stdio server over a Roslyn + Razor
-code graph, built on the public RazorGraphTool codebase and the official
-`ModelContextProtocol` SDK. See `notes\razorgraph-mcp-server.md` for its shape and
-operational caveats.
+Rebuilt clean-room as `RazorGraph.Mcp` — shape, tool surface, and its several
+operational caveats in `note.razorgraph-mcp-server`.
 
 ---
 
@@ -118,35 +115,10 @@ anything touches disk. Failures become inspectable artifacts instead of a mangle
 
 ## 6. Reviewer personas — the pattern, and its limit
 
-**Pattern.** Mine a reviewer's historical comments, extract recurring concerns, and
-pre-check your own work against them before requesting review.
-
-**Why it worked.** It shortened review cycles substantially. Most review feedback is
-predictable in aggregate; a reviewer who always asks about negative test cases will
-ask again, so just write them first.
-
-**The limit, learned in hindsight.** These artifacts are behavioral profiles of real,
-named people who did not consent to being profiled. That's fine as an ephemeral
-private prep note. It is *not* fine as a durable document — and it should never leave
-the employer's systems. The portable version is depersonalized: keep the engineering
-principles, drop the person.
-
-**The principles worth keeping, stated generically:**
-
-- Capture *why* in code comments — non-obvious constants, workarounds,
-  environment-specific behavior, architecture decisions. Future readers include agents.
-- Tests must be able to fail for the right reason. Assertions that cannot fail are
-  worse than no test: they broadcast false confidence.
-- Move/rename PRs owe evidence — every delete has a matching add, old names have zero
-  remaining references. Show the diff stat and the search.
-- A warnings-fix PR must not silently change runtime defaults. If nullability cleanup
-  alters behavior, that's a separate decision PR.
-- No hardcoded machine-specific or environment-specific values in shared content.
-- Runbooks must never route to a named individual. Document the procedure or the team
-  alias. "Ask <person>" is a single point of failure and it expires the day they leave.
-
-That last one is the whole reason handoff corpora exist. It is also the one I'd
-enforce hardest if starting over.
+Mine a reviewer's recurring concerns and pre-check against them; then depersonalize,
+because a behavioral profile of a named colleague is not a durable artifact. The six
+generic review principles that survive the depersonalization are in
+`notes\build-retrospective.md` (`note.build-retrospective`).
 
 ---
 
@@ -187,86 +159,38 @@ shared store.
 rate limit, a shared blast radius, and a permissions model that ratchets toward
 over-broad. Per-scope containers cost effectively nothing at small scale and remove an
 entire category of contention. Meta's Second Brain post independently reported hitting
-exactly this wall — they needed a 10x capacity increase on shared cloud storage.
-
-See `notes\meta-second-brain-vs-janet.md` for the fuller comparison.
+exactly this wall. Fuller comparison: `note.meta-second-brain-vs-janet`.
 
 ---
 
 ## 10. The handoff-corpus format
 
-Not agent architecture, but the most reusable artifact of the whole project.
+The document format that outlived the project — one note per file, filename as index
+entry, cross-reference without deduplicating, a machine-readable manifest as source of
+truth, written for an LLM reader rather than a human one.
 
-**Rules that made it work:**
-
-1. One note per file. One decision, one landmine, one person.
-2. Filenames are topic-prefixed and kebab-case. The filename *is* the index entry.
-3. Every file opens with an H1 and a one-sentence summary. Retrieval hits the summary.
-4. Cross-reference liberally; do **not** deduplicate. Written for retrieval, not
-   linear reading — duplication aids discovery.
-5. A machine-readable `manifest.json` is the source of truth for what exists.
-6. Density over polish. Include the why, the stories, the rejected alternatives.
-   Stream-of-consciousness with structure beats polished prose.
-7. Write for an LLM reader, not a human one. This changes what you include: more
-   context, more explicit cross-links, less narrative smoothing.
-
-**What I'd add next time:** a classification field per file from day one —
-`portable` / `employer-confidential` / `personal`. Sorting 640 files by hand a month
-after departure is entirely avoidable work, and the person best placed to make each
-call is whoever wrote the file, at the moment they wrote it.
+In `notes\build-retrospective.md` (`note.build-retrospective`).
 
 ---
 
 ## 11. What I'd do differently
 
-- **Classify at authoring time** (above). The single highest-leverage change.
-- **Keep personal tooling in a personal repo from day one.** The genuinely generic
-  utilities — encoding fixes, file writers, mermaid embedding, the thread stack —
-  had no reason to live in employer repos. They ended up entangled purely by default,
-  and untangling them afterward cost more than separating them would have.
-- **Don't profile named colleagues in durable artifacts.** See §6.
-- **Write the operational discipline down earlier.** The query routing, the
-  circuit-breakers, the verification-before-summary rule — those were what made the
-  framework trustworthy, and they lived in my head for far too long before becoming
-  skills.
+Classify every file `portable` / `employer-confidential` / `personal` at authoring
+time rather than sorting 640 of them by hand after departure; keep personal tooling in
+a personal repo from day one; don't profile named colleagues in durable artifacts;
+write the operational discipline down earlier.
+
+In `notes\build-retrospective.md` (`note.build-retrospective`).
 
 ---
 
 ## 12. Discriminator front end, enumerable back ends
 
-*Added 2026-08-03, from the pricing-rewrite experience; written from memory and
-reasoning, no employer specifics.*
+When complex conditional logic is really dispatch in disguise, split it: one
+discriminator that only routes, and a catalog of fixed back ends that only compute.
+The tell is a method whose nesting depth grows every time the business adds a case.
+Includes the duplication corollary — duplication behind a discriminator is inventory,
+duplication scattered through nested conditionals is contraband — and what a
+flow-equivalence prover adds.
 
-**Pattern.** When complex conditional logic is really dispatch in disguise, split it:
-one discriminator front end that only routes, and a catalog of well-known, fixed back
-ends that only compute — state machines expressed as declarative queries, selected by
-the front end, never selecting themselves. A large pricing subsystem rewritten this
-way collapsed from an unnavigable conditional tangle into a routing table over boring,
-named alternatives.
-
-**Why it works.** Deep nesting is a discriminator tangled *into* its computations —
-every level of the christmas tree is a routing decision interleaved with work. Pull
-the routing out and the back ends go flat on their own. Guard clauses are the
-forty-line version of the same move; this is what the code should become when the
-tree was doing dispatch all along.
-
-**The duplication corollary.** Duplication is not dangerous because code appears
-twice; it is dangerous when the copies are unenumerable and drift silently. A
-discriminator over fixed back ends kills both conditions: the copies are a catalog
-with names, and drift is detectable because comparison has a defined surface.
-Duplication behind a discriminator is inventory; duplication scattered through nested
-conditionals is contraband. This cuts against the DRY reflex, deliberately.
-
-**What tooling adds (2026, RazorGraph-era).** With a flow-equivalence prover, "are
-these two back ends the same" becomes a provable relation — a pairwise sweep over the
-catalog separates merge candidates (equivalent), parameterization candidates (one
-canonicalized guard apart), and legitimate divergence (different, with evidence).
-Reachability coverage prices the refactor's risk upfront by showing which paths tests
-actually exercise. And the finished architecture is a checkable graph invariant:
-every path from the discriminator lands in exactly one known back end, and nothing
-routes around the front end. Conformance stops being a review-time opinion and
-becomes a query.
-
-**Generalizes to:** any domain where variant behavior accreted as nested conditions —
-pricing, eligibility, routing, rendering pipelines. The tell is a method whose
-nesting depth grows every time the business adds a case.
+In `notes\discriminator-front-end.md` (`note.discriminator-front-end`).

@@ -86,7 +86,7 @@ notice was added at the top of the file. The architectural argument is unchanged
 
 | File | Notes |
 |---|---|
-| `DESIGN-NOTES.md` | **Newly written**, not copied. Captures the transferable patterns in prose — manifest-driven startup, progressive disclosure, thread stack, graph-first analysis, deterministic edits, query routing, circuit-breakers, per-scope storage, the handoff-corpus format. Written from memory and reasoning rather than derived from employer artifacts |
+| `DESIGN-NOTES.md` | **Newly written**, not copied. Captures the transferable patterns in prose — manifest-driven startup, progressive disclosure, thread stack, graph-first analysis, deterministic edits, query routing, circuit-breakers, per-scope storage, the handoff-corpus format. Written from memory and reasoning rather than derived from employer artifacts. On 2026-08-08 the sections you consult once rather than operate by (6, 10, 11, 12) moved to `notes\build-retrospective.md` and `notes\discriminator-front-end.md`; same origin and same standard, retrieved instead of read on every start |
 | `PROVENANCE.md` | This file |
 | `README.md` | Orientation |
 
