@@ -1,6 +1,6 @@
-# Janet — Design Notes
+# Janet -- Design Notes
 
-Transferable patterns from the 2024–2026 build, written from memory and reasoning
+Transferable patterns from the 2024-2026 build, written from memory and reasoning
 rather than copied from employer artifacts. This is the part of the work that is
 portable: the ideas, not the integrations.
 
@@ -14,7 +14,7 @@ Written 2026-07-27, during the civilian rebuild.
 things. Give it an explicit, mechanical contract: a `startup-manifest.json` listing
 files to read and commands to run, in order.
 
-**Why it beats a prose root file.** A summary document drifts silently — it stays
+**Why it beats a prose root file.** A summary document drifts silently -- it stays
 syntactically valid while becoming factually wrong, and nothing detects that. A
 manifest is checkable: every entry either resolves or it doesn't. You can lint it,
 you can test it, and a broken entry is a hard failure instead of a quiet degradation.
@@ -41,7 +41,7 @@ degrade quietly. This generalizes well past agent startup.
 prompt. The agent loads a skill's full instructions only when the task matches it.
 
 **Why.** Context is the scarce resource. A monolithic prompt pays the token cost of
-every capability on every turn, and the instructions interfere with each other —
+every capability on every turn, and the instructions interfere with each other --
 guidance for task A subtly biases behavior on unrelated task B. Skills make capability
 additive rather than multiplicative.
 
@@ -61,20 +61,20 @@ additive rather than multiplicative.
 
 ## 3. Thread items
 
-**Pattern.** A list of investigation topics with explicit focus — `Add-ThreadItem.ps1`,
+**Pattern.** A list of investigation topics with explicit focus -- `Add-ThreadItem.ps1`,
 `Set-ActiveThread.ps1`, `Update-ThreadItem.ps1`, `Complete-ThreadItem.ps1` and
 `Show-ThreadItems.ps1`, in `scripts\`.
 
 **Why it exists.** Debugging is a depth-first search and human working memory is not.
-You start on A, notice B, chase B into C, fix C — and then have no idea whether you
+You start on A, notice B, chase B into C, fix C -- and then have no idea whether you
 ever finished A. Writing the descent down is what gives you an unwind path.
 
 **It was a push/pop stack until 2026-08-08, and the stack shape was wrong.** Three
-failures, none of them bugs — each was the data structure behaving exactly as designed:
+failures, none of them bugs -- each was the data structure behaving exactly as designed:
 
 - **Recording and descending were the same operation.** Pushing a topic made it active
   and parked whatever was. There was no way to note "this needs doing" without losing
-  your place, so the cheapest correct action — write it down — cost you your context.
+  your place, so the cheapest correct action -- write it down -- cost you your context.
 - **There was no way to amend an item.** A session wanting to update its own entry had
   only push and pop, popped to reach it, and destroyed a concurrent session's notes
   irrecoverably. A missing operation does not leave callers stuck; it makes them
@@ -85,11 +85,11 @@ failures, none of them bugs — each was the data structure behaving exactly as 
 The list separates what the stack conflated: position carries order, `status` carries
 focus, and nothing is ever removed. Adding appends without displacing, `Set-ActiveThread`
 is the only thing that moves focus, and completing is a status change. Writers serialise
-on a named mutex — it is shared mutable state with genuinely concurrent sessions, and the
+on a named mutex -- it is shared mutable state with genuinely concurrent sessions, and the
 loss above happened inside an unlocked read-modify-write.
 
 **The general lesson, which outlives this tool.** A structure chosen for the operation you
-first imagined — descend, unwind — will quietly forbid the operations you actually turn
+first imagined -- descend, unwind -- will quietly forbid the operations you actually turn
 out to need: note, amend, finish. The tell is callers reaching for a destructive operation
 to accomplish a harmless one. That is not user error; it is a missing verb.
 
@@ -119,7 +119,7 @@ graph turns speculation into evidence.
 "expose the compiler's model as agent tools," not anything C#-specific.
 
 **Note:** the original implementation was employer work product and was left behind.
-Rebuilt clean-room as `RazorGraph.Mcp` — shape, tool surface, and its several
+Rebuilt clean-room as `RazorGraph.Mcp` -- shape, tool surface, and its several
 operational caveats in `note.razorgraph-mcp-server`.
 
 ---
@@ -127,8 +127,8 @@ operational caveats in `note.razorgraph-mcp-server`.
 ## 5. Deterministic edits via JSON plan
 
 **Pattern.** `Invoke-SurgicalEdit.ps1` (included). The agent emits a JSON plan of exact
-operations — `delete`, `removeLines`, `removeParameter`, `removeProperty`,
-`removeArgument`, `replace`, `insertAfter` — and a script executes it.
+operations -- `delete`, `removeLines`, `removeParameter`, `removeProperty`,
+`removeArgument`, `replace`, `insertAfter` -- and a script executes it.
 
 **Why split it that way.** Models are good at *deciding* what to change and unreliable
 at *performing* dozens of mechanical edits without drift. Separating the two gets you
@@ -137,7 +137,7 @@ anything touches disk. Failures become inspectable artifacts instead of a mangle
 
 ---
 
-## 6. Reviewer personas — the pattern, and its limit
+## 6. Reviewer personas -- the pattern, and its limit
 
 Mine a reviewer's recurring concerns and pre-check against them; then depersonalize,
 because a behavioral profile of a named colleague is not a durable artifact. The six
@@ -165,7 +165,7 @@ it just has to be written down for the agent.
 with an explicit timeout and fallback, rather than letting the harness surface a
 stall.
 
-**Why.** An agent blocked on a hanging call produces no output and no diagnosis — the
+**Why.** An agent blocked on a hanging call produces no output and no diagnosis -- the
 worst possible failure mode, because it's indistinguishable from thinking. A
 circuit-breaker turns it into a fast, legible error the agent can route around.
 
@@ -189,7 +189,7 @@ exactly this wall. Fuller comparison: `note.meta-second-brain-vs-janet`.
 
 ## 10. The handoff-corpus format
 
-The document format that outlived the project — one note per file, filename as index
+The document format that outlived the project -- one note per file, filename as index
 entry, cross-reference without deduplicating, a machine-readable manifest as source of
 truth, written for an LLM reader rather than a human one.
 
@@ -213,8 +213,8 @@ In `notes\build-retrospective.md` (`note.build-retrospective`).
 When complex conditional logic is really dispatch in disguise, split it: one
 discriminator that only routes, and a catalog of fixed back ends that only compute.
 The tell is a method whose nesting depth grows every time the business adds a case.
-Includes the duplication corollary — duplication behind a discriminator is inventory,
-duplication scattered through nested conditionals is contraband — and what a
+Includes the duplication corollary -- duplication behind a discriminator is inventory,
+duplication scattered through nested conditionals is contraband -- and what a
 flow-equivalence prover adds.
 
 In `notes\discriminator-front-end.md` (`note.discriminator-front-end`).
