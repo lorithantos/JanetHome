@@ -32,8 +32,9 @@
     with no arguments to see the tag index.
 
 .PARAMETER Links
-    Ids of related nodes. Links are bidirectional in spirit but stored one way;
-    consider adding the reverse link to the other node too.
+    Ids of related nodes. The reverse link is written on each target automatically,
+    so the graph stays navigable from both ends without a follow-up call. Targets
+    that do not exist are warned about and skipped.
 
 .PARAMETER Caveats
     What bites you. Missing dependencies, external services contacted, platform
@@ -181,11 +182,12 @@ if ($DryRun) {
         return
     }
     [PSCustomObject]@{
-        added    = $false
-        dryRun   = $true
-        id       = $Id
-        warnings = @($warnings)
-        nodeText = $nodeText
+        added        = $false
+        dryRun       = $true
+        id           = $Id
+        warnings     = @($warnings)
+        nodeText     = $nodeText
+        reverseLinks = @($Links | Where-Object { $knownIds -contains $_ })
     } | ConvertTo-Json -Depth 4 -Compress
     return
 }
@@ -225,11 +227,42 @@ if ($newCount -ne ($nodes.Count + 1)) {
 
 [System.IO.File]::WriteAllText($GraphPath, $updated, (New-Object System.Text.UTF8Encoding $false))
 
+# ---- Reverse links ---------------------------------------------------------
+
+# The graph's convention is bidirectional -- pattern.thread-stack and
+# skill.crash-escape-analysis each name the other -- so writing only the forward
+# direction leaves the new node invisible from its own neighbours. Doing it here
+# rather than leaving a reminder in the output is the difference between an
+# invariant and a habit.
+#
+# Delegating to Update-ResearchNode keeps one textual-splice implementation
+# instead of two, and inherits its de-duplication (-Append drops repeats), so
+# re-adding an existing edge is a no-op rather than a double entry.
+$reverseLinked = @()
+$updateScript = Join-Path $PSScriptRoot 'Update-ResearchNode.ps1'
+
+foreach ($link in $Links) {
+    # Missing targets already produced a warning during validation; the node was
+    # still added, so a dangling link stays visible rather than silently dropped.
+    if ($knownIds -notcontains $link) { continue }
+
+    try {
+        $back = & $updateScript -Id $link -Links $Id -Append -GraphPath $GraphPath |
+            ConvertFrom-Json
+        if ($back.updated) { $reverseLinked += $link }
+    }
+    catch {
+        # A failed back-link must not undo a successful add: report and continue.
+        $warnings += "reverse link on '$link' failed: $($_.Exception.Message)"
+    }
+}
+
 if ($Text) {
     Write-Host "Added $Id ($newCount nodes total)" -ForegroundColor Green
-    if ($Links.Count -gt 0) {
-        Write-Host "Consider adding the reverse link on: $($Links -join ', ')" -ForegroundColor DarkGray
+    if ($reverseLinked.Count -gt 0) {
+        Write-Host "Reverse-linked from: $($reverseLinked -join ', ')" -ForegroundColor DarkGray
     }
+    foreach ($w in $warnings) { Write-Host "! $w" -ForegroundColor Yellow }
     return
 }
 
@@ -239,5 +272,5 @@ if ($Text) {
     id           = $Id
     totalNodes   = $newCount
     warnings     = @($warnings)
-    reverseLinks = @($Links)   # links are stored one way; these nodes may want the reverse
+    reverseLinks = @($reverseLinked)   # targets that now name this node back
 } | ConvertTo-Json -Depth 4 -Compress

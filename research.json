@@ -720,6 +720,32 @@
       ],
       "tags": ["debugging", "csharp", "code-analysis", "roslyn"],
       "links": ["pattern.thread-stack", "skill.graph-first-code-analysis", "note.razorgraph-mcp-server"]
+    },
+
+    {
+      "id": "pattern.change-coalescing",
+      "kind": "pattern",
+      "path": "notes\\coalescing-input-to-output.md",
+      "summary": "Coalesce input-side changes into output-side work across two axes: time (a consumer loop waits for the queue to be non-empty, delays one frame, greedily drains to empty, awaits delivery) and demand (lazy per-output cells, so nothing invisible is rebuilt). Key partitions, queue buffers, destination collapses - the fold belongs to the consumer, which removes any associativity requirement and lets different consumers fold differently. The loop position IS the window state, so no armed flag, no race, no overlapping deliveries, backpressure free. Output rate is capped at 1/window by construction, so a fast producer can never overwhelm it; only a slow consumer can. Second instance: a locale-partitioned batching cache. Request/response variant (dataloader shape) needs correlation and failure fan-out.",
+      "caveats": [
+        "Design only, 2026-08-07 - no implementation exists yet. First one planned in D:\\Repos\\RetirementCore\\DESIGN-COALESCING.md, which holds the application-specific half.",
+        "The request/response variant is specified only as a contrast table; correlation and failure fan-out are unbuilt and are a genuine extension, not a free consequence."
+      ],
+      "tags": ["architecture", "ui", "concurrency", "performance", "wpf"],
+      "links": ["note.wpf-app-architecture"]
+    },
+
+    {
+      "id": "note.wpf-app-architecture",
+      "kind": "note",
+      "path": "notes\\wpf-app-architecture.md",
+      "summary": "WPF plumbing lessons and what they imply for app structure, from a thread-affinity and rebuild-churn audit. Bindings are pull, so a PropertyChanged into an unmaterialized binding is free - which makes lazy getters the whole demand mechanism and an IsActive/activation signal unnecessary; template materialization means only the selected page has live bindings. Compose a lazy cell per bindable output rather than hoisting a chart-page base class (one dirty flag models the very problem it should fix). CommunityToolkit [ObservableProperty] routes every setter through one overridable OnPropertyChanged, and [NotifyPropertyChangedFor] means notification count exceeds property count. WPF marshals scalar binding updates but NOT collection changes nor the object graph a control renders. DispatcherPriority gives ordering with no latency bound (Normal-priority floods starve Background indefinitely) - prefer an explicit time window. Progress<T> captures context at construction, never conflates, and can deliver out of order so counters run backwards. Make thread affinity structural: start the loop on the UI thread and never ConfigureAwait(false). Static events leak handlers. Native-backed rendering turns churn into a use-after-free hazard, and a native AV bypasses every managed handler, so an empty crash log says nothing about threading - WER LocalDumps is the tool. Ends with a checklist for a new WPF app.",
+      "tags": ["wpf", "csharp", "ui", "architecture", "concurrency", "debugging"],
+      "caveats": [
+        "Distilled from one app (charts over LiveCharts/SkiaSharp, CommunityToolkit.Mvvm 8.4, .NET 10) - the platform facts generalize, the emphasis reflects that codebase.",
+        "DataTemplate resolution walking the type hierarchy for implicit templates is asserted from reasoning, not tested here; verify before relying on a base-class template."
+      ],
+      "links": ["pattern.change-coalescing"]
     }
   ]
 }
