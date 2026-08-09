@@ -41,7 +41,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -550,7 +550,7 @@
         "Escape reports cite the thrower METHOD node, not the throw site: a throw authored in a .cshtml code block whose enclosing method is generated scaffolding (ExecuteAsync) still displays the .g.cs path even after f97edee - the node is correctly marked generated:true with generatedFrom and a compiledInto edge back to the page, but the mapped .cshtml line of the throw itself is not persisted on the edge. Persisting throw-site locations is the open follow-up."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language"]
     },
 
     {
@@ -586,7 +586,7 @@
         "Counts are regex over raw text - comments and string literals included, indicative not exact. Corpus = one personal app (ImageSelector, two versions of the same source) + nopCommerce (classic pole) + OrchardCore (bundled/TS pole). Selector-first and the @Url.Action finding hold at both poles; ESM/TS deferral survives but weakened - OrchardCore keeps sources outside wwwroot in Assets\\, so graph-sources-vs-graph-shipped is an open design question for bundled projects."
       ],
       "tags": ["code-analysis", "javascript", "razor", "research", "scoping"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
     },
 
     {
@@ -711,9 +711,9 @@
       "id": "note.razorgraph-competitive-field",
       "kind": "note",
       "path": "notes\\razorgraph-competitive-field-2026-08.md",
-      "summary": "2026-08-07 survey of the MCP code-graph field. Unique to RazorGraphTool: the flow-equivalence prover as refactoring gate, and Razor/PageModel/JS cross-boundary correlation. Near-unique: coverage-as-reachability (one other implementer: roslyn-codelens-mcp, the closest competitor - watch it). Commodity: call graphs/references/impact. Field is ahead on language breadth, incremental indexing, vector search, token economy, composable queries. Strategy: invest in prover + Razor to stay distinct; incremental indexing + Lua to catch up.",
+      "summary": "2026-08-07 survey of the MCP code-graph field. Unique to RazorGraphTool: the flow-equivalence prover as refactoring gate, and Razor/PageModel/JS cross-boundary correlation. Near-unique: coverage-as-reachability (one other implementer: roslyn-codelens-mcp, the closest competitor - watch it). Commodity: call graphs/references/impact. Field is ahead on language breadth, incremental indexing, vector search, token economy, composable queries. Strategy: invest in prover + Razor to stay distinct; incremental indexing + Lua to catch up. Added 2026-08-09: Modelcode.ai (Morph) as the process-wrapper pole - enterprise migration service that independently rediscovered the Janet shape (spec-first, milestone gates, compounding project knowledge) but whose correctness story is behavioral sampling only, because cross-language migration has no shared compiler model. Validates verification-as-product; does not close the prover gap. Feeds note.razorgraph-cross-language.",
       "tags": ["research", "code-analysis", "agent", "csharp"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
     },
 
     {
@@ -722,7 +722,7 @@
       "path": "notes\\razorgraph-borrow-list-2026-08.md",
       "summary": "Concepts to borrow from the MCP code-graph field, tiered by fusion with unique assets. Tier 1: diff-aware test impact (Covers edges backward from git diff), MinHash similarity shortlisting for the prover (makes the section-12 pairwise sweep tractable), measured-coverage import (closes reachable-vs-asserted caveat), graph_diff tool, content-hash incremental indexing + syntax-only fast tier (solves fast per-commit C# nesting). Tier 3 synthesis: plan -> SurgicalEdit -> prover-verify closed loop. Not borrowed: cloud, language breadth, vectors.",
       "tags": ["research", "code-analysis", "agent", "refactoring"],
-      "links": ["note.razorgraph-competitive-field", "note.razorgraph-mcp-server", "pattern.discriminator-backends"]
+      "links": ["note.razorgraph-competitive-field", "note.razorgraph-mcp-server", "pattern.discriminator-backends", "note.razorgraph-cross-language"]
     },
 
     {
@@ -890,6 +890,19 @@
         "The operation the push/pop stack never had, and the reason it lost data: on 2026-08-08 a session wanting to update its own entry had only push and pop, popped to reach it, and destroyed a concurrent session notes irrecoverably. A missing operation does not leave callers stuck -- it makes them improvise with a destructive one."
       ],
       "links": ["script.add-thread-item", "script.set-active-thread", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items"]
+    },
+
+    {
+      "id": "note.razorgraph-cross-language",
+      "kind": "note",
+      "path": "notes\\razorgraph-cross-language-conversion.md",
+      "summary": "Long-term target set 2026-08-09: \"convert this JavaScript into Razor\" - a JS semantic model comparable (as best as possible) against the C# side so LLM reasoning has a good chance of being CORRECT, not plausible. Key reframe: JS->Razor is TIER MIGRATION, not transpilation - the correctness question is \"does the page still honor every contract the surviving client code depends on\", and RazorGraph already models those contracts (DomSelectedBy, unboundSelectorIds, ViewDataReadBy, UrlGeneratedBy). Three verification planes: contract (graph diff over boundary edges - buildable today), structural (JS extractor emitting the shared BodyGraph IR + a RELAXED cross-language comparator with mismatch taxonomy - corresponds/diverges, never claims proof), behavioral (Morph-style side-by-side rendering, last). LLM proposes; planes grade; mismatch reports feed the next attempt. .NET coverage: Roslyn = C#+VB only; F# needs FSharp.Compiler.Service; IL (Cecil/System.Reflection.Metadata) is the language-blind floor at the cost of source fidelity. Ordered steps in the note; step 1 (contract-preservation graph diff) needs no new extraction.",
+      "tags": ["code-analysis", "javascript", "csharp", "razor", "refactoring", "research", "agent"],
+      "caveats": [
+        "The comparator plane must NEVER present correspondence as equivalence - cross-language has no shared compiler model, so the prover's exit-0 contract does not port; the honest output is scored correspondence plus a divergence list. Modelcode.ai's tests-only verification exists BECAUSE this limit is real for them everywhere; within-.NET it is only real across language boundaries.",
+        "Step 3 (shared BodyGraph IR for JS) is gated on the formatVersion stamp from the parked visualization item - same serialized-contract concern, do not build a second consumer of an unversioned format."
+      ],
+      "links": ["note.razorgraph-competitive-field", "note.razorgraph-borrow-list", "note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
     }
   ]
 }

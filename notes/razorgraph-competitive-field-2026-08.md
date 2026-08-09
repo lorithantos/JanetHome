@@ -100,4 +100,28 @@ up: incremental indexing, language breadth. The naming exercise converged with
 this: Plumbline (chosen candidate, collision-free 2026-08-07) names the
 verification instrument, and verification is the moat.
 
+## Added 2026-08-09: Modelcode.ai — the process-wrapper pole
+
+Different category (enterprise migration *service*, not a queryable substrate),
+but premise-adjacent and worth keeping in view. Their Morph product independently
+rediscovered the Janet operating shape: reviewable Project Spec before
+generation (§5's plan-then-execute), milestone PRs with human gates, automated
+review before human review, "Project Knowledge" that compounds across milestones
+(§10's handoff corpus, productized), on-prem ModelDaemon. Meta's Second Brain hit
+§9 independently; Modelcode hits §5+§10 — convergent evolution is evidence the
+patterns are load-bearing.
+
+The instructive gap: their entire correctness story is **behavioral sampling**
+(side-by-side E2E of original vs. migrated app, functional tests) — forced,
+because C++→Go / Python→Java have no shared compiler model, so proof is
+unavailable to them. Inside .NET the prover strictly dominates that layer.
+Their existence validates verification-as-product without closing the prover
+gap. Borrowable: the side-by-side behavioral comparison as a *complement* to
+structural proof, and spec-frozen-after-chat-refinement as a migration ritual.
+Caution: "knowledge compounds, reducing corrections" with no re-validation story
+is the drift trap at enterprise scale.
+
+Long-term direction this feeds: [[note.razorgraph-cross-language]] — JS→Razor
+conversion with contract/structural/behavioral verification planes.
+
 Related: [[note.razorgraph-mcp-server]], [[pattern.graph-first-analysis]].
