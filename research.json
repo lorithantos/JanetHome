@@ -375,7 +375,7 @@
       "path": "notes\\powershell-house-rules.md",
       "summary": "PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, parameter/local name collisions, plus a 5.1 backward-compatibility section.",
       "tags": ["powershell", "rules", "strictmode", "encoding", "quality", "parameters"],
-      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget"]
+      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget", "script.invoke-dotnet-check"]
     },
     {
       "id": "note.insertion-mergesort-hybrid",
@@ -598,7 +598,7 @@
         "Loads the whole file into memory (fine for MB-scale graphs). Unlike Get-Research it caps -Where results too (default -First 10) because blob arrays can hold tens of thousands of items; -All lifts the cap and the envelope always says when it was applied."
       ],
       "tags": ["retrieval", "json", "code-analysis", "powershell"],
-      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli"]
+      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli", "script.invoke-dotnet-check"]
     },
 
     {
@@ -903,6 +903,21 @@
         "Step 3 (shared BodyGraph IR for JS) is gated on the formatVersion stamp from the parked visualization item - same serialized-contract concern, do not build a second consumer of an unversioned format."
       ],
       "links": ["note.razorgraph-competitive-field", "note.razorgraph-borrow-list", "note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "script.invoke-dotnet-check",
+      "kind": "script",
+      "path": "scripts\\Invoke-DotnetCheck.ps1",
+      "summary": "Build + test a .NET target and report as structured JSON (contract 1) instead of console scrollback: { contract, target, configuration, succeeded, build: { succeeded, durationSeconds, errors[], warnings[], warningCount }, tests: null | { succeeded, total, passed, failed, skipped, failures[], assemblies[] } }. errors[] = {file,line,code,message} always verbatim, never truncated. warnings[] grouped by code = {code,count,instances[],omittedInstances} -- deduplicated across the WPF-temp-project triplication, capped listing with an honest omittedInstances marker. failures[] = {test,message,stack[]} with the assert message whole and file:line as first frame, read from TRX not scraped from console. Exit code means exactly one thing: 0 iff build succeeded and every test passed. WHEN: any dotnet build/test a session runs -- one real warning in fifteen restore warnings and three re-runs to extract an assert message is what this replaces.",
+      "params": ["Target", "Configuration", "NoTests", "TestFilter", "Text", "Pretty"],
+      "tags": ["dotnet", "build", "testing", "json", "contract", "quality"],
+      "caveats": [
+        "Contract drift check: the envelope stamps contract (currently 1). If the number differs from this node, or fields appear that this summary does not list, the contract has moved -- trust the JSON in front of you, re-read the script help, and update this node rather than assuming this summary.",
+        "Warnings report what dotnet emitted THIS run: an incremental no-op build legitimately shows 0 warnings because restore/compile were skipped, not because the code is clean. Force a clean or --no-incremental build when the warning census itself is the question.",
+        "dotnet test runs with --no-build against the just-built output; a -TestFilter changes the counters to describe the filtered run, not the whole suite."
+      ],
+      "links": ["note.powershell-house-rules", "script.search-json"]
     }
   ]
 }
