@@ -74,6 +74,10 @@
       "why": "Query a semantic model for the narrowest slice that answers the question; read source only to spot-check the claims that matter (DESIGN-NOTES section 4)."
     },
     {
+      "text": "ADVISORY: subagent prompts for code analysis must carry explicit RazorGraph instructions -- tool names to load via ToolSearch, the graphId or saved-graph path, and the graph-first rule itself.",
+      "why": "Spawned agents inherit the tool surface but not the operating rules: nothing tells them the graph server exists, so they fall back to grep and speculation. Observed 2026-08-11 -- three exploration agents ran text-first until instructed mid-flight; their graph-verified second passes found facts the text passes missed (a live same-seed pairing site, complete consumer sets). The rule the session honours does not propagate by osmosis; it must be written into every prompt that delegates analysis."
+    },
+    {
       "text": "ADVISORY: before an expensive query, name what you are trying to learn and the cheapest query that distinguishes the hypotheses.",
       "why": "Agents default to broad exploratory queries that time out or silently truncate. Making hypothesis-formation a prerequisite converts flailing into bisection (section 7)."
     },
