@@ -11,7 +11,7 @@
       "section": "1",
       "summary": "Manifest-driven startup: an explicit checkable contract of files to read and commands to run, instead of a prose context file that drifts silently.",
       "tags": ["startup", "contract", "agent", "validation"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims"]
     },
     {
       "id": "pattern.progressive-disclosure",
@@ -822,7 +822,7 @@
       "path": "notes\\build-retrospective.md",
       "summary": "Retrospective material from the 2024-2026 build, moved out of DESIGN-NOTES on 2026-08-08 (was sections 6, 10 and 11) because it is read once when the question arises, not on every session start. Reviewer personas and why the depersonalised form is the only durable one, plus the six generic review principles that survive it (capture why in comments; a test that cannot fail is worse than none; move/rename PRs owe evidence; a warnings fix must not change runtime defaults; no machine-specific values in shared content; runbooks never route to a named individual). The handoff-corpus format: one note per file, filename as index entry, cross-reference without deduplicating, manifest as source of truth, written for an LLM reader. And the retrospective itself, led by classifying every file portable/employer-confidential/personal at authoring time rather than sorting 640 by hand after departure.",
       "tags": ["patterns", "review", "documentation", "retrieval", "retrospective"],
-      "links": ["file.design-notes", "file.provenance"]
+      "links": ["file.design-notes", "file.provenance", "note.debugger-displays-are-claims"]
     },
 
     {
@@ -920,6 +920,18 @@
       ],
       "tags": ["dotnet", "build", "testing", "json", "contract", "quality"],
       "links": ["note.powershell-house-rules", "script.search-json"]
+    },
+
+    {
+      "id": "note.debugger-displays-are-claims",
+      "kind": "note",
+      "path": "notes\\debugger-displays-are-claims.md",
+      "summary": "Debugger displays are claims with validity windows: trust a convention only at its guaranteed boundary, derive ground truth from what was actually emitted, and automate the derivation into a tool. Earned on Watson (~2005-2008): __thiscall ECX holds this only at the call boundary; optimized builds reuse the register and WinDbg displays the stale value, producing false this-was-null reports -- fixed by a WinDbg extension that walked the method prolog to the real spill site. WHEN: any debugging session where a display seems to answer the question directly -- a null this, a one-frame stack, a status banner, an optimized-code variable pane; ask what program point guaranteed that value and whether you are still there.",
+      "tags": ["debugging", "crash-analysis", "tooling", "war-story"],
+      "caveats": [
+        "The rule indicts plausible readings, not tools: the display is usually truthful about SOMETHING (the register now, the last settle) -- the lie is in the question you think it answers."
+      ],
+      "links": ["note.build-retrospective", "pattern.manifest-startup"]
     }
   ]
 }
