@@ -18,6 +18,15 @@
     scraped from the console. The script's exit code means exactly one thing:
     0 when the build succeeded and every test passed.
 
+    -New additionally diffs the warning census against the previous -New run
+    of the same target and configuration, so a freshly introduced warning is
+    one named field instead of a needle in the count. It forces a
+    non-incremental build: an incremental no-op legitimately emits zero
+    warnings, and a diff against an incomplete census would report every
+    later full build as all-new. The baseline is a rebuildable cache under
+    %LOCALAPPDATA%\Janet\dotnet-check, keyed by target + configuration; only
+    a successful build overwrites it.
+
     Output is JSON by default (the consumer is a model); -Text is the human
     opt-in. The envelope stamps 'contract' so a reader can detect drift: if
     the number differs from what the research node documents, or fields
@@ -38,6 +47,14 @@
     Passed to dotnet test --filter. Counters then describe the filtered run,
     not the whole suite.
 
+.PARAMETER New
+    Diff warnings against the previous -New baseline for this target and
+    configuration. Forces --no-incremental and --force (slower, but a
+    complete census of both compiler and restore warnings -- restore
+    warnings replay only when restore actually runs). The diff is keyed on
+    file|code|message -- a warning that merely moved lines is not new; the
+    same message twice in one file merges to one key.
+
 .PARAMETER Text
     Human-readable output instead of JSON.
 
@@ -47,14 +64,23 @@
 .OUTPUTS
     JSON: { contract, target, configuration, succeeded,
             build:  { succeeded, durationSeconds, errors[], warnings[],
-                      warningCount },
+                      warningCount, newWarnings, resolvedWarningCount,
+                      baseline },
             tests:  null | { succeeded, total, passed, failed, skipped,
                              failures[], assemblies[] } }
-    errors[]:    { file, line, code, message } -- every instance, verbatim.
-    warnings[]:  { code, count, instances[], omittedInstances } -- instances
-                 deduplicated; a positive omittedInstances is the honest
-                 truncation marker.
-    failures[]:  { test, message, stack[] } -- message verbatim and whole.
+    errors[]:      { file, line, code, message } -- every instance, verbatim.
+    warnings[]:    { code, count, instances[], omittedInstances } -- instances
+                   deduplicated; a positive omittedInstances is the honest
+                   truncation marker.
+    newWarnings:   null when no comparison happened (-New absent, or no prior
+                   baseline); else every warning absent from the baseline,
+                   verbatim and uncapped -- new warnings are error-like.
+    resolvedWarningCount: baseline warnings gone this run; same nullability.
+    baseline:      null unless -New; else { path, comparedTo, saved } where
+                   comparedTo is the prior baseline's timestamp or null on
+                   the first run, and saved says this run's census was
+                   written back (only a successful build is).
+    failures[]:    { test, message, stack[] } -- message verbatim and whole.
     tests is null when -NoTests was passed or the build failed; which one is
     visible from build.succeeded.
 
@@ -69,6 +95,10 @@
 .EXAMPLE
     & "$env:JanetBase\scripts\Invoke-DotnetCheck.ps1" -TestFilter GridSortMemoryTests -Pretty
     One test class, indented JSON.
+
+.EXAMPLE
+    & "$env:JanetBase\scripts\Invoke-DotnetCheck.ps1" -Target D:\Repos\RetirementCore -New -NoTests
+    Full-census build; newWarnings lists exactly what this session introduced.
 #>
 [CmdletBinding()]
 param(
@@ -76,6 +106,7 @@ param(
     [string]$Configuration = 'Debug',
     [switch]$NoTests,
     [string]$TestFilter,
+    [switch]$New,
     [switch]$Text,
     [switch]$Pretty
 )
@@ -108,7 +139,9 @@ function Resolve-BuildTarget {
 $script:FileDiagnostic = '^(?<file>.+?)\((?<line>\d+),\d+\):\s+' +
     '(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+):\s+(?<message>.*?)' +
     '(\s+\[[^\]]+\])?\s*$'
-$script:BareDiagnostic = '^(?<file>[^:(]+?)\s*:\s+' +
+# The separator is ' : ' with a mandatory space before the colon -- that is
+# what distinguishes it from the drive colon in an absolute Windows path.
+$script:BareDiagnostic = '^(?<file>.+?)\s+:\s+' +
     '(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+):\s+(?<message>.*?)' +
     '(\s+\[[^\]]+\])?\s*$'
 
@@ -126,8 +159,13 @@ function Read-BuildOutput {
             } else {
                 $null
             }
+            # WPF's compile-time temp project carries a fresh random infix
+            # every build (App_k0iqikfl_wpftmp.csproj); left alone it would
+            # defeat dedup now and read as new+resolved on every -New diff.
+            # Its diagnostics are duplicates of the source project's, so
+            # stripping the infix folds them into it.
             $entry = [pscustomobject]@{
-                file     = $Matches.file.Trim()
+                file     = $Matches.file.Trim() -replace '_[a-z0-9]+_wpftmp(?=\.)', ''
                 line     = $lineNumber
                 severity = $Matches.severity
                 code     = $Matches.code
@@ -162,6 +200,94 @@ function Group-WarningInstance {
         }
     }
     return ,@($groups)
+}
+
+function Get-BaselinePath {
+    # One baseline per (target, configuration): Release and Debug censuses
+    # differ legitimately and must not diff against each other.
+    param([string]$ResolvedTarget, [string]$BuildConfiguration)
+
+    $keySource = "$ResolvedTarget|$BuildConfiguration".ToLowerInvariant()
+    $digest = [BitConverter]::ToString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [System.Text.Encoding]::UTF8.GetBytes($keySource)))
+    $stem = [IO.Path]::GetFileNameWithoutExtension($ResolvedTarget)
+    $directory = Join-Path $env:LOCALAPPDATA 'Janet\dotnet-check'
+    return Join-Path $directory `
+        ("{0}-{1}.json" -f $stem, $digest.Replace('-', '').Substring(0, 12))
+}
+
+function Read-WarningBaseline {
+    # Returns the previous census, or $null when absent, unreadable, or
+    # stamped with a different contract -- a stale format is the same as no
+    # baseline, never a wrong comparison.
+    param([string]$Path, [int]$Contract)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try {
+        $baseline = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    }
+    catch { return $null }
+
+    $fields = $baseline.PSObject.Properties.Name
+    if ($fields -notcontains 'contract' -or $baseline.contract -ne $Contract -or
+        $fields -notcontains 'warnings') {
+        return $null
+    }
+    return $baseline
+}
+
+function Get-WarningKey {
+    # Line is deliberately excluded: an edit that merely moves a warning must
+    # not resurrect it as new. Cost: the same message twice in one file
+    # merges to one key.
+    param($Warning)
+    return '{0}|{1}|{2}' -f $Warning.file.ToLowerInvariant(),
+        $Warning.code, $Warning.message
+}
+
+function Compare-WarningBaseline {
+    # Returns { newWarnings, resolvedWarningCount } against the prior census.
+    param([object[]]$Current, $Baseline)
+
+    $priorKeys = @{}
+    foreach ($warning in @($Baseline.warnings)) {
+        $priorKeys[(Get-WarningKey $warning)] = $true
+    }
+    $currentKeys = @{}
+    $fresh = foreach ($warning in $Current) {
+        $key = Get-WarningKey $warning
+        $currentKeys[$key] = $true
+        if (-not $priorKeys.ContainsKey($key)) {
+            [ordered]@{ file = $warning.file; line = $warning.line;
+                code = $warning.code; message = $warning.message }
+        }
+    }
+    $resolved = @($priorKeys.Keys | Where-Object { -not $currentKeys.ContainsKey($_) })
+
+    return [ordered]@{
+        newWarnings          = @($fresh)
+        resolvedWarningCount = $resolved.Count
+    }
+}
+
+function Save-WarningBaseline {
+    param([string]$Path, [int]$Contract, [string]$ResolvedTarget,
+        [string]$BuildConfiguration, [object[]]$Warnings)
+
+    $directory = Split-Path $Path -Parent
+    if (-not (Test-Path -LiteralPath $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+    [ordered]@{
+        contract      = $Contract
+        target        = $ResolvedTarget
+        configuration = $BuildConfiguration
+        savedAt       = (Get-Date).ToString('o')
+        warnings      = @($Warnings | ForEach-Object {
+            [ordered]@{ file = $_.file; line = $_.line;
+                code = $_.code; message = $_.message } })
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
 function Read-TrxDirectory {
@@ -268,6 +394,14 @@ function Write-TextReport {
     foreach ($warning in $build.warnings) {
         Write-Output "  warning $($warning.code) x$($warning.count)"
     }
+    if ($null -ne $build.newWarnings) {
+        Write-Output ("new warnings: $(@($build.newWarnings).Count), " +
+            "resolved: $($build.resolvedWarningCount)")
+        foreach ($fresh in $build.newWarnings) {
+            Write-Output ("  NEW {0}: {1} ({2}:{3})" -f $fresh.code,
+                $fresh.message, $fresh.file, $fresh.line)
+        }
+    }
 
     if ($null -eq $Report.tests) {
         Write-Output 'tests: not run'
@@ -283,11 +417,19 @@ function Write-TextReport {
     }
 }
 
+$script:ContractVersion = 2
+
 $resolvedTarget = Resolve-BuildTarget -Given $Target
 
+$buildArguments = @($resolvedTarget, '--configuration', $Configuration, '-nologo')
+# A diff is only meaningful against a complete census. --no-incremental
+# recompiles everything (CSxxxx come back); --force re-runs restore (NUxxxx
+# are replayed only by a real restore, and a baseline missing them would
+# report every ancient restore warning as new on the next real one).
+if ($New) { $buildArguments += @('--no-incremental', '--force') }
+
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$buildLines = @(& dotnet build $resolvedTarget --configuration $Configuration `
-    -nologo 2>&1 | ForEach-Object { "$_" })
+$buildLines = @(& dotnet build @buildArguments 2>&1 | ForEach-Object { "$_" })
 $buildSucceeded = ($LASTEXITCODE -eq 0)
 $stopwatch.Stop()
 
@@ -295,14 +437,42 @@ $diagnostics = Read-BuildOutput -Lines $buildLines
 $buildErrors = @($diagnostics | Where-Object severity -eq 'error')
 $buildWarnings = @($diagnostics | Where-Object severity -eq 'warning')
 
+$newWarnings = $null
+$resolvedWarningCount = $null
+$baselineReport = $null
+if ($New) {
+    $baselinePath = Get-BaselinePath -ResolvedTarget $resolvedTarget `
+        -BuildConfiguration $Configuration
+    $priorBaseline = Read-WarningBaseline -Path $baselinePath `
+        -Contract $script:ContractVersion
+    if ($null -ne $priorBaseline) {
+        $diff = Compare-WarningBaseline -Current $buildWarnings -Baseline $priorBaseline
+        $newWarnings = $diff.newWarnings
+        $resolvedWarningCount = $diff.resolvedWarningCount
+    }
+    if ($buildSucceeded) {
+        Save-WarningBaseline -Path $baselinePath -Contract $script:ContractVersion `
+            -ResolvedTarget $resolvedTarget -BuildConfiguration $Configuration `
+            -Warnings $buildWarnings
+    }
+    $baselineReport = [ordered]@{
+        path       = $baselinePath
+        comparedTo = ($null -ne $priorBaseline) ? $priorBaseline.savedAt : $null
+        saved      = $buildSucceeded
+    }
+}
+
 $build = [ordered]@{
-    succeeded       = $buildSucceeded
-    durationSeconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
-    errors          = @($buildErrors |
+    succeeded            = $buildSucceeded
+    durationSeconds      = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
+    errors               = @($buildErrors |
         ForEach-Object { [ordered]@{ file = $_.file; line = $_.line;
             code = $_.code; message = $_.message } })
-    warnings        = Group-WarningInstance -Warnings $buildWarnings
-    warningCount    = $buildWarnings.Count
+    warnings             = Group-WarningInstance -Warnings $buildWarnings
+    warningCount         = $buildWarnings.Count
+    newWarnings          = $newWarnings
+    resolvedWarningCount = $resolvedWarningCount
+    baseline             = $baselineReport
 }
 
 $tests = $null
@@ -328,7 +498,7 @@ $succeeded = $buildSucceeded -and
     ($NoTests -or ($null -ne $tests -and $tests.succeeded))
 
 $report = [ordered]@{
-    contract      = 1
+    contract      = $script:ContractVersion
     target        = $resolvedTarget
     configuration = $Configuration
     succeeded     = $succeeded
