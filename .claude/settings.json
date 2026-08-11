@@ -1,20 +1,8 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Invoke-JanetStartup.ps1\" *)",
-      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Test-PowerShellRules.ps1\" *)",
-      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Get-Research.ps1\" *)",
-      "Bash(& \"D:\\Repos\\JanetHome\\scripts\\Show-ThreadItems.ps1\" *)",
-      "Bash(Get-ChildItem *)",
-      "Bash(Get-Content *)",
-      "Bash(Test-Path *)",
-      "Bash(dotnet build *)",
-      "Bash(dotnet test *)",
-      "Bash(az rest --method get *)",
-      "Bash(az webapp config appsettings list *)",
-      "Bash(az webapp config show *)"
-    ]
-  },
+  ".comment": [
+    "Project-shared agent configuration. This file travels with the repo, so it carries only what is every cloner's business: the hooks that enforce the house rules on edits. Both are guarded by Test-Path and resolve against the project directory, so they are inert outside a full checkout.",
+    "Permissions deliberately do NOT live here. A permission allowlist is a personal policy, and shipping one in a public repo pre-approves commands for whoever clones it -- including, before 2026-08-11, az read commands that would have let an agent dump a cloner's own Azure app settings unprompted. Machine-local policy belongs in settings.local.json, which is gitignored."
+  ],
   "hooks": {
     "PreToolUse": [
       {
