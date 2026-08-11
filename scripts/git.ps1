@@ -39,7 +39,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Resolve-GitExecutable {
-    $onPath = Get-Command git -ErrorAction SilentlyContinue
+    # Applications only: in a shell where this scripts directory is itself on
+    # PATH, a bare `Get-Command git` resolves to THIS shim and line "& $git"
+    # becomes infinite recursion (found 2026-08-10 as a call depth overflow
+    # inside Invoke-BuildDeploy). Filtering to Application excludes .ps1
+    # scripts; the self-path check is belt for a renamed or copied shim.
+    $onPath = Get-Command git -CommandType Application -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -and $_.Source -ne $PSCommandPath } |
+        Select-Object -First 1
     if ($onPath) { return $onPath.Source }
 
     # Known-good path on this machine first, then standard standalone installs, so
