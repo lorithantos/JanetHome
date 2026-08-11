@@ -13,11 +13,14 @@ turn spent regenerating a utility, rediscovering a fact, or re-scraping build
 output was a turn not spent on the actual problem — and I was paying for the
 privilege in both time and tokens.
 
-So the goal was blunt: cut turn length, cut turn count, and waste as few tokens as
-possible. Anything the agent does twice becomes a script. Anything it has to
-rediscover becomes a catalog entry. Anything it guesses at becomes a contract that
-states the answer. The platform is impatience, systematized — effort spent once in
-tooling so the agent spends its context only on judgment.
+So the goal was blunt: cut turn length, cut turn count — and waste as many tokens
+as possible. That last one is not a typo. Building Janet took a colossal number of
+tokens, and that was the point: spend them once, extravagantly, on tooling, so
+they stop being spent forever on repetition. Anything the agent does twice becomes
+a script. Anything it has to rediscover becomes a catalog entry. Anything it
+guesses at becomes a contract that states the answer. The platform is impatience,
+systematized — the most wasteful build I could manage, in exchange for never
+paying for the same work twice.
 
 ## The name
 
