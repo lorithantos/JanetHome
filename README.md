@@ -8,6 +8,27 @@ PowerShell utility or a written-up pattern with the reasoning attached.
 New here? Jump to the [quick start](#quick-start). Want the ideas rather than the
 tools? Read [`DESIGN-NOTES.md`](DESIGN-NOTES.md) — it stands alone.
 
+## Why Janet exists
+
+An agent's context window is its scarcest resource, and most of it gets spent
+badly: re-reading files to rediscover what a catalog could have answered in one
+query, carrying every instruction for every task on every turn, scraping build
+scrollback for a pass/fail a structured envelope states outright. Wasted tokens
+are not just cost — they crowd out the context the actual problem needed, and
+quality degrades with them.
+
+Janet is a tooling platform built on one trade: **spend effort once, in tooling,
+so the agent spends tokens only on judgment.** Retrieval is ranked and reports its
+own truncation. Facts come from contracts and compilers instead of being
+plausibly guessed. Mechanical work is executed deterministically from a reviewed
+plan rather than performed token by token. Every failure path is designed to be
+loud, because a quiet failure costs more context to detect than any tool costs
+to run.
+
+The aim is not a faster agent — it is a place where a codebase can become its
+best self: correct by evidence rather than by confidence, with the agent's
+capacity pointed at the decisions that deserve it.
+
 ## What this is for
 
 Agents fail in characteristic ways: they summarise stale documents as if current,
