@@ -29,6 +29,9 @@ The aim is not a faster agent — it is a place where a codebase can become its
 best self: correct by evidence rather than by confidence, with the agent's
 capacity pointed at the decisions that deserve it.
 
+The name has a story, and it turned out to be a spec:
+[Janet — the origin story](notes/janet-origin.md).
+
 ## What this is for
 
 Agents fail in characteristic ways: they summarise stale documents as if current,

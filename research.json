@@ -20,7 +20,7 @@
       "section": "2",
       "summary": "Capability lives in per-topic skill files loaded on match, not one monolithic prompt; context is the scarce resource and instructions interfere.",
       "tags": ["skills", "context", "agent", "retrieval"],
-      "links": ["script.get-research", "file.research"]
+      "links": ["script.get-research", "file.research", "note.janet-origin"]
     },
     {
       "id": "pattern.thread-items",
@@ -960,6 +960,15 @@
         "The corpora live at V:\\repos (Penlight, kong) and C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua, not in any repo. Shallow clones - no history."
       ],
       "links": ["note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "note.razorgraph-cli", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
+    },
+
+    {
+      "id": "note.janet-origin",
+      "kind": "note",
+      "path": "notes\\janet-origin.md",
+      "summary": "The two-part origin story, written 2026-08-11 for the public repo. (1) Impatience: annoyance at watching the LLM regenerate the same scripts, repeat the same mistakes, and redo work -- the platform goal stated bluntly as cut turn length, cut turn count, waste as few tokens as possible; anything done twice becomes a script, anything rediscovered becomes a catalog entry. (2) The name: a badly behaving CLI whose UX bug stopped displaying results after hitting a weird state, forcing restart after restart, each one making the LLM relearn everything including Lori's tone -- which resembles the Good Place character who knows everything and judges nothing. Includes the not-affiliated-just-a-fan disclaimer, and the ending-as-aspiration mapping: the show's fix was not a kinder judge but a redesigned system where you loop with support until you grow, which is the platform's stance toward code. Linked from the README's Why section.",
+      "tags": ["documentation", "handoff", "format"],
+      "links": ["file.readme", "pattern.progressive-disclosure"]
     }
   ]
 }
