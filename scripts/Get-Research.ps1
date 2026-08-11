@@ -85,7 +85,8 @@ param(
     [switch]$Full,
     [switch]$Text,
     [switch]$Pretty,
-    [string]$Path
+    [string]$Path,
+    [switch]$NoTrace
 )
 
 Set-StrictMode -Version Latest
@@ -93,6 +94,37 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if (-not $Path) { $Path = Join-Path $repoRoot 'research.json' }
+
+# Leave a trace that the catalog was consulted, so Invoke-ResearchGuard.ps1 can
+# tell "asked and found nothing" from "never asked" -- the two look identical
+# from the outside, and only one of them is a mistake. Best-effort by design: a
+# retrieval tool must never fail because a temp file could not be written, and
+# the guard treats a missing trace as "not consulted" anyway.
+# -NoTrace is for the guard's own lookup, which must not clear the check it is
+# about to perform.
+if (-not $NoTrace) {
+    try {
+        $tracePath = Join-Path ([System.IO.Path]::GetTempPath()) 'janet-research-trace.json'
+        $asked = if ($Query) { $Query } elseif ($Tag) { "tag:$($Tag -join ',')" } elseif ($Id) { "id:$($Id -join ',')" } elseif ($Kind) { "kind:$Kind" } else { 'orientation' }
+
+        $recent = @()
+        if (Test-Path $tracePath) {
+            $existing = Get-Content $tracePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($existing.PSObject.Properties.Name -contains 'recent') { $recent = @($existing.recent) }
+        }
+
+        $recent = @(@([pscustomobject]@{ t = (Get-Date).ToUniversalTime().ToString('o'); q = $asked }) + $recent) |
+            Select-Object -First 10
+
+        [pscustomobject]@{
+            lastUtc = (Get-Date).ToUniversalTime().ToString('o')
+            recent  = $recent
+        } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $tracePath -Encoding UTF8
+    }
+    catch {
+        Write-Verbose "Research trace not written: $($_.Exception.Message)"
+    }
+}
 
 if (-not (Test-Path $Path)) { throw "Research graph not found: $Path" }
 

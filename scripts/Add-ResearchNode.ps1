@@ -48,6 +48,23 @@
 .PARAMETER Section
     For pattern nodes: the DESIGN-NOTES section number.
 
+.PARAMETER Json
+    The whole node as a JSON object, instead of the parameters above:
+    { id, kind, summary, path, tags[], links[], caveats[], params[], section }.
+
+    PREFER THIS when any text is long or contains quotes. A summary is prose --
+    apostrophes, quoted terms, code fragments -- and routing prose through
+    PowerShell's quoting rules is how it gets corrupted: this repo's own catalog
+    carried "assembly''s" for an hour because a single-quoted here-string doubled
+    an apostrophe on the way in, and nothing downstream could tell that from
+    intended text. JSON has exactly one escaping rule, the parser enforces it,
+    and a malformed blob fails loudly here rather than writing damaged prose.
+    Same reason New-TextFile.ps1 offers -Base64.
+
+.PARAMETER JsonPath
+    A file containing that same JSON object, for content too large or too
+    quote-heavy to pass on a command line at all.
+
 .PARAMETER GraphPath
     Graph file to modify. Defaults to research.json in the repo root.
 
@@ -59,29 +76,52 @@
         -NodePath 'scripts\New-Thing.ps1' -Summary 'Does the thing.' -Tags files,encoding
 
 .EXAMPLE
+    # Prose with quotes in it: pass the blob, not eleven quoted parameters.
+    & "$env:JanetBase\scripts\Add-ResearchNode.ps1" -Json @'
+    { "id": "note.finding", "kind": "note", "path": "notes\\finding.md",
+      "summary": "The parser's \"strict\" mode isn't.", "tags": ["parsing"] }
+'@
+
+.EXAMPLE
     & "$env:JanetBase\scripts\Add-ResearchNode.ps1" -Id note.some-finding -Kind note `
         -NodePath 'notes\some-finding.md' -Summary 'What I learned.' -DryRun
 #>
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Fields')]
 param(
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory, ParameterSetName = 'Fields')]
     [string]$Id,
 
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory, ParameterSetName = 'Fields')]
     [ValidateSet('script', 'pattern', 'note', 'file', 'skill')]
     [string]$Kind,
 
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory, ParameterSetName = 'Fields')]
     [string]$Summary,
 
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory, ParameterSetName = 'Fields')]
     [string]$NodePath,
 
+    [Parameter(ParameterSetName = 'Fields')]
     [string[]]$Tags = @(),
+
+    [Parameter(ParameterSetName = 'Fields')]
     [string[]]$Links = @(),
+
+    [Parameter(ParameterSetName = 'Fields')]
     [string[]]$Caveats = @(),
+
+    [Parameter(ParameterSetName = 'Fields')]
     [string[]]$ScriptParams = @(),
+
+    [Parameter(ParameterSetName = 'Fields')]
     [string]$Section,
+
+    [Parameter(Mandatory, ParameterSetName = 'Json')]
+    [string]$Json,
+
+    [Parameter(Mandatory, ParameterSetName = 'JsonFile')]
+    [string]$JsonPath,
+
     [string]$GraphPath,
     [switch]$DryRun,
     [switch]$Text
@@ -89,6 +129,72 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($PSCmdlet.ParameterSetName -ne 'Fields') {
+    $rawJson = if ($PSCmdlet.ParameterSetName -eq 'JsonFile') {
+        if (-not (Test-Path -LiteralPath $JsonPath)) { throw "JSON file not found: $JsonPath" }
+        Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8
+    }
+    else { $Json }
+
+    try { $blob = $rawJson | ConvertFrom-Json }
+    catch { throw "The node JSON does not parse: $($_.Exception.Message)" }
+
+    if ($null -eq $blob -or $blob -isnot [pscustomobject]) {
+        throw 'The node JSON must be a single object: { "id": ..., "kind": ..., "summary": ..., "path": ... }'
+    }
+
+    # Strict mode turns a missing property into a terminating error, so every
+    # read goes through here -- an optional field being absent is normal input,
+    # not a failure.
+    function Get-BlobField {
+        param([pscustomobject]$Blob, [string]$Name)
+        if ($Blob.PSObject.Properties.Name -contains $Name) { return $Blob.$Name }
+        return $null
+    }
+
+    # Read and validate into locals FIRST. A parameter's [ValidateSet] fires on
+    # every assignment to that variable, not just on binding, so assigning an
+    # empty kind here would surface as PowerShell's validation error instead of
+    # the message naming which fields the blob is missing.
+    $blobId = [string](Get-BlobField $blob 'id')
+    $blobKind = [string](Get-BlobField $blob 'kind')
+    $blobSummary = [string](Get-BlobField $blob 'summary')
+    $blobPath = [string](Get-BlobField $blob 'path')
+
+    $missing = @()
+    foreach ($pair in @{ id = $blobId; kind = $blobKind; summary = $blobSummary; path = $blobPath }.GetEnumerator()) {
+        if ([string]::IsNullOrWhiteSpace($pair.Value)) { $missing += $pair.Key }
+    }
+    if ($missing.Count -gt 0) {
+        throw "The node JSON is missing required field(s): $(($missing | Sort-Object) -join ', '). Required: id, kind, summary, path."
+    }
+
+    $validKinds = @('script', 'pattern', 'note', 'file', 'skill')
+    if ($validKinds -notcontains $blobKind) {
+        throw "Unknown kind '$blobKind'. Valid kinds: $($validKinds -join ', ')."
+    }
+
+    $Id = $blobId
+    $Kind = $blobKind
+    $Summary = $blobSummary
+    $NodePath = $blobPath
+
+    # @($null) is an array holding one null, which serialises as [""] and writes
+    # an empty tag into the file. An absent list must stay empty.
+    function Get-BlobList {
+        param([pscustomobject]$Blob, [string]$Name)
+        $value = Get-BlobField $Blob $Name
+        if ($null -eq $value) { return , @() }
+        return , @(@($value) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ })
+    }
+
+    $Tags = Get-BlobList $blob 'tags'
+    $Links = Get-BlobList $blob 'links'
+    $Caveats = Get-BlobList $blob 'caveats'
+    $ScriptParams = Get-BlobList $blob 'params'
+    $Section = [string](Get-BlobField $blob 'section')
+}
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if (-not $GraphPath) { $GraphPath = Join-Path $repoRoot 'research.json' }

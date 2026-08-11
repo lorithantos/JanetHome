@@ -53,6 +53,24 @@
     Field names to delete from the node entirely, e.g. -Remove caveats. Cannot remove
     id, kind, path, or summary.
 
+.PARAMETER Json
+    The changes as a JSON object -- { id, summary, tags[], caveats[], ... } --
+    instead of the parameters above. Only the fields present are changed, so it
+    is a patch, not a replacement of the node.
+
+    PREFER THIS for prose. A summary is written text, and PowerShell's quoting
+    rules mangle written text: this catalog carried "assembly''s" because a
+    single-quoted here-string doubled an apostrophe on the way in, and no
+    downstream check could tell corruption from intent. JSON has one escaping
+    rule and the parser enforces it.
+
+    -Id may be given either as a parameter or as the blob's "id"; the parameter
+    wins if both appear.
+
+.PARAMETER JsonPath
+    A file holding that same JSON object, for text too large or quote-heavy to
+    put on a command line.
+
 .PARAMETER GraphPath
     Graph file to modify. Defaults to research.json in the repo root.
 
@@ -79,7 +97,6 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
     [string]$Id,
 
     [string]$Summary,
@@ -94,6 +111,9 @@ param(
     [string[]]$Caveats,
     [string[]]$ScriptParams,
 
+    [string]$Json,
+    [string]$JsonPath,
+
     [switch]$Append,
     [string[]]$Remove = @(),
     [string]$GraphPath,
@@ -103,6 +123,67 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($Json -and $JsonPath) { throw 'Give -Json or -JsonPath, not both.' }
+
+if ($Json -or $JsonPath) {
+    $rawJson = if ($JsonPath) {
+        if (-not (Test-Path -LiteralPath $JsonPath)) { throw "JSON file not found: $JsonPath" }
+        Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8
+    }
+    else { $Json }
+
+    try { $patch = $rawJson | ConvertFrom-Json }
+    catch { throw "The patch JSON does not parse: $($_.Exception.Message)" }
+
+    if ($null -eq $patch -or $patch -isnot [pscustomobject]) {
+        throw 'The patch JSON must be a single object, e.g. { "id": "script.foo", "summary": "..." }'
+    }
+
+    $present = $patch.PSObject.Properties.Name
+
+    # Only fields the blob actually carries are touched. Everything else keeps
+    # whatever the parameters said, or stays unset -- a patch, not a template
+    # that blanks the fields it forgot to mention.
+    #
+    # Each one is registered in PSBoundParameters as well as assigned, because
+    # "was this field asked for" is decided downstream by ContainsKey, not by
+    # the variable having a value -- that is what distinguishes clearing a field
+    # from leaving it alone. Assigning only the variable applies nothing at all,
+    # silently: the first run of this patch path reported 0 changes and wrote
+    # nothing while claiming success.
+    function Set-Patched {
+        param([string]$Name, $Value)
+        Set-Variable -Name $Name -Value $Value -Scope 1
+        $PSCmdlet.MyInvocation.BoundParameters[$Name] = $Value
+    }
+
+    if ($present -contains 'id' -and -not $Id) { $Id = [string]$patch.id }
+    if ($present -contains 'summary') { Set-Patched 'Summary' ([string]$patch.summary) }
+    if ($present -contains 'path') { Set-Patched 'NodePath' ([string]$patch.path) }
+    if ($present -contains 'section') { Set-Patched 'Section' ([string]$patch.section) }
+
+    if ($present -contains 'kind') {
+        $patchKind = [string]$patch.kind
+        $validKinds = @('script', 'pattern', 'note', 'file', 'skill')
+        if ($validKinds -notcontains $patchKind) {
+            throw "Unknown kind '$patchKind'. Valid kinds: $($validKinds -join ', ')."
+        }
+        Set-Patched 'Kind' $patchKind
+    }
+
+    # @($null) holds one null and would write an empty string into the array.
+    foreach ($pair in @(@{ Field = 'tags'; Var = 'Tags' }, @{ Field = 'links'; Var = 'Links' },
+            @{ Field = 'caveats'; Var = 'Caveats' }, @{ Field = 'params'; Var = 'ScriptParams' })) {
+        if ($present -notcontains $pair.Field) { continue }
+        $values = @(@($patch.($pair.Field)) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                ForEach-Object { [string]$_ })
+        Set-Patched $pair.Var $values
+    }
+}
+
+if (-not $Id) { throw 'An id is required: pass -Id, or include "id" in the JSON.' }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if (-not $GraphPath) { $GraphPath = Join-Path $repoRoot 'research.json' }

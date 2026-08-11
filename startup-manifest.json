@@ -70,8 +70,13 @@
       "why": "A broken contract stops the session rather than degrading it quietly."
     },
     {
-      "text": "ADVISORY: graph first, narrative second.",
-      "why": "Query a semantic model for the narrowest slice that answers the question; read source only to spot-check the claims that matter (DESIGN-NOTES section 4)."
+      "text": "ENFORCED: research first -- ask the catalog before building a tool or hand-rolling a technique.",
+      "why": "A PreToolUse hook denies Write of a NEW .ps1 into a scripts directory unless Get-Research.ps1 has run recently, and the denial arrives with the closest existing nodes already listed. Written 2026-08-11 after Get-AssemblyApi.ps1 was authored while Get-ApiDoc.ps1 sat in the catalog answering the same question -- nothing was violated, because until now the manifest explained HOW to query the catalog and never said TO. Advisory would not have covered it: 'I only need one type name' is exactly the rationalisation the edit guard was written about.",
+      "enforcedBy": "scripts\\Invoke-ResearchGuard.ps1"
+    },
+    {
+      "text": "ADVISORY: graph first, narrative second -- once you know WHAT you are building.",
+      "why": "Query a semantic model for the narrowest slice that answers the question; read source only to spot-check the claims that matter (DESIGN-NOTES section 4). This is a technique for working inside a problem, and it ranks BELOW research-first: graphing tells you how the code you are about to touch fits together, while the catalog tells you whether to touch it at all. Reaching for the graph -- or worse, for grep -- before asking what already exists is the expensive order."
     },
     {
       "text": "ADVISORY: subagent prompts for code analysis must carry explicit RazorGraph instructions -- tool names to load via ToolSearch, the graphId or saved-graph path, and the graph-first rule itself.",
