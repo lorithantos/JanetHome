@@ -60,13 +60,21 @@ below):
 Constraint satisfaction rather than lookup -- the index-array move again
 (don't fetch the answer, arrange the data so consistency produces it).
 
-**Why this beats the RTTI route.** MSVC does carry a Complete Object
-Locator at `vtable[-1]`, whose `offset` field would hand you step 3
-directly. But RTTI is frequently compiled out (`/GR-`), and every
-COL-based tool goes blind on those images. Vftable SYMBOLS are emitted
-regardless, so the alignment method keeps working where the documented
-shortcut fails. Choosing the artifact that is always present over the
-metadata that is usually present is the whole lesson, twice over.
+**Why it beats the RTTI route -- and how it got there.** MSVC does carry a
+Complete Object Locator at `vtable[-1]`, whose `offset` field would hand
+you step 3 directly. Lori did not reject that route; she did not know it
+existed, and derived the method from experience and experimentation
+instead ("stunned that it worked as well as it did"). That ignorance is
+why the result is more robust: with no shortcut visible she had to build
+on what is unconditionally present -- vftable symbols and layout
+consistency -- rather than on optional metadata. RTTI is frequently
+compiled out (`/GR-`) and every COL-based tool goes blind on those
+images; the alignment method keeps working.
+
+The transferable form: when no documented shortcut is available, the
+solution you are forced to build from invariants often outlives the
+shortcut. Reaching for the convenience first can cost you the more
+general answer.
 
 Known rare failure: `/OPT:ICF` folds byte-identical vtables, so unrelated
 types with identical virtual signatures collapse to one symbol and the

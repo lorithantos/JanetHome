@@ -41,7 +41,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -931,7 +931,19 @@
         "Two independent instances from the same author: the ECX/prolog walk (arguments) and the vtable-symbol + layout-alignment walk (types). The rule indicts plausible readings, not tools: the display is usually truthful about SOMETHING (the register now, the static type, the last settle) -- the lie is in the question you think it answers. Meta-caveat: the note's vtable section was first drafted with the WRONG mechanism (RTTI/COL) and corrected by Lori; verify technique with whoever built it."
       ],
       "tags": ["debugging", "crash-analysis", "tooling", "war-story", "windbg"],
-      "links": ["note.build-retrospective", "pattern.manifest-startup"]
+      "links": ["note.build-retrospective", "pattern.manifest-startup", "note.census-the-population"]
+    },
+
+    {
+      "id": "note.census-the-population",
+      "kind": "note",
+      "path": "notes\\census-the-population.md",
+      "summary": "Census the population; the anomaly announces itself. When one instance will not explain itself, classify every instance you can reach and sort by frequency -- over-representation is counted, not deduced, and needs no theory of the bug. Corollaries: the classifier must be a marker present on EVERY member (the byproduct nobody can turn off), and absence is a finding (a count of zero is invisible to instance inspection). Origin: a WinINet leak found by running a per-object vtable type-recovery extension across the whole heap and tallying -- thousands of copies of one structure, turning \"memory is growing\" into a type name and therefore an owner; the vfptr is the only self-describing marker in a native C++ heap, which managed devs later got as !dumpheap -stat. WHEN: memory growth with no obvious owner, a dump that will not explain itself, a query returning suspiciously empty results, any \"I do not know what I am looking for\" moment -- count first, inspect second.",
+      "tags": ["debugging", "crash-analysis", "war-story", "retrieval", "graph-first"],
+      "caveats": [
+        "The census is only as honest as its classifier: a marker that non-polymorphic types (or unextracted node kinds) lack will undercount silently, which produces the absence-as-finding trap in reverse -- a zero that means \"not classifiable\" rather than \"not there\". State what the classifier can see."
+      ],
+      "links": ["note.debugger-displays-are-claims", "pattern.graph-first-analysis"]
     }
   ]
 }
