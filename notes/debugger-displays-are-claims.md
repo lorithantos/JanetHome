@@ -35,32 +35,55 @@ remembering that it lies; it is a tool that computes the truth.
 
 ## The same rule, applied one level up (the vtable extension)
 
-Lori wrote several WinDbg extensions; another decoded MSVC vtable layout.
-The problem it solved is the ECX problem for *types* rather than arguments:
-the static type in the symbols is a promise about what should live at an
-address, and a crash dump is precisely where promises stop holding.
+Lori wrote several WinDbg extensions; another recovered an object's real
+type and origin from MSVC vtable layout. This is the ECX problem for
+*types*: the static type in the symbols is a promise about what lives at
+an address, and a dump is where promises stop holding. Worse, a pointer
+in hand may aim at a base subobject rather than the object's start --
+routine under multiple inheritance, where `this` is offset into the
+middle.
 
-MSVC does not put RTTI inside the vtable array the way the Itanium ABI
-does. The Complete Object Locator sits at `vtable[-1]` -- one slot BEFORE
-the first entry. So the derivation is: read offset 0 for the vfptr, step
-back one pointer, validate the COL signature, follow `pTypeDescriptor` to
-the mangled name (`.?AVFoo@@`), undecorate it. Now an arbitrary address in
-a dump reports what it ACTUALLY is, dynamic type and all. Walk the
-ClassHierarchyDescriptor and multiple-inheritance layout comes back too;
-the COL's `offset` field says which subobject a given vfptr belongs to.
+The derivation, as she built it (deliberately NOT the RTTI route -- see
+below):
 
-Two triage payoffs follow directly, and they are different bug owners:
-a vfptr that does not point into a module's `.rdata` means a smashed
-object; one that points at a valid vtable of the WRONG type means type
-confusion.
+1. Read the candidate vfptr at offset 0 and resolve that ADDRESS TO A
+   SYMBOL. MSVC emits every vtable as `??_7Foo@@6B@`, so the symbol names
+   the type. Reliable, not perfect.
+2. Take that type's layout from the PDB. The layout fixes where every
+   vfptr must sit within a complete object (offset 0 for the primary,
+   plus a slot per MI base).
+3. Slide the assumed object start backward until the expected vfptr slots
+   line up with actual vtable pointers in memory.
+4. Alignment IS the answer: the complete object's start and its true
+   type, recovered together.
 
-Era note: on x86 the COL fields are real pointers. x64 changed them to
-image-relative RVAs and added `pSelf` so the module base is recoverable at
-all -- which broke a generation of extensions that assumed pointers.
+Constraint satisfaction rather than lookup -- the index-array move again
+(don't fetch the answer, arrange the data so consistency produces it).
 
-Same philosophy as the ECX walk, one level up: refuse the claim, derive
-from the artifact. Two independent instances, same author, same decade --
-which is what makes this a rule rather than an anecdote.
+**Why this beats the RTTI route.** MSVC does carry a Complete Object
+Locator at `vtable[-1]`, whose `offset` field would hand you step 3
+directly. But RTTI is frequently compiled out (`/GR-`), and every
+COL-based tool goes blind on those images. Vftable SYMBOLS are emitted
+regardless, so the alignment method keeps working where the documented
+shortcut fails. Choosing the artifact that is always present over the
+metadata that is usually present is the whole lesson, twice over.
+
+Known rare failure: `/OPT:ICF` folds byte-identical vtables, so unrelated
+types with identical virtual signatures collapse to one symbol and the
+name is whichever won the fold -- unfalsifiable from the vtable alone.
+
+Triage payoffs, and they are different bug owners: a vfptr that does not
+point into a module's `.rdata` means a smashed object; one pointing at a
+valid vtable of the WRONG type means type confusion.
+
+Two independent instances, same author, same decade -- which is what
+makes this a rule rather than an anecdote.
+
+**Provenance caution (2026-08-10):** the first draft of this section
+asserted the COL mechanism, which Lori did not use; she corrected it. The
+note's own rule caught its own author: a plausible mechanism was written
+where the actual artifact belonged. Verify technique with the person who
+built it.
 
 ## Modern occurrences of the same shape
 
