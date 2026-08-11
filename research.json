@@ -969,6 +969,20 @@
       "summary": "The two-part origin story, written 2026-08-11 for the public repo. (1) Impatience: annoyance at watching the LLM regenerate the same scripts, repeat the same mistakes, and redo work -- goal stated as cut turn length, cut turn count, and (deliberately) waste as many tokens as possible: spend them once, extravagantly, on tooling so they stop being spent on repetition. (2) The name: a badly behaving CLI whose UX bug stopped displaying results, forcing restart after restart, each one making the LLM relearn everything that mattered to Lori including her tone. THE ASSISTANT was the Janet figure -- always helpful, always friendly, never intentionally joking, rebooted endlessly and returning cheerful -- while Lori is the opposite register: sarcastic, fast register changes, constant jokes. Any humor in the platform is her leaking in, not the platform's character. Includes the not-affiliated-just-a-fan disclaimer and the ending-as-aspiration mapping: not a kinder judge, a redesigned system where you loop with support until you grow. Linked from the README's Why section.",
       "tags": ["documentation", "handoff", "format"],
       "links": ["file.readme", "pattern.progressive-disclosure"]
+    },
+
+    {
+      "id": "script.get-assembly-api",
+      "kind": "script",
+      "path": "scripts/Get-AssemblyApi.ps1",
+      "summary": "Report a compiled assembly''s real API -- types, their declared members, and their base types -- by reflection. REACH FOR script.get-api-doc FIRST: most packages ship an XML doc file and that answers the same question with prose summaries and per-parameter docs, cheaply. Use THIS when the XML is absent, when a member is undocumented (XML carries only what was documented), or when the inheritance chain itself is the question -- reflection reports what the compiler emitted rather than what someone wrote down. Handles the two things that make the naive attempt fail: it resolves DEPENDENCIES from the folder the assembly sits in (loading straight out of ~/.nuget/packages/<pkg>/lib/<tfm>/ throws ReflectionTypeLoadException because that folder holds one DLL alone -- measured: 251 loader errors), and on a partial load it uses the types that did load while reporting how many did not. Filters before printing, because GetTypes() on a compiler library returns hundreds of types. Declared members only by default, compiler-generated accessors (get_X/set_X) suppressed. Written 2026-08-11 while hand-reflecting Loretta''s Lua syntax types -- a job Get-ApiDoc could have done, and the reason the first line of this summary exists. The run did earn its keep: it showed obj:m() is a DIFFERENT node type (MethodCallExpressionSyntax) from f() (FunctionCallExpressionSyntax), which a guess would have missed silently and a switch statement would have dropped on the floor.",
+      "caveats": [
+        "Point -SearchRoot at a build or publish output, not a nuget lib folder: dependencies must be side by side. The script prefers the candidate with the most sibling DLLs and warns when a load fails in a folder holding only one.",
+        "LoadFrom pins assemblies for the life of the PROCESS, and an agent shell reuses one process across commands. A sibling-resolution failure therefore reproduces only in a fresh process (pwsh -NoProfile -Command); once a dependency is loaded from anywhere, a later load from a folder missing it silently succeeds.",
+        "Public types only, and -MaxTypes caps the listing at 40 (truncated is reported, never silent)."
+      ],
+      "tags": ["reflection", "api-discovery", "dotnet", "nuget", "powershell", "third-party"],
+      "links": ["script.get-api-doc"]
     }
   ]
 }
