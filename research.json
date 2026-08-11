@@ -926,11 +926,11 @@
       "id": "note.debugger-displays-are-claims",
       "kind": "note",
       "path": "notes\\debugger-displays-are-claims.md",
-      "summary": "Debugger displays are claims with validity windows: trust a convention only at its guaranteed boundary, derive ground truth from what was actually emitted, and automate the derivation into a tool. Earned on Watson (~2005-2008): __thiscall ECX holds this only at the call boundary; optimized builds reuse the register and WinDbg displays the stale value, producing false this-was-null reports -- fixed by a WinDbg extension that walked the method prolog to the real spill site. WHEN: any debugging session where a display seems to answer the question directly -- a null this, a one-frame stack, a status banner, an optimized-code variable pane; ask what program point guaranteed that value and whether you are still there.",
-      "tags": ["debugging", "crash-analysis", "tooling", "war-story"],
+      "summary": "Debugger displays are claims with validity windows: trust a convention only at its guaranteed boundary, derive ground truth from what was actually emitted, and automate the derivation into a tool. Two Watson-era (~2005-2008) instances, both Lori's WinDbg extensions: (1) __thiscall ECX holds this only at the call boundary, optimized builds reuse the register, WinDbg displays the stale value -> false this-was-null reports; fixed by walking the method prolog to the real spill site. (2) MSVC hides the RTTI Complete Object Locator at vtable[-1], so an arbitrary dump address can be resolved to its ACTUAL dynamic type (and smashed-object vs type-confusion distinguished) rather than the static type the symbols promise. WHEN: any debugging session where a display seems to answer the question directly -- a null this, a wrong-looking type, a one-frame stack, a status banner, an optimized-code variable pane; ask what program point guaranteed that value and whether you are still there.",
       "caveats": [
-        "The rule indicts plausible readings, not tools: the display is usually truthful about SOMETHING (the register now, the last settle) -- the lie is in the question you think it answers."
+        "Two independent instances from the same author: the ECX/prolog walk (arguments) and the MSVC vtable/COL walk (types). The rule indicts plausible readings, not tools: the display is usually truthful about SOMETHING (the register now, the static type, the last settle) -- the lie is in the question you think it answers."
       ],
+      "tags": ["debugging", "crash-analysis", "tooling", "war-story", "windbg"],
       "links": ["note.build-retrospective", "pattern.manifest-startup"]
     }
   ]

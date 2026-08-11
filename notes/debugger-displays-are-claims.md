@@ -33,6 +33,35 @@ After enough false reports, that derivation became a WinDbg extension that
 walked the prolog automatically. The fix for a display that lies is not
 remembering that it lies; it is a tool that computes the truth.
 
+## The same rule, applied one level up (the vtable extension)
+
+Lori wrote several WinDbg extensions; another decoded MSVC vtable layout.
+The problem it solved is the ECX problem for *types* rather than arguments:
+the static type in the symbols is a promise about what should live at an
+address, and a crash dump is precisely where promises stop holding.
+
+MSVC does not put RTTI inside the vtable array the way the Itanium ABI
+does. The Complete Object Locator sits at `vtable[-1]` -- one slot BEFORE
+the first entry. So the derivation is: read offset 0 for the vfptr, step
+back one pointer, validate the COL signature, follow `pTypeDescriptor` to
+the mangled name (`.?AVFoo@@`), undecorate it. Now an arbitrary address in
+a dump reports what it ACTUALLY is, dynamic type and all. Walk the
+ClassHierarchyDescriptor and multiple-inheritance layout comes back too;
+the COL's `offset` field says which subobject a given vfptr belongs to.
+
+Two triage payoffs follow directly, and they are different bug owners:
+a vfptr that does not point into a module's `.rdata` means a smashed
+object; one that points at a valid vtable of the WRONG type means type
+confusion.
+
+Era note: on x86 the COL fields are real pointers. x64 changed them to
+image-relative RVAs and added `pSelf` so the module base is recoverable at
+all -- which broke a generation of extensions that assumed pointers.
+
+Same philosophy as the ECX walk, one level up: refuse the claim, derive
+from the artifact. Two independent instances, same author, same decade --
+which is what makes this a rule rather than an anecdote.
+
 ## Modern occurrences of the same shape
 
 - A single-frame call stack (stack walker gave up politely) read as "there
