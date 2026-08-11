@@ -1,0 +1,127 @@
+<#
+.SYNOPSIS
+    Query the drive-survey inventory: what is on which drive, what was never
+    examined, and what exists on one volume but not another.
+
+.DESCRIPTION
+    Thin contract surface over the DriveSurvey CLI (D:\Repos\DriveSurvey), which
+    owns the actual walking, identity resolution, and SQLite store. This wrapper
+    exists so sessions reach the inventory the same way they reach everything
+    else in this repo, with the same output conventions.
+
+    The tool is READ-ONLY against surveyed volumes and never deletes anything.
+    Volume identity keys on the NTFS boot-sector serial, which travels with the
+    data across docks and letter changes; a docked drive that cannot prove which
+    physical drive it is (the Sabrent bridge blanks hardware serials) is refused
+    rather than guessed at -- answer the refusal with -Nickname.
+
+    Output is the CLI's JSON envelope on the success stream by default; -Text
+    passes through the human-readable rendering instead.
+
+.PARAMETER Command
+    volumes      every volume ever seen, online or not, plus attached disks that
+                 mount no volume (a clone Windows silently declined to mount)
+    scan         index one volume (requires -Volume)
+    tree         heaviest subtrees of a volume (requires -Volume)
+    compare      what exists on one side and not the other (requires -Volume
+                 and -Against)
+    blind-spots  what the last scan did not look inside (requires -Volume)
+    check        reconciliation: indexed + blind-spot bytes vs the volume's own
+                 used figure (requires -Volume, volume must be mounted)
+
+.PARAMETER Volume
+    Drive letter ("F:"), NTFS serial ("6A5D-761C"), or nickname. For scan, only
+    a mounted drive letter works; the query commands accept any identifier and
+    answer for offline drives too.
+
+.PARAMETER Against
+    The right-hand volume for compare.
+
+.PARAMETER Nickname
+    Operator identity assertion for scan, answering the clone gate: "this drive
+    in the dock is photo-backup-b". Only needed when the hardware cannot say.
+
+.PARAMETER Depth
+    Subtree depth for tree (1 or 2; default 1).
+
+.PARAMETER Text
+    Human-readable output instead of JSON.
+
+.PARAMETER Pretty
+    Indented JSON.
+
+.EXAMPLE
+    & "$env:JanetBase\scripts\Get-DriveSurvey.ps1" volumes
+
+.EXAMPLE
+    & "$env:JanetBase\scripts\Get-DriveSurvey.ps1" compare -Volume V: -Against F: -Text
+
+.EXAMPLE
+    & "$env:JanetBase\scripts\Get-DriveSurvey.ps1" scan -Volume F: -Nickname photo-backup-b
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory, Position = 0)]
+    [ValidateSet('volumes', 'scan', 'tree', 'compare', 'blind-spots', 'check')]
+    [string]$Command,
+
+    [string]$Volume,
+    [string]$Against,
+    [string]$Nickname,
+    [int]$Depth = 1,
+    [switch]$Text,
+    [switch]$Pretty
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# The exe is resolved fresh each call rather than pinned, so a rebuild of the
+# survey tool is picked up without touching this wrapper. Release preferred;
+# Debug accepted so a mid-development session still works.
+$surveyRoot = 'D:\Repos\DriveSurvey\src\DriveSurvey.Cli\bin'
+$exe = @(
+    Join-Path $surveyRoot 'Release\net10.0-windows\survey.exe'
+    Join-Path $surveyRoot 'Debug\net10.0-windows\survey.exe'
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $exe) {
+    throw "survey.exe not found under $surveyRoot -- build D:\Repos\DriveSurvey\DriveSurvey.slnx first"
+}
+
+$surveyArgs = [System.Collections.Generic.List[string]]::new()
+$surveyArgs.Add($Command)
+
+switch ($Command) {
+    'compare' {
+        if (-not $Volume -or -not $Against) {
+            throw 'compare needs -Volume and -Against (letter, serial, or nickname)'
+        }
+        $surveyArgs.Add($Volume)
+        $surveyArgs.Add($Against)
+    }
+    'volumes' { }
+    default {
+        if (-not $Volume) { throw "$Command needs -Volume" }
+        $surveyArgs.Add('--volume')
+        $surveyArgs.Add($Volume)
+    }
+}
+
+if ($Nickname) { $surveyArgs.Add('--nickname'); $surveyArgs.Add($Nickname) }
+if ($Command -eq 'tree') { $surveyArgs.Add('--depth'); $surveyArgs.Add([string]$Depth) }
+if ($Text) { $surveyArgs.Add('--text') }
+if ($Pretty) { $surveyArgs.Add('--pretty') }
+
+# Progress rides stderr by design (stdout stays pure JSON); PowerShell would
+# dress those lines up as ErrorRecords, so route the streams explicitly.
+& $exe @surveyArgs 2>&1 | ForEach-Object {
+    if ($_ -is [System.Management.Automation.ErrorRecord]) {
+        Write-Warning $_.Exception.Message
+    }
+    else {
+        $_
+    }
+}
+
+exit $LASTEXITCODE

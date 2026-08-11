@@ -792,11 +792,11 @@
       "path": "scripts\\git.ps1",
       "summary": "Resolves git.exe and forwards all arguments to it. git is not on PATH in every shell this repo is used from -- an agent session does not load the user profile that adds it -- and Visual Studio bundles a copy, so this finds it once rather than each caller rediscovering the path. Run with no arguments to get the resolved path on the SUCCESS stream, so \"$g = & .\\git.ps1\" actually captures it; the RetirementCore counterpart uses Write-Host, which goes to the information stream and silently yields nothing. Git's own \"-C <path>\" forwards correctly (verified), which is how to operate on another repo without changing directory. Targets 5.1 as well as 7, since a shim that resolves a tool is exactly what gets run from whatever shell is open.",
       "params": ["GitArgs"],
-      "tags": ["git", "powershell", "entrypoint"],
       "caveats": [
         "The candidate list leads with this machine's VS 18 Enterprise path. On another machine that misses and the fallback is a recursive Get-ChildItem over the Visual Studio install root, which is slow but only reached once per invocation."
       ],
-      "links": []
+      "tags": ["git", "powershell", "entrypoint"],
+      "links": ["script.get-drive-survey"]
     },
 
     {
@@ -1004,6 +1004,20 @@
       ],
       "tags": ["hooks", "enforcement", "research", "retrieval", "powershell"],
       "links": ["script.get-research", "script.invoke-edit-guard", "pattern.manifest-startup"]
+    },
+
+    {
+      "id": "script.get-drive-survey",
+      "kind": "script",
+      "path": "scripts\\Get-DriveSurvey.ps1",
+      "summary": "Queries the DriveSurvey inventory (D:\\Repos\\DriveSurvey): volumes ever seen including offline and silently-unmounted clone disks, sized subtrees, blind spots, volume-vs-volume coverage compare, and the indexed-vs-used reconciliation check.",
+      "params": ["Command", "Volume", "Against", "Nickname", "Depth", "Text", "Pretty"],
+      "caveats": [
+        "Read-only against surveyed volumes and never deletes; scan refuses a docked drive that cannot prove which physical drive it is (the Sabrent bridge blanks hardware serials) -- answer with -Nickname.",
+        "compare matches by name + size until phase 2 adds content hashes; it finds missing coverage reliably but over-trusts renamed same-size files."
+      ],
+      "tags": ["drives", "inventory", "backup", "storage", "coverage"],
+      "links": ["script.git", "script.invoke-dotnet-check"]
     }
   ]
 }
