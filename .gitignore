@@ -7,3 +7,8 @@ thread-stack.json
 # Last session brief, written by Invoke-JanetStartup.ps1. Machine-local and
 # regenerated on every run; the manifest is the source of truth, not this.
 .janet/
+
+# Editor and script backups: .bak, and the dated .bak-YYYY-MM-DD form that tools
+# here write. A backup is a copy of something git already versions, so committing
+# one publishes a stale duplicate of a file whose real history is a log away.
+*.bak*
