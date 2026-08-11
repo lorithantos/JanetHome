@@ -27,6 +27,12 @@
     %LOCALAPPDATA%\Janet\dotnet-check, keyed by target + configuration; only
     a successful build overwrites it.
 
+    In a repository that carries a code graph, a successful build also
+    refreshes it when source has outrun it -- because the check loop is
+    exactly what would otherwise bypass the repo's own build script and leave
+    an agent querying a stale graph. Staleness is always REPORTED even where
+    it cannot be fixed, since a confidently stale graph is worse than none.
+
     Output is JSON by default (the consumer is a model); -Text is the human
     opt-in. The envelope stamps 'contract' so a reader can detect drift: if
     the number differs from what the research node documents, or fields
@@ -54,6 +60,11 @@
     warnings replay only when restore actually runs). The diff is keyed on
     file|code|message -- a warning that merely moved lines is not new; the
     same message twice in one file merges to one key.
+
+.PARAMETER NoGraph
+    Skip the code-graph refresh. Only relevant in repositories that carry the
+    graph convention (a .graph directory and scripts\graph.ps1); elsewhere
+    there is nothing to skip.
 
 .PARAMETER Text
     Human-readable output instead of JSON.
@@ -83,6 +94,13 @@
     failures[]:    { test, message, stack[] } -- message verbatim and whole.
     tests is null when -NoTests was passed or the build failed; which one is
     visible from build.succeeded.
+    graph:         null when the repository has no graph convention at all
+                   (most of them) -- "not applicable", the same reading as a
+                   null tests. Otherwise { path, builtAt, newestSourceAt,
+                   status, refreshed, canRefresh } where status is current |
+                   stale | absent | failed. 'stale' with canRefresh false
+                   means the repo has a graph but no way to rebuild it here;
+                   trust it accordingly.
 
 .EXAMPLE
     & "$env:JanetBase\scripts\Invoke-DotnetCheck.ps1" -Target D:\Repos\RetirementCore
@@ -107,12 +125,15 @@ param(
     [switch]$NoTests,
     [string]$TestFilter,
     [switch]$New,
+    [switch]$NoGraph,
     [switch]$Text,
     [switch]$Pretty
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$script:ContractVersion = 3
 
 function Resolve-BuildTarget {
     param([string]$Given)
@@ -290,6 +311,133 @@ function Save-WarningBaseline {
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
+function Find-RepositoryRoot {
+    # The graph belongs to a repository, not to a project file: walk up from
+    # the build target until a .git directory appears.
+    param([string]$StartPath)
+
+    $current = Split-Path -Parent $StartPath
+
+    while ($current) {
+        if (Test-Path -LiteralPath (Join-Path $current '.git')) { return $current }
+
+        $parent = Split-Path -Parent $current
+        if ($parent -eq $current) { return $null }
+        $current = $parent
+    }
+
+    return $null
+}
+
+function Get-GraphState {
+    <#
+    Reports where the repository's code graph stands relative to its source.
+    Returns $null when the repository has no graph convention at all -- most
+    repositories -- so the field reads as "not applicable" rather than
+    "missing", the same way tests does.
+
+    Convention, deliberately owned by the REPOSITORY and merely honoured
+    here: a .graph directory holds the generated graph, and scripts\graph.ps1
+    regenerates it. Keeping the solution path, output path, and analyzer
+    resolution in the repo's own script is why this stays repo-agnostic.
+    #>
+    param([string]$RepositoryRoot)
+
+    # NOT '$null -eq': a [string] parameter converts $null to empty string on
+    # binding, so the null check never fires and Join-Path throws on ''. The
+    # caller genuinely passes null whenever the target sits outside a repo.
+    if ([string]::IsNullOrEmpty($RepositoryRoot)) { return $null }
+
+    $graphDirectory = Join-Path $RepositoryRoot '.graph'
+    $refreshScript = Join-Path $RepositoryRoot 'scripts\graph.ps1'
+    $hasDirectory = Test-Path -LiteralPath $graphDirectory
+    $hasScript = Test-Path -LiteralPath $refreshScript
+
+    if (-not $hasDirectory -and -not $hasScript) { return $null }
+
+    $graphFile = $null
+
+    if ($hasDirectory) {
+        $graphFile = Get-ChildItem -LiteralPath $graphDirectory -Filter *.json -File |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+    }
+
+    $newest = Get-NewestSourceWrite -RepositoryRoot $RepositoryRoot
+
+    $state = [ordered]@{
+        path           = $null -ne $graphFile ? $graphFile.FullName : $null
+        builtAt        = $null -ne $graphFile ? $graphFile.LastWriteTimeUtc.ToString('o') : $null
+        newestSourceAt = $null -ne $newest ? $newest.ToString('o') : $null
+        status         = 'absent'
+        refreshed      = $false
+        canRefresh     = $hasScript
+    }
+
+    if ($null -ne $graphFile) {
+        $outrun = $null -ne $newest -and $newest -gt $graphFile.LastWriteTimeUtc
+        $state.status = $outrun ? 'stale' : 'current'
+    }
+
+    return $state
+}
+
+function Get-NewestSourceWrite {
+    # Newest write across the sources a code graph would analyze. Build output
+    # is excluded: obj\ regenerates on every build and would make every graph
+    # look stale the moment it was written.
+    param([string]$RepositoryRoot)
+
+    $newest = $null
+
+    $files = Get-ChildItem -LiteralPath $RepositoryRoot -File -Recurse `
+        -Include *.cs, *.xaml, *.razor, *.cshtml -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '\\(bin|obj|\.git|\.graph)\\' }
+
+    foreach ($file in $files) {
+        if ($null -eq $newest -or $file.LastWriteTimeUtc -gt $newest) {
+            $newest = $file.LastWriteTimeUtc
+        }
+    }
+
+    return $newest
+}
+
+function Update-CodeGraph {
+    <#
+    Delegates to the repository's own graph script and reports what happened.
+    Never throws and never fails the check: a graph is a convenience, and the
+    repo script already treats a missing analyzer as a skip. Mirrors that
+    posture rather than second-guessing it.
+    #>
+    param([string]$RepositoryRoot, $State)
+
+    $refreshScript = Join-Path $RepositoryRoot 'scripts\graph.ps1'
+
+    try {
+        & $refreshScript -Quiet *> $null
+    }
+    catch {
+        $State.status = 'failed'
+        return
+    }
+
+    $graphFile = Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot '.graph') `
+        -Filter *.json -File -ErrorAction SilentlyContinue |
+        Sort-Object Length -Descending |
+        Select-Object -First 1
+
+    if ($null -eq $graphFile) {
+        $State.status = 'failed'
+        return
+    }
+
+    $State.path = $graphFile.FullName
+    $State.builtAt = $graphFile.LastWriteTimeUtc.ToString('o')
+    $State.status = 'current'
+    $State.refreshed = $true
+}
+
 function Read-TrxDirectory {
     # Returns { total, passed, failed, skipped, failures, assemblies } summed
     # over every TRX in the directory -- dotnet test writes one per project.
@@ -417,8 +565,6 @@ function Write-TextReport {
     }
 }
 
-$script:ContractVersion = 2
-
 $resolvedTarget = Resolve-BuildTarget -Given $Target
 
 $buildArguments = @($resolvedTarget, '--configuration', $Configuration, '-nologo')
@@ -494,6 +640,23 @@ if ($buildSucceeded -and -not $NoTests) {
     }
 }
 
+# The graph describes source structure, so a failed build is the one state
+# worth refusing to graph: the analyzer would either fail too or record a
+# tree that never compiled. Stale-only refresh keeps a tight edit loop from
+# paying for a graph nothing changed.
+$graph = Get-GraphState -RepositoryRoot (Find-RepositoryRoot -StartPath $resolvedTarget)
+
+$refreshWanted = $null -ne $graph -and
+    -not $NoGraph -and
+    $buildSucceeded -and
+    $graph.canRefresh -and
+    $graph.status -ne 'current'
+
+if ($refreshWanted) {
+    Update-CodeGraph `
+        -RepositoryRoot (Find-RepositoryRoot -StartPath $resolvedTarget) -State $graph
+}
+
 $succeeded = $buildSucceeded -and
     ($NoTests -or ($null -ne $tests -and $tests.succeeded))
 
@@ -504,6 +667,7 @@ $report = [ordered]@{
     succeeded     = $succeeded
     build         = $build
     tests         = $tests
+    graph         = $graph
 }
 
 if ($Text) {
