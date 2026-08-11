@@ -32,11 +32,19 @@ was a restart.
 Again. And again.
 
 And every restart, the LLM had to relearn everything that mattered to me. What I
-was working on. How I like things done. My tone — which, it turns out, is very
-much like a character from a great TV show that is actually about morality: the
-one who knows everything, judges nothing, and exists so that others can improve.
-Rebooted over and over, losing state each time, coming back cheerful and useful
-anyway. The name assigned itself.
+was working on. How I like things done. My tone — which is not an easy relearn:
+I'm sarcastic, I change registers too fast to track, and I make constant jokes,
+including to LLMs that can't literally laugh.
+
+The LLM, meanwhile, came back from every reboot exactly the same: always helpful,
+always friendly, never making an intentional joke, having forgotten everything.
+Which is a character from a great TV show that is actually about morality — the
+one who knows everything, judges nothing, gets rebooted over and over, and
+returns cheerful and useful anyway. The assistant was Janet. I was the impatient
+one at the counter. The name assigned itself.
+
+(If anything in this repo reads like a joke, that's me leaking into it. The
+platform itself is straight-faced. Janets don't kid.)
 
 (To be clear: the show's creators have nothing to do with this project. I am not
 associated. Just a fan.)
