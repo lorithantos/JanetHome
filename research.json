@@ -41,7 +41,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -550,7 +550,7 @@
         "Escape reports cite the thrower METHOD node, not the throw site: a throw authored in a .cshtml code block whose enclosing method is generated scaffolding (ExecuteAsync) still displays the .g.cs path even after f97edee - the node is correctly marked generated:true with generatedFrom and a compiledInto edge back to the page, but the mapped .cshtml line of the throw itself is not persisted on the edge. Persisting throw-site locations is the open follow-up."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping"]
     },
 
     {
@@ -586,7 +586,7 @@
         "Counts are regex over raw text - comments and string literals included, indicative not exact. Corpus = one personal app (ImageSelector, two versions of the same source) + nopCommerce (classic pole) + OrchardCore (bundled/TS pole). Selector-first and the @Url.Action finding hold at both poles; ESM/TS deferral survives but weakened - OrchardCore keeps sources outside wwwroot in Assets\\, so graph-sources-vs-graph-shipped is an open design question for bundled projects."
       ],
       "tags": ["code-analysis", "javascript", "razor", "research", "scoping"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping"]
     },
 
     {
@@ -849,7 +849,7 @@
         "build-solution gained --no-tests (20ff394, 2026-08-08): skips test projects BEFORE compiling (detection by test-framework metadata references), reported on stderr and in output, never silent. Coverage query modes (--uncovered, --covering-tests, --covered-methods) now exit 1 with an explanation on ANY test-less graph - including single-project builds, which previously returned empty coverage silently. The refusal is the report."
       ],
       "tags": ["code-analysis", "csharp", "roslyn", "cli", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping"]
     },
 
     {
@@ -897,12 +897,12 @@
       "kind": "note",
       "path": "notes\\razorgraph-cross-language-conversion.md",
       "summary": "Long-term target set 2026-08-09: \"convert this JavaScript into Razor\" - a JS semantic model comparable (as best as possible) against the C# side so LLM reasoning has a good chance of being CORRECT, not plausible. Key reframe: JS->Razor is TIER MIGRATION, not transpilation - the correctness question is \"does the page still honor every contract the surviving client code depends on\", and RazorGraph already models those contracts (DomSelectedBy, unboundSelectorIds, ViewDataReadBy, UrlGeneratedBy). Three verification planes: contract (graph diff over boundary edges - buildable today), structural (JS extractor emitting the shared BodyGraph IR + a RELAXED cross-language comparator with mismatch taxonomy - corresponds/diverges, never claims proof), behavioral (Morph-style side-by-side rendering, last). LLM proposes; planes grade; mismatch reports feed the next attempt. .NET coverage: Roslyn = C#+VB only; F# needs FSharp.Compiler.Service; IL (Cecil/System.Reflection.Metadata) is the language-blind floor at the cost of source fidelity. Ordered steps in the note; step 1 (contract-preservation graph diff) needs no new extraction.",
-      "tags": ["code-analysis", "javascript", "csharp", "razor", "refactoring", "research", "agent"],
       "caveats": [
         "The comparator plane must NEVER present correspondence as equivalence - cross-language has no shared compiler model, so the prover's exit-0 contract does not port; the honest output is scored correspondence plus a divergence list. Modelcode.ai's tests-only verification exists BECAUSE this limit is real for them everywhere; within-.NET it is only real across language boundaries.",
         "Step 3 (shared BodyGraph IR for JS) is gated on the formatVersion stamp from the parked visualization item - same serialized-contract concern, do not build a second consumer of an unversioned format."
       ],
-      "links": ["note.razorgraph-competitive-field", "note.razorgraph-borrow-list", "note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "pattern.graph-first-analysis"]
+      "tags": ["code-analysis", "javascript", "csharp", "razor", "refactoring", "research", "agent"],
+      "links": ["note.razorgraph-competitive-field", "note.razorgraph-borrow-list", "note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-lua-scoping"]
     },
 
     {
@@ -945,6 +945,21 @@
         "The census is only as honest as its classifier: a marker that non-polymorphic types (or unextracted node kinds) lack will undercount silently, which produces the absence-as-finding trap in reverse -- a zero that means \"not classifiable\" rather than \"not there\". State what the classifier can see."
       ],
       "links": ["note.debugger-displays-are-claims", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "note.razorgraph-lua-scoping",
+      "kind": "note",
+      "path": "notes\\razorgraph-lua-scoping.md",
+      "summary": "Scoping measurements for the RazorGraph Lua extractor (2026-08-10), taken before the parser or architecture were chosen. Census over Penlight (MIT, 115 files) and Kong (Apache-2.0, 1309 files): paren-less `require \"x\"` outnumbers `require(` roughly 2:1 in both (249/2497 vs 65/1370), so a regex keyed on the parenthesised form silently misses ~65% of the module graph; function definitions spread across four forms with no dominant one (Kong: local function 2355, M.f = function() 1346, function M.f() 662, function M:f() 846); Kong uses goto/::label:: 148 times so Lua 5.1 grammar is insufficient; module(...) is dead (0 of 1424 files); 46 dynamic require(<expr>) sites cannot be resolved statically. Conclusion: real parser, not regex - chosen parser is Loretta. Separately, Lightroom plugins use import 191 times against 22 require, which established that the HOST (Lightroom, Neovim, LOVE2D, GMod, WoW, Roblox, LuaRocks) is the primary abstraction rather than the module system, and drove a three-way resolution outcome (InGraph/External/Unresolved-with-reason) plus a host-declares-whether-a-static-module-graph-exists flag.",
+      "tags": ["code-analysis", "lua", "research", "scoping"],
+      "caveats": [
+        "Counts are regex over raw text - comments and string literals are included, so they are indicative rather than exact. Same caveat as note.razorgraph-js-scoping.",
+        "The host table lists eight environments; only LuaRocks and Lightroom are being implemented. The other six were validated on paper only, so their columns are design intent rather than measured behaviour.",
+        "Kong is OpenResty: it leans on ngx.* globals and non-standard module loading, so a slice of it is not plain Lua semantics. Good for stress-testing, misleading for correctness claims.",
+        "The corpora live at V:\\repos (Penlight, kong) and C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua, not in any repo. Shallow clones - no history."
+      ],
+      "links": ["note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "note.razorgraph-cli", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
     }
   ]
 }
