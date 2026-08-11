@@ -25,12 +25,20 @@ $ErrorActionPreference = 'Stop'
 # has git on PATH (a Visual Studio install without standalone git is common),
 # so resolve it: JANET_GIT if set, then PATH, then the VS-bundled copy.
 $git = $null
+# -CommandType Application is load-bearing: this toolkit ships scripts\git.ps1,
+# and when that directory is reachable on PATH a bare `Get-Command git` returns
+# the SHIM. Invoke-External then cannot start a .ps1 as a process, git looks
+# missing, and the gate aborts having checked nothing -- observed 2026-08-10.
+# The extension check is belt: a shim by any other name is still not an exe.
 $gitCandidates = @(
     $env:JANET_GIT
-    (Get-Command git -ErrorAction SilentlyContinue)?.Source
+    (Get-Command git -CommandType Application -ErrorAction SilentlyContinue)?.Source
 ) + @(Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio\*\*\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe" -ErrorAction SilentlyContinue | ForEach-Object FullName)
 foreach ($candidate in $gitCandidates) {
-    if ($candidate -and (Test-Path $candidate)) { $git = $candidate; break }
+    if ($candidate -and (Test-Path $candidate) -and $candidate -like '*.exe') {
+        $git = $candidate
+        break
+    }
 }
 if (-not $git) {
     Write-Host 'git not found (checked JANET_GIT, PATH, VS-bundled). Cannot determine staged files; aborting.' -ForegroundColor Red
@@ -41,7 +49,7 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # The repo under check is wherever the commit is happening, which is not
 # necessarily this toolkit's repo. Joining staged paths to the toolkit root made
-# the gate check the wrong tree when run from anywhere else — quietly, since the
+# the gate check the wrong tree when run from anywhere else -- quietly, since the
 # joined paths simply failed Test-Path and vanished from every staged list.
 $topLevel = Invoke-External -NoThrow $git rev-parse --show-toplevel
 if (-not $topLevel.Success) {
