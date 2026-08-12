@@ -399,7 +399,7 @@
       "path": "notes\\dotnet-object-sizing.md",
       "summary": "Research note on .NET object sizing, covering public dotnet/runtime issue 24200 and observable public .NET behavior.",
       "tags": ["dotnet", "memory", "performance", "research"],
-      "links": []
+      "links": ["note.tuples-do-not-cross-boundaries"]
     },
     {
       "id": "note.meta-ai-second-brain-source",
@@ -1017,7 +1017,20 @@
         "compare matches by name + size until phase 2 adds content hashes; it finds missing coverage reliably but over-trusts renamed same-size files."
       ],
       "tags": ["drives", "inventory", "backup", "storage", "coverage"],
-      "links": ["script.git", "script.invoke-dotnet-check"]
+      "links": ["script.git", "script.invoke-dotnet-check", "note.tuples-do-not-cross-boundaries"]
+    },
+
+    {
+      "id": "note.tuples-do-not-cross-boundaries",
+      "kind": "note",
+      "path": "notes\\tuples-do-not-cross-boundaries.md",
+      "summary": "Tuples are method-local only: never in a return type, parameter, or member, because ValueTuple exposes FIELDS and System.Text.Json silently serialises them as nothing.",
+      "tags": ["csharp", "style", "serialization", "json", "api-design"],
+      "caveats": [
+        "ADVISORY, not enforced: there is no C# rule-checker in this repo, only Test-PowerShellRules.ps1 for PowerShell.",
+        "The failure is silent -- no error, no warning, just an empty JSON field on a populated object."
+      ],
+      "links": ["note.dotnet-object-sizing", "script.get-drive-survey"]
     }
   ]
 }
