@@ -62,12 +62,15 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('volumes', 'scan', 'tree', 'compare', 'blind-spots', 'check')]
+    [ValidateSet('volumes', 'scan', 'tree', 'compare', 'blind-spots', 'check',
+                 'hash', 'hash-plan', 'status', 'adopt')]
     [string]$Command,
 
     [string]$Volume,
     [string]$Against,
     [string]$Nickname,
+    [ValidateSet('quick', 'full')]
+    [string]$Tier = 'quick',
     [int]$Depth = 1,
     [switch]$Text,
     [switch]$Pretty
@@ -100,7 +103,7 @@ switch ($Command) {
         $surveyArgs.Add($Volume)
         $surveyArgs.Add($Against)
     }
-    'volumes' { }
+    { $_ -in 'volumes', 'status', 'hash-plan' } { }
     default {
         if (-not $Volume) { throw "$Command needs -Volume" }
         $surveyArgs.Add('--volume')
@@ -110,8 +113,18 @@ switch ($Command) {
 
 if ($Nickname) { $surveyArgs.Add('--nickname'); $surveyArgs.Add($Nickname) }
 if ($Command -eq 'tree') { $surveyArgs.Add('--depth'); $surveyArgs.Add([string]$Depth) }
+if ($Command -eq 'hash') { $surveyArgs.Add('--tier'); $surveyArgs.Add($Tier) }
 if ($Text) { $surveyArgs.Add('--text') }
 if ($Pretty) { $surveyArgs.Add('--pretty') }
+
+# hash and scan paint a live progress bar on stderr, which only works if the
+# console is left alone: routing those streams through the pipeline below turns
+# every frame into an ErrorRecord and destroys the display. Long-running
+# commands therefore run straight through to the terminal.
+if ($Command -in 'hash', 'scan') {
+    & $exe @surveyArgs
+    exit $LASTEXITCODE
+}
 
 # Progress rides stderr by design (stdout stays pure JSON); PowerShell would
 # dress those lines up as ErrorRecords, so route the streams explicitly.
