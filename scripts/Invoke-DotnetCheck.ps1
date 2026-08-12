@@ -61,6 +61,20 @@
     file|code|message -- a warning that merely moved lines is not new; the
     same message twice in one file merges to one key.
 
+.PARAMETER Full
+    Rebuild everything: --no-incremental and --force, without the baseline
+    machinery -New carries. Use it when the question is "does the whole thing
+    still build" rather than "what did I just change".
+
+    Worth reaching for whenever the shape of the build changed -- a project
+    added to or removed from the solution, a reference swapped from a project
+    to a package, a target framework moved. An incremental build reports only
+    on what MSBuild decided to touch, so a run that skipped a project entirely
+    and a run that had nothing to say about it produce the identical green.
+    That is not hypothetical: DriveSurvey.App was absent from its .slnx while
+    it was being written, and every check that session passed without once
+    compiling it.
+
 .PARAMETER NoGraph
     Skip the code-graph refresh. Only relevant in repositories that carry the
     graph convention (a .graph directory and scripts\graph.ps1); elsewhere
@@ -117,6 +131,11 @@
 .EXAMPLE
     & "$env:JanetBase\scripts\Invoke-DotnetCheck.ps1" -Target D:\Repos\RetirementCore -New -NoTests
     Full-census build; newWarnings lists exactly what this session introduced.
+
+.EXAMPLE
+    & "$env:JanetBase\scripts\Invoke-DotnetCheck.ps1" -Target D:\Repos\DriveSurvey -Full
+    Rebuild everything and run the suite. The check to run after changing which
+    projects the solution contains, or what they reference.
 #>
 [CmdletBinding()]
 param(
@@ -125,6 +144,7 @@ param(
     [switch]$NoTests,
     [string]$TestFilter,
     [switch]$New,
+    [switch]$Full,
     [switch]$NoGraph,
     [switch]$Text,
     [switch]$Pretty
@@ -572,7 +592,14 @@ $buildArguments = @($resolvedTarget, '--configuration', $Configuration, '-nologo
 # recompiles everything (CSxxxx come back); --force re-runs restore (NUxxxx
 # are replayed only by a real restore, and a baseline missing them would
 # report every ancient restore warning as new on the next real one).
-if ($New) { $buildArguments += @('--no-incremental', '--force') }
+#
+# -Full asks for the same rebuild without the baseline machinery, because
+# "recompile everything" and "diff the warning census" are separate wants and
+# -New was the only way to get the first. An incremental build reports on the
+# projects MSBuild decided to touch, so a run that skipped everything and a run
+# that genuinely had nothing to say are the same green -- which is how a project
+# missing from the solution manifest stayed invisible across a whole session.
+if ($New -or $Full) { $buildArguments += @('--no-incremental', '--force') }
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $buildLines = @(& dotnet build @buildArguments 2>&1 | ForEach-Object { "$_" })
