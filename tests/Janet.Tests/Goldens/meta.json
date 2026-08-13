@@ -8,6 +8,7 @@
     "Update-ResearchNode.ps1": "ec2d869c321b4ff7385e4d1bba85c9e275fd5fd2e3c3456e8db26b424f0f7c96",
     "Rename-ResearchNode.ps1": "3ad9569ccddc74e4168174b2a19b2eaf1ec6678b767929b307ee9d3037d1c0b7",
     "Get-ApiDoc.ps1": "a71d2022a2ff5df6e306ee8646c3575babaa39a1adf6952b166a9f8a912f033f",
+    "Invoke-DotnetCheck.ps1": "e13f5c9dfb44cd1c8d2051d830a40b0def312130f2d523924b635c1f561b1c48",
     "ThreadItems.Common.ps1": "7c3bc5c4662bad3854d2d32eebd47ed47a59832925ca7d6521bb6bde25995a79",
     "Add-ThreadItem.ps1": "4e963801b3cb8dbb2771846beba8bed12e3e1f6f8d0c2a8eae1778e6451c17f1",
     "Update-ThreadItem.ps1": "a781840d0765abceb9be334ca8e62de6ab92e49ddc6483d0908565b834530d7c",

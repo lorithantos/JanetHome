@@ -3,11 +3,11 @@
 **The catalog and the thread-item list, in PowerShell 7 alone.** No .NET SDK, no build,
 no MCP server, no global tool. Clone the repo and run them.
 
-Eleven of the scripts in `scripts\` are now shims: they forward to the `janet` CLI, where
+Twelve of the scripts in `scripts\` are now shims: they forward to the `janet` CLI, where
 the implementation lives in `src\Janet.Core` so the three front ends cannot disagree.
 That is the right trade for maintaining the tools, and a bad trade for someone who wants
 to read a script, understand it, and use it. These are the last self-contained versions
-of those eleven, kept so that path stays open.
+of those twelve, kept so that path stays open.
 
 ## Use
 
@@ -32,6 +32,9 @@ of those eleven, kept so that path stays open.
 .\Get-ApiDoc.ps1 -Package LiveChartsCore                       # what is in this API
 .\Get-ApiDoc.ps1 -Package LiveChartsCore -Query 'tooltip formatter'
 .\Get-AssemblyApi.ps1 -Assembly MyLib -SearchRoot .\bin\Release -Type 'Options$'
+
+# Build and test, as JSON rather than scrollback. Emits contract 3, not 4: no status field.
+.\Invoke-DotnetCheck.ps1 -Target .\App.slnx -NoTests
 ```
 
 Every one takes `-?` for its own help, and the readers take `-Text` for a terminal view.
@@ -53,12 +56,19 @@ too.
 
 **They are not maintained.** They are frozen at the commit before each was shimmed --
 `51c7930` for the research four, `4d83dbf` for the thread five, `fa7ae39` for the two
-library-research scripts. Fixes and new behaviour land in `src\Janet.Core`, and nothing
-propagates back. Expect them to diverge. Two divergences already exist, both fixed in the
-port and not here: `Get-ApiDoc.ps1 -Text` writes with `Write-Host`, so `$x = ... -Text`
-yields nothing without `6>&1`; and `Get-AssemblyApi.ps1` pins every assembly it loads for
-the life of the process, so re-running after a rebuild answers from the first load, and
-it throws rather than returning a partial answer when a member's type cannot be resolved.
+library-research scripts, `02ee7b6` for the build check. Fixes and new behaviour land in
+`src\Janet.Core`, and nothing propagates back. Expect them to diverge. Three divergences
+already exist, all fixed in the port and not here:
+
+- `Get-ApiDoc.ps1 -Text` writes with `Write-Host`, so `$x = ... -Text` yields nothing
+  without `6>&1`.
+- `Get-AssemblyApi.ps1` pins every assembly it loads for the life of the process, so
+  re-running after a rebuild answers from the first load, and it throws rather than
+  returning a partial answer when a member's type cannot be resolved.
+- `Invoke-DotnetCheck.ps1` emits **contract 3**: no `status` field, and no way to hand back
+  a handle for a build that outlasts a caller's patience. It also stamps the baseline file
+  from the same number as the envelope, so a future envelope bump would discard every
+  baseline on disk. Its baselines are otherwise interchangeable with the port's.
 
 **They do not have the write queue.** This is the one difference worth knowing before you
 use them on anything you care about, and it is not cosmetic:

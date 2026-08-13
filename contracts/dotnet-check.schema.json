@@ -9,8 +9,7 @@
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
-    "implemented": false,
-    "pendingReason": "Format agreed 2026-08-12, ahead of the port. Contract 3 is what the PowerShell emits today: no status field and no running arm. This describes 4."
+    "implemented": true
   },
 
   "description": "A tagged union. 'status' is the discriminator and the only field both arms share besides contract and target, because a caller that has not read the discriminator has no business reading anything else.",

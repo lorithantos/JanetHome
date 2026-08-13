@@ -90,6 +90,41 @@ $samplers = @{
             )
         }
     }
+
+    'dotnet-check' = {
+        param([string]$Janet, [string]$Root)
+
+        # The smallest target in the repo, and no tests or graph refresh: this runs on every
+        # commit, and a gate that costs a full solution build is a gate people stop running.
+        $project = Join-Path $Root 'src\Janet.Core\Janet.Core.csproj'
+        if (-not (Test-Path $project)) { return [pscustomobject]@{ samples = @() } }
+
+        $complete = @(& $Janet check --target $project --no-tests --no-graph) -join "`n"
+
+        # ONLY THE 'complete' ARM IS SAMPLED. The running arm needs a build that outlasts the
+        # grace period, and the CLI never produces one -- every invocation is a fresh process,
+        # so there is nobody to poll and returning a handle would be useless. It is covered by
+        # a unit test instead, and this comment is here so the gap is stated rather than
+        # discovered.
+        return [pscustomobject]@{
+            samples = @([pscustomobject]@{ label = 'complete, build only'; json = $complete })
+        }
+    }
+}
+
+function Get-SchemaBody {
+    <#
+    .SYNOPSIS
+        The schema with its $janet metadata block removed, canonicalised so that reformatting
+        is not mistaken for a format change.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Text)
+
+    $parsed = $Text | ConvertFrom-Json -AsHashtable
+    $parsed.Remove('$janet')
+
+    return ($parsed | ConvertTo-Json -Depth 30 -Compress)
 }
 
 $findings = @()
@@ -150,7 +185,16 @@ foreach ($schemaFile in $schemas) {
     # gets disabled, which is worse than not having it.
     $previous = if ($Against) { (& $git show "${Against}:$relative" 2>$null) -join "`n" } else { '' }
 
+    # Compared with $janet REMOVED from both sides. That block is metadata about the schema --
+    # which script produces it, whether the code exists yet -- and editing it is not a format
+    # change. Comparing whole files made clearing implemented:false demand a contract bump for
+    # a change that altered no format at all, which is a gate firing on correct work.
+    $formatChanged = $false
     if ($Against -and $previous -and $changed -contains $relative) {
+        $formatChanged = (Get-SchemaBody $previous) -cne (Get-SchemaBody $schemaText)
+    }
+
+    if ($formatChanged) {
         $previousContract = ($previous | ConvertFrom-Json).'$janet'.contract
 
         if ($previousContract -eq $meta.contract) {

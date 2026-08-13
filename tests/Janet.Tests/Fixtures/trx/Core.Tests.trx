@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TestRun id="8a5f1c22-0b8e-4f1a-9a2a-11119a3f0001" name="Core tests" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <ResultSummary outcome="Failed">
+    <Counters total="7" executed="6" passed="4" failed="2" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="1" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+  <TestDefinitions>
+    <UnitTest name="RoundsHalfAwayFromZero" storage="d:\repos\sample\src\core.tests\bin\debug\net10.0\core.tests.dll" id="11111111-0000-0000-0000-000000000001">
+      <TestMethod codeBase="D:\Repos\Sample\src\Core.Tests\bin\Debug\net10.0\Core.Tests.dll" className="Sample.Core.Tests.RoundingTests" name="RoundsHalfAwayFromZero" />
+    </UnitTest>
+  </TestDefinitions>
+  <Results>
+    <UnitTestResult testName="RoundsHalfAwayFromZero" outcome="Failed" duration="00:00:00.0120000" testId="11111111-0000-0000-0000-000000000001" executionId="21111111-0000-0000-0000-000000000001">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ
+Expected: 2.5
+Actual:   2.4999999999999996</Message>
+          <StackTrace>   at Sample.Core.Tests.RoundingTests.RoundsHalfAwayFromZero() in D:\Repos\Sample\src\Core.Tests\RoundingTests.cs:line 41
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+   at Xunit.Sdk.TestInvoker.InvokeTestMethodAsync()
+   at Xunit.Sdk.TestRunner.RunAsync()</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult testName="RejectsNegativeQuantity" outcome="Failed" duration="00:00:00.0030000" testId="11111111-0000-0000-0000-000000000002" executionId="21111111-0000-0000-0000-000000000002">
+      <Output>
+        <ErrorInfo>
+          <Message>System.ArgumentOutOfRangeException : Quantity must not be negative. (Parameter 'quantity')
+Actual value was -1.</Message>
+          <StackTrace>   at Sample.Core.Posting..ctor(Int32 quantity) in D:\Repos\Sample\src\Core\Posting.cs:line 18
+   at Sample.Core.Tests.PostingTests.RejectsNegativeQuantity() in D:\Repos\Sample\src\Core.Tests\PostingTests.cs:line 12</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult testName="AddsTwoPostings" outcome="Passed" duration="00:00:00.0010000" testId="11111111-0000-0000-0000-000000000003" executionId="21111111-0000-0000-0000-000000000003" />
+    <UnitTestResult testName="SubtractsTwoPostings" outcome="Passed" duration="00:00:00.0010000" testId="11111111-0000-0000-0000-000000000004" executionId="21111111-0000-0000-0000-000000000004" />
+    <UnitTestResult testName="FormatsAsCurrency" outcome="Passed" duration="00:00:00.0020000" testId="11111111-0000-0000-0000-000000000005" executionId="21111111-0000-0000-0000-000000000005" />
+    <UnitTestResult testName="ParsesCurrency" outcome="Passed" duration="00:00:00.0020000" testId="11111111-0000-0000-0000-000000000006" executionId="21111111-0000-0000-0000-000000000006" />
+    <UnitTestResult testName="SkippedUntilRatesLand" outcome="NotExecuted" duration="00:00:00.0000000" testId="11111111-0000-0000-0000-000000000007" executionId="21111111-0000-0000-0000-000000000007" />
+  </Results>
+</TestRun>

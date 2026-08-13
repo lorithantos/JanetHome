@@ -1,0 +1,38 @@
+{
+  "contract": 3,
+  "target": "D:\\Repos\\Sample\\App.slnx",
+  "configuration": "Debug",
+  "savedAt": "2026-08-11T09:14:02.1234567Z",
+  "warnings": [
+    {
+      "file": "D:\\Repos\\Sample\\src\\Core\\Ledger.cs",
+      "line": 12,
+      "code": "CS0219",
+      "message": "The variable 'unused' is assigned but its value is never used"
+    },
+    {
+      "file": "D:\\Repos\\Sample\\src\\Core\\Ledger.cs",
+      "line": 999,
+      "code": "CS0219",
+      "message": "The variable 'scratch' is assigned but its value is never used"
+    },
+    {
+      "file": "D:\\Repos\\Sample\\src\\Core\\Rounding.cs",
+      "line": 22,
+      "code": "CS8602",
+      "message": "Dereference of a possibly null reference."
+    },
+    {
+      "file": "D:\\Repos\\Sample\\src\\Core\\Gone.cs",
+      "line": 3,
+      "code": "CS0414",
+      "message": "The field 'Gone.old' is assigned but its value is never used"
+    },
+    {
+      "file": "D:\\Repos\\Sample\\src\\Core\\AlsoGone.cs",
+      "line": 8,
+      "code": "CS0414",
+      "message": "The field 'AlsoGone.stale' is assigned but its value is never used"
+    }
+  ]
+}

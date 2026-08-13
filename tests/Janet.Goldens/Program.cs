@@ -32,6 +32,7 @@ public static class Program
         "Update-ResearchNode.ps1",
         "Rename-ResearchNode.ps1",
         "Get-ApiDoc.ps1",
+        "Invoke-DotnetCheck.ps1",
 
         // The thread-item entry points dot-source their shared helpers from $PSScriptRoot, so
         // the extract has to carry that file too or none of them run.
@@ -113,13 +114,14 @@ public static class Program
             int writes = WriteWrites(scripts, layout, goldens, work, repoRoot);
             int threads = WriteThreads(scripts, threadSeed, goldens, work, repoRoot);
             int apiDocs = WriteApiDocs(scripts, goldens, repoRoot);
+            int checks = WriteDotnetChecks(scripts, fixtures, goldens, repoRoot);
 
             WriteMeta(goldens, gitRef, commit, scripts, corpus, layout, apiDocFixture);
 
             Console.WriteLine();
             Console.WriteLine(
                 $"{queries} query, {texts} text, {writes} write, {threads} thread, "
-              + $"{apiDocs} api-doc goldens -> {goldens}");
+              + $"{apiDocs} api-doc, {checks} dotnet-check goldens -> {goldens}");
             return 0;
         }
         catch (Exception ex)
@@ -167,6 +169,32 @@ public static class Program
         }
 
         return Cases.TextViews.Length;
+    }
+
+    /// <summary>
+    /// Records what the build check's own functions answer for the fixtures.
+    /// </summary>
+    /// <remarks>
+    /// Through DotnetCheckHarness.ps1, which lifts the top-level functions out of the original
+    /// by AST and dot-sources them. The script cannot be dot-sourced whole -- it defines its
+    /// functions and then runs a build -- and re-implementing them here would produce goldens
+    /// that agree with nothing.
+    /// </remarks>
+    private static int WriteDotnetChecks(string scripts, string fixtures, string goldens, string repoRoot)
+    {
+        string harness = Path.Combine(repoRoot, "tests", "Janet.Goldens", "DotnetCheckHarness.ps1");
+        string original = Path.Combine(scripts, "Invoke-DotnetCheck.ps1");
+        string directory = Path.Combine(goldens, "dotnet-check");
+        Directory.CreateDirectory(directory);
+
+        foreach (string label in Cases.DotnetCheckCases)
+        {
+            string output = Ps.Run(harness, ["-Script", original, "-Fixtures", fixtures, "-Case", label], repoRoot);
+            Save(Path.Combine(directory, Cases.Slug(label) + ".json"), output);
+            Console.WriteLine($"  check  {label}");
+        }
+
+        return Cases.DotnetCheckCases.Length;
     }
 
     /// <summary>

@@ -44,6 +44,11 @@ static int Run(Args args)
         return Assembly(args);
     }
 
+    if (command == "check")
+    {
+        return Check(args);
+    }
+
     if (command != "research")
     {
         Console.Error.WriteLine($"Unknown command '{args.Positional[0]}'.");
@@ -229,6 +234,39 @@ static int Assembly(Args args)
         : AssemblyApiJson.Serialize(result, pretty: !args.Flag("--compact")) + Environment.NewLine);
 
     return 0;
+}
+
+/// <summary>
+/// Build and test, reported as a structured answer instead of console scrollback.
+/// </summary>
+/// <remarks>
+/// Always runs to completion, and never returns the schema's "running" arm. A handle is only
+/// useful to a caller that can poll the same process later, and every CLI invocation is a fresh
+/// one -- a shell or a hook simply waits. The handle exists for the resident MCP server, where a
+/// long rebuild would otherwise outlast the client's call timeout.
+///
+/// The exit code means exactly one thing: 0 when the build succeeded and every test passed.
+/// </remarks>
+static int Check(Args args)
+{
+    CheckRequest request = new()
+    {
+        Target = args.Value("--target") ?? (args.Positional.Count > 1 ? args.Positional[1] : "."),
+        Configuration = args.Value("--configuration") ?? "Debug",
+        NoTests = args.Flag("--no-tests"),
+        TestFilter = args.Value("--test-filter"),
+        New = args.Flag("--new"),
+        Full = args.Flag("--full"),
+        NoGraph = args.Flag("--no-graph"),
+    };
+
+    CheckResult result = DotnetCheck.Run(request);
+
+    Console.Out.Write(args.Flag("--text")
+        ? DotnetCheckJson.Render(result)
+        : DotnetCheckJson.Serialize(result, args.Flag("--pretty")) + Environment.NewLine);
+
+    return result.Succeeded ? 0 : 1;
 }
 
 static int Query(Args args, string graphPath, bool pretty)
@@ -512,6 +550,18 @@ static int Usage()
         janet assembly        --assembly NAME|PATH [--search-root DIR] [--type REGEX]
                               [--member REGEX] [--inherited] [--static] [--max-types N]
                               [--text] [--compact]
+
+        janet check           [--target PATH] [--configuration NAME] [--no-tests]
+                              [--test-filter EXPR] [--new] [--full] [--no-graph]
+                              [--text] [--pretty]
+                              (exit 0 iff the build succeeded and every test passed)
+
+        check reports build and tests as one structured answer. --new diffs the warning census
+        against the previous --new run, which is the question "what did THIS change introduce";
+        --full rebuilds everything without the baseline machinery, which is the question "does
+        the whole thing still build" -- reach for it whenever the SHAPE of the build changed,
+        because an incremental run that skipped a project entirely and one that had nothing to
+        say about it produce the identical green.
 
         api with no filter gives the orientation view: counts by kind and the largest types.
         Free-text results are ranked and capped -- check 'truncated'. A selector (--type, --kind,

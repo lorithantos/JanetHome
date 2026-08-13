@@ -29,6 +29,11 @@
     "source": "scripts/Get-Research.ps1",
     "sha256": "8894fb1cb84df0c800198d28aa10aafe6a44ff072398b4f6ddf408b1600c524c"
   },
+  "Invoke-DotnetCheck.ps1": {
+    "ref": "02ee7b64647c47686f838788c14d3baae5c02b09",
+    "source": "scripts/Invoke-DotnetCheck.ps1",
+    "sha256": "1cf005b1d504ca940a7275b946e8abd0dcfee77c4118549094b20f6274955852"
+  },
   "Rename-ResearchNode.ps1": {
     "ref": "51c7930e607f37c85d576681227155cf514c260d",
     "source": "scripts/Rename-ResearchNode.ps1",

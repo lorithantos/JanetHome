@@ -51,6 +51,17 @@ for (int i = 0; i < args.Length; i++)
     }
 }
 
+// How long dotnet_check waits before handing back a handle instead of an answer. An
+// environment variable rather than a flag because the only callers that care are the process
+// supervisor and the harness that tests the running arm -- which is otherwise unreachable,
+// since it needs a build slower than the client's patience.
+if (Environment.GetEnvironmentVariable("JANET_CHECK_GRACE") is string grace &&
+    double.TryParse(grace, out double graceSeconds) &&
+    graceSeconds >= 0)
+{
+    CheckJobs.Grace = TimeSpan.FromSeconds(graceSeconds);
+}
+
 string graphPath;
 try
 {
@@ -129,7 +140,7 @@ if (http)
     // did sending it from inside a tool call. Measurements are on note.janet-mcp-port; the
     // short version is that a client's tool LIST is fixed at connection time and nothing the
     // server says changes that.
-    builder.Services.AddMcpServer().WithHttpTransport().WithToolsFromAssembly();
+    builder.Services.AddMcpServer().WithHttpTransport().WithToolsFromAssembly().WithRequestFilters(Surfaced.Filter);
 
     WebApplication app = builder.Build();
     app.MapMcp();
@@ -185,7 +196,7 @@ host.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 host.Logging.SetMinimumLevel(LogLevel.Warning);
 
 host.Services.AddSingleton(context);
-host.Services.AddMcpServer().WithStdioServerTransport().WithToolsFromAssembly();
+host.Services.AddMcpServer().WithStdioServerTransport().WithToolsFromAssembly().WithRequestFilters(Surfaced.Filter);
 
 await host.Build().RunAsync();
 return 0;

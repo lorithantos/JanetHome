@@ -31,6 +31,9 @@ public sealed class Args
         // because the two scripts disagreed: Get-ApiDoc printed compressed JSON and
         // Get-AssemblyApi printed indented, and both defaults are kept rather than unified.
         "--inherited", "--static", "--compact",
+
+        // The build check.
+        "--no-tests", "--new", "--full", "--no-graph",
     };
 
     public static Args Parse(IReadOnlyList<string> argv)

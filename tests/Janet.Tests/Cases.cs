@@ -140,6 +140,27 @@ public static class Cases
         new("conversion operator and generics", ["-Type", "Coordinate", "-Full"]),
     ];
 
+    /// <summary>
+    /// The pure halves of the build check, recorded by calling the original script's own
+    /// functions against the fixtures.
+    /// </summary>
+    /// <remarks>
+    /// Not whole-envelope goldens, and the reason is structural: an envelope carries the build
+    /// duration, an absolute target path and the graph state of whatever repository it ran in,
+    /// so a recorded one belongs to one machine at one moment. What CAN be pinned exactly is
+    /// everything that is a function of text -- parsing MSBuild output, grouping it, diffing a
+    /// census, reading a TRX -- which is also where the bugs live.
+    /// </remarks>
+    public static readonly string[] DotnetCheckCases =
+    [
+        "read-build-output",
+        "group-warnings",
+        "warning-keys",
+        "compare-baseline",
+        "baseline-path",
+        "read-trx",
+    ];
+
     /// <summary>The same fixture through the formatted view. The generator adds -Text.</summary>
     public static readonly Read[] ApiDocTextViews =
     [

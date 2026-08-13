@@ -48,7 +48,7 @@ in this repo exists to close one of those gaps:
 | Debugging loses the unwind path | Thread items — `thread_add` / `janet thread`, a focus-explicit investigation list where nothing is ever deleted |
 | Guessing a library's API costs a build per wrong guess | `api_doc_query` / `assembly_api` — ranked search of a package's XML docs, and what a compiled assembly actually declares |
 | Mechanical multi-file edits drift | `Invoke-SurgicalEdit.ps1` — the model plans as JSON, a script executes deterministically |
-| Build/test output gets scraped | `Invoke-DotnetCheck.ps1` — structured, contract-numbered JSON instead of scrollback |
+| Build/test output gets scraped | `dotnet_check` / `janet check` — structured, contract-numbered JSON instead of scrollback |
 
 The common thread: **prefer contracts that fail loudly over documents that degrade
 quietly**, and give the agent evidence instead of the opportunity to guess.
