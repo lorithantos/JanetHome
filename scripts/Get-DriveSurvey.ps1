@@ -80,17 +80,27 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # The exe is resolved fresh each call rather than pinned, so a rebuild of the
-# survey tool is picked up without touching this wrapper. Release preferred;
-# Debug accepted so a mid-development session still works.
+# survey tool is picked up without touching this wrapper. NEWEST wins, not
+# Release: preferring Release unconditionally meant a stale Release shadowed a
+# Debug build made minutes earlier, which defeated the "a mid-development
+# session still works" intent it was written for. The skew surfaced only as the
+# store refusing an older schema -- a loud failure, but three steps from its cause.
 $surveyRoot = 'D:\Repos\DriveSurvey\src\DriveSurvey.Cli\bin'
 $exe = @(
     Join-Path $surveyRoot 'Release\net10.0-windows\survey.exe'
     Join-Path $surveyRoot 'Debug\net10.0-windows\survey.exe'
-) | Where-Object { Test-Path $_ } | Select-Object -First 1
+) | Where-Object { Test-Path $_ } |
+    Get-Item |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
 
 if (-not $exe) {
     throw "survey.exe not found under $surveyRoot -- build D:\Repos\DriveSurvey\DriveSurvey.slnx first"
 }
+
+# Which binary answered is otherwise invisible, and that invisibility is what
+# made the stale-Release skew take three steps to diagnose. -Verbose says so.
+Write-Verbose "survey.exe: $exe (built $((Get-Item $exe).LastWriteTime))"
 
 $surveyArgs = [System.Collections.Generic.List[string]]::new()
 $surveyArgs.Add($Command)
