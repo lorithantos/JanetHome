@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    All logic lives here so the CLI and the MCP server can never disagree about what a
+    query returns or how a node is written. The front ends bind arguments and shape
+    envelopes; they do not decide anything.
+
+    No framework dependencies on purpose: this project must be callable from a console
+    app, a web host, and a test runner without dragging any of them in.
+  -->
+
+</Project>

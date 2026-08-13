@@ -1,0 +1,10 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+  </Configurations>
+  <Project Path="src/Janet.Cli/Janet.Cli.csproj" />
+  <Project Path="src/Janet.Core/Janet.Core.csproj" />
+  <Project Path="src/Janet.Mcp/Janet.Mcp.csproj" />
+  <Project Path="tests/Janet.Goldens/Janet.Goldens.csproj" />
+  <Project Path="tests/Janet.Tests/Janet.Tests.csproj" />
+</Solution>

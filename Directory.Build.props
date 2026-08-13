@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    Shared across every project in the solution. Kept deliberately small: settings that
+    belong to one project belong in that project's file, where whoever opens it can see
+    them without knowing this file exists.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!--
+      A warning that nobody is forced to read is a warning that accumulates. This is the
+      compiler half of the same argument Test-PowerShellRules.ps1 makes for the scripts.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package metadata for the two global tools">
+    <Authors>Lori Thantos</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/lorithantos/JanetHome</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/lorithantos/JanetHome</RepositoryUrl>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+</Project>

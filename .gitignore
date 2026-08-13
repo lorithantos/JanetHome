@@ -12,3 +12,17 @@ thread-stack.json
 # here write. A backup is a copy of something git already versions, so committing
 # one publishes a stale duplicate of a file whose real history is a log away.
 *.bak*
+
+# Build output for the .NET solution.
+bin/
+obj/
+.vs/
+
+# Local publish target for the HTTP development loop. A running server holds its
+# binaries open, so it publishes somewhere disposable rather than over the build
+# output that the next `dotnet build` needs to write.
+.janet-bin/
+
+# research.previous.json is deliberately NOT ignored: it is the rollback path the
+# cutover leaves behind, and its value is being visible and diffable in git. The
+# candidate is likewise tracked -- it becomes the catalog, so its history matters.

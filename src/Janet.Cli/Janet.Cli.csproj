@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>janet</AssemblyName>
+    <RootNamespace>Janet.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Global tool">
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>janet</ToolCommandName>
+    <PackageId>Janet.Cli</PackageId>
+    <Description>Command-line access to the Janet research catalog and thread items. The twin of the MCP server, and the entry point hooks and shells call -- they run as separate processes and cannot speak MCP.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Janet.Core\Janet.Core.csproj" />
+  </ItemGroup>
+
+</Project>

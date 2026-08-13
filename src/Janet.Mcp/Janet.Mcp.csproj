@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>janet-mcp</AssemblyName>
+    <RootNamespace>Janet.Mcp</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Global tool">
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>janet-mcp</ToolCommandName>
+    <PackageId>Janet.Mcp</PackageId>
+    <Description>MCP server over the Janet research catalog and thread items. Installing as a global tool puts it on PATH, so client config is a bare command name rather than a machine-specific absolute path.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WebApplication for the HTTP transport, without switching to the Web SDK. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
+    <!--
+      The HTTP transport is what makes the development loop bearable: an HTTP server is a
+      separate process the client dials, so it can be killed and rebuilt while a session
+      stays open. A stdio server is a child process the client holds open, which is why
+      RazorGraph needs a publish-and-restart cycle for every change.
+    -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+    <!--
+      No Microsoft.Extensions.Hosting package reference: the ASP.NET Core shared framework
+      already carries it, and NU1510 correctly calls the duplicate unnecessary.
+    -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Janet.Core\Janet.Core.csproj" />
+  </ItemGroup>
+
+</Project>
