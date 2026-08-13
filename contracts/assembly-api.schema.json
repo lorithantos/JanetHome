@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/assembly-api.schema.json",
+  "title": "assembly_api envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated.",
+    "contract": 1,
+    "produces": "assembly_api / janet assembly / scripts\\Get-AssemblyApi.ps1",
+    "script": "scripts\\Get-AssemblyApi.ps1",
+    "node": "script.get-assembly-api"
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "assembly",
+    "folder",
+    "siblings",
+    "typesLoaded",
+    "typesUnloadable",
+    "matched",
+    "returned",
+    "truncated",
+    "types",
+    "membersDropped"
+  ],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "assembly": { "type": "string", "description": "File name of the assembly that was read." },
+    "folder": { "type": "string", "description": "Directory it was read from. Absolute, so this envelope is not portable between machines." },
+    "siblings": { "type": "integer", "minimum": 0, "description": "Assemblies beside it. 1 means the dependencies cannot resolve." },
+    "typesLoaded": { "type": "integer", "minimum": 0 },
+    "typesUnloadable": { "type": "integer", "minimum": 0, "description": "Types that failed to load. The rest are still reported." },
+    "matched": { "type": "integer", "minimum": 0, "description": "Types matching the filter, before the cap." },
+    "returned": { "type": "integer", "minimum": 0, "description": "Types actually in this answer." },
+    "truncated": { "type": "boolean", "description": "True when the cap bit. Stated, never silent." },
+    "membersDropped": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Members left out because a type in their signature could not be resolved. Always present: an absent field would make 'nothing was dropped' and 'this build does not report it' look the same."
+    },
+    "siblingWarning": {
+      "type": "string",
+      "description": "Present ONLY when there is something to say, so its presence is the signal. Was a PowerShell warning stream, which no MCP client ever saw."
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind", "baseType", "members"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "enum": ["class", "abstract class", "interface", "enum"] },
+          "baseType": {
+            "type": ["string", "null"],
+            "description": "Null for an interface, and for a type whose base could not be resolved. The two are not distinguished here."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "type", "name"],
+              "properties": {
+                "kind": { "enum": ["Property", "Field", "Method", "Event", "NestedType", "TypeInfo", "Custom"] },
+                "type": {
+                  "type": "string",
+                  "description": "The property, field or return type. Empty for a member kind that carries none -- an event, for instance."
+                },
+                "name": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
