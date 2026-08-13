@@ -95,7 +95,12 @@ param(
     [string]$Tier = 'quick',
     [int]$Depth = 1,
     [switch]$Text,
-    [switch]$Pretty
+    [switch]$Pretty,
+
+    # Anything not named above goes to survey.exe verbatim. See the dispatch
+    # below for why this exists.
+    [Parameter(ValueFromRemainingArguments)]
+    [string[]]$Rest
 )
 
 Set-StrictMode -Version Latest
@@ -127,43 +132,58 @@ Write-Verbose "survey.exe: $exe (built $((Get-Item $exe).LastWriteTime))"
 $surveyArgs = [System.Collections.Generic.List[string]]::new()
 $surveyArgs.Add($Command)
 
-switch ($Command) {
-    'compare' {
-        if (-not $Volume -or -not $Against) {
-            throw 'compare needs -Volume and -Against (letter, serial, or nickname)'
+# TWO CALLING CONVENTIONS, on purpose. This wrapper translated PowerShell-style
+# parameters into the CLI's flags, which meant muscle memory from survey.exe
+# failed here -- "role --volume E: --set working" is the obvious thing to type
+# and bound to nothing, three separate times. Raw flags now pass straight
+# through, and they win outright when present: a caller who typed --volume meant
+# it, and silently merging the two conventions would make the effective command
+# line something neither of us wrote.
+#
+# It also removes a whole class of drift. A flag the CLI grows works here the day
+# it ships, with no edit to this file.
+if ($Rest) {
+    $surveyArgs.AddRange([string[]]$Rest)
+}
+else {
+    switch ($Command) {
+        'compare' {
+            if (-not $Volume -or -not $Against) {
+                throw 'compare needs -Volume and -Against (letter, serial, or nickname)'
+            }
+            $surveyArgs.Add($Volume)
+            $surveyArgs.Add($Against)
         }
-        $surveyArgs.Add($Volume)
-        $surveyArgs.Add($Against)
-    }
-    'role' {
-        # Without -Role this is the LISTING form -- every volume and how it is
-        # classified -- and it takes no volume at all. Only setting one has to
-        # say which.
-        if ($Role) {
-            if (-not $Volume) { throw 'role -Role needs -Volume: which volume is being classified' }
+        'role' {
+            # Without -Role this is the LISTING form -- every volume and how it is
+            # classified -- and it takes no volume at all. Only setting one has to
+            # say which.
+            if ($Role) {
+                if (-not $Volume) { throw 'role -Role needs -Volume: which volume is being classified' }
+                $surveyArgs.Add('--volume')
+                $surveyArgs.Add($Volume)
+                $surveyArgs.Add('--set')
+                $surveyArgs.Add($Role)
+            }
+        }
+        { $_ -in 'volumes', 'status', 'hash-plan', 'duplicates', 'unprotected' } { }
+        default {
+            if (-not $Volume) { throw "$Command needs -Volume" }
             $surveyArgs.Add('--volume')
             $surveyArgs.Add($Volume)
-            $surveyArgs.Add('--set')
-            $surveyArgs.Add($Role)
         }
     }
-    { $_ -in 'volumes', 'status', 'hash-plan', 'duplicates', 'unprotected' } { }
-    default {
-        if (-not $Volume) { throw "$Command needs -Volume" }
-        $surveyArgs.Add('--volume')
-        $surveyArgs.Add($Volume)
-    }
+
+    if ($Nickname) { $surveyArgs.Add('--nickname'); $surveyArgs.Add($Nickname) }
+    if ($Command -eq 'tree') { $surveyArgs.Add('--depth'); $surveyArgs.Add([string]$Depth) }
+    if ($Command -eq 'hash') { $surveyArgs.Add('--tier'); $surveyArgs.Add($Tier) }
+
+    # 'role' SETS a classification (handled above, with its volume); 'scan'
+    # ASSERTS one for a volume being recorded for the first time. Same value,
+    # different flag, so one parameter serves both commands.
+    if ($Command -eq 'scan' -and $Role) { $surveyArgs.Add('--role'); $surveyArgs.Add($Role) }
+    if ($Manifest) { $surveyArgs.Add('--manifest'); $surveyArgs.Add($Manifest) }
 }
-
-if ($Nickname) { $surveyArgs.Add('--nickname'); $surveyArgs.Add($Nickname) }
-if ($Command -eq 'tree') { $surveyArgs.Add('--depth'); $surveyArgs.Add([string]$Depth) }
-if ($Command -eq 'hash') { $surveyArgs.Add('--tier'); $surveyArgs.Add($Tier) }
-
-# 'role' SETS a classification (handled above, with its volume); 'scan' ASSERTS
-# one for a volume being recorded for the first time. Same value, different flag,
-# so one parameter serves both commands.
-if ($Command -eq 'scan' -and $Role) { $surveyArgs.Add('--role'); $surveyArgs.Add($Role) }
-if ($Manifest) { $surveyArgs.Add('--manifest'); $surveyArgs.Add($Manifest) }
 if ($Text) { $surveyArgs.Add('--text') }
 if ($Pretty) { $surveyArgs.Add('--pretty') }
 
