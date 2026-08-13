@@ -1,42 +1,29 @@
+# JANET-SHIM
 <#
 .SYNOPSIS
-    Show the thread item list.
+    Shows the thread item list: investigation topics, and which one is in focus.
 
 .DESCRIPTION
-    Output is JSON by default -- this runs at session start and its reader is the
-    session model, not a terminal. -Text for the formatted view.
+    A shim. The implementation moved to Janet.Core and is reached through the `janet` CLI;
+    this script forwards to it so every existing caller keeps working.
 
-    An empty list is a valid, expected result and uses the same envelope shape as
-    a populated one, so a consumer never special-cases it.
+    This one is load-bearing at startup: startup-manifest.json runs it and captures its JSON
+    under 'threadStack', so its envelope is a contract rather than an output format. The shape
+    { count, active, items[], error } is asserted byte for byte against what the original
+    printed -- see ThreadGoldenTests and note.golden-tests.
 
-    Runs in the startup path, so it does not throw: an unreadable or corrupt list
-    is reported in-band via the 'error' field with an otherwise empty envelope,
-    rather than taking the session down (house rule 6, DESIGN-NOTES section 8).
-    Reported, not swallowed -- a corrupt list is worth seeing.
+    Behaviour is unchanged, with one improvement: -Text now goes to stdout rather than
+    Write-Host, so it can be captured by a pipe, a redirect, or an assignment without 6>&1.
+
+    'error' reports a list that could not be read, in-band and without throwing, because this
+    runs before a session has anything else. 'active' is null when nothing is in focus, which
+    is an ordinary state and not a fault.
 
 .PARAMETER Path
-    List file. Defaults to $env:TEMP\Janet\thread-stack.json.
+    List file to read. Defaults to Janet\thread-stack.json under TEMP.
 
 .PARAMETER All
-    Include completed items. They are retained rather than dropped, so this is
-    the project history, not just what is outstanding.
-
-.PARAMETER Text
-    Formatted output instead of JSON.
-
-.PARAMETER Pretty
-    Indent the JSON.
-
-.OUTPUTS
-    JSON: { count, active, items[], error } where each item is
-    { topic, status, refs[], next, notes }. 'active' is the current topic, or
-    null when nothing is active -- which is an ordinary state, not a fault.
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Show-ThreadItems.ps1"
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Show-ThreadItems.ps1" -Text -All
+    Include completed items. They are kept, never deleted, and hidden by default.
 #>
 [CmdletBinding()]
 param(
@@ -47,59 +34,17 @@ param(
 )
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'ThreadItems.Common.ps1')
+. (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
 
-$items = @()
-$readError = $null
-try {
-    # Assign, never @(...) -- Read-ThreadItems comma-wraps, and re-wrapping it
-    # yields one element holding the real array (house rule 1).
-    $items = Read-ThreadItems -Path $Path
-}
-catch {
-    $readError = $_.Exception.Message
-    $items = @()
-}
+$janet = Get-JanetCommand
 
-if (-not $All) { $items = @($items | Where-Object { $_.status -ne 'done' }) }
+$arguments = @('thread', 'show')
+if ($Path) { $arguments += @('--path', $Path) }
+if ($All) { $arguments += '--all' }
+if ($Text) { $arguments += '--text' }
+if ($Pretty) { $arguments += '--pretty' }
 
-$activeTopic = $null
-foreach ($item in $items) {
-    if ($item.status -eq 'active') { $activeTopic = $item.topic; break }
-}
-
-if (-not $Text) {
-    $result = [PSCustomObject]@{
-        count  = $items.Count
-        active = $activeTopic
-        items  = @($items)
-        error  = $readError
-    }
-    # Depth 6: result -> items -> item -> refs -> string, with headroom.
-    if ($Pretty) { ConvertTo-Json -InputObject $result -Depth 6 }
-    else { ConvertTo-Json -InputObject $result -Depth 6 -Compress }
-    return
-}
-
-if ($null -ne $readError) { Write-Host "List unreadable: $readError" -ForegroundColor Red; return }
-if ($items.Count -eq 0) { Write-Host 'No thread items.'; return }
-
-foreach ($item in $items) {
-    $icon = '   '
-    if ($item.status -eq 'active') { $icon = '>>>' }
-    elseif ($item.status -eq 'done') { $icon = ' x ' }
-
-    Write-Host "$icon $($item.status.PadRight(7)) $($item.topic)"
-    if (@($item.refs).Count -gt 0) {
-        Write-Host "            refs: $(@($item.refs) -join ', ')" -ForegroundColor DarkCyan
-    }
-    if ($item.next -ne '') {
-        Write-Host "            next: $($item.next)" -ForegroundColor DarkYellow
-    }
-    if ($item.notes -ne '') {
-        $firstLine = @($item.notes -split "`n")[0]
-        if ($firstLine.Length -gt 100) { $firstLine = $firstLine.Substring(0, 100) + '...' }
-        Write-Host "            $firstLine" -ForegroundColor DarkGray
-    }
-}
+& $janet @arguments
+exit $LASTEXITCODE

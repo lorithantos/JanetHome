@@ -1,46 +1,27 @@
+# JANET-SHIM
 <#
 .SYNOPSIS
-    Amend an existing thread item's notes, cursor, refs, or status.
+    Amends a thread item in place.
 
 .DESCRIPTION
-    The operation the stack never had, and the reason it lost data.
+    A shim. The implementation moved to Janet.Core and is reached through the `janet` CLI;
+    this script forwards to it so every existing caller keeps working.
 
-    On 2026-08-08 a session wanting to update its own entry had only push and pop
-    to work with, popped to get at it, and destroyed a concurrent session's notes
-    irrecoverably. Amending an item in place is an ordinary need; without it,
-    callers reach for operations that rewrite the whole list.
+    Not supplied and supplied-as-empty are different requests: an omitted -Next leaves the
+    resume cursor alone, while -Next '' clears it. Dropping a cursor that no longer applies is
+    a real thing to want, so the two cannot mean the same.
 
-    Every field you do not name is preserved. -AppendNotes adds to the existing
-    notes rather than replacing them, so accumulating findings does not require
-    reading the old value back first and re-sending it.
+    Select with -Topic (case-insensitive substring) or -Index; with neither, this acts on
+    whatever is in focus. An ambiguous topic is refused and every candidate named, rather than
+    resolved to a first match -- the operation rewrites the file, and amending the wrong item
+    is how notes get lost.
 
-.PARAMETER Topic
-    Case-insensitive substring selecting the item. Omit to target the active one.
+.PARAMETER AppendNotes
+    Add to the existing notes rather than replacing them, separated by a blank line.
 
-.PARAMETER Index
-    Zero-based position instead of a topic match.
-
-.PARAMETER Notes
-    Replace the notes. With -AppendNotes, add to them instead.
-
-.PARAMETER Next
-    Replace the resume cursor. Pass '' to clear it.
-
-.PARAMETER Refs
-    Replace the research.json node ids. With -AppendRefs, add to them instead.
-
-.PARAMETER Status
-    Move the item between 'active', 'parked', and 'done'. Setting 'active'
-    demotes any current active item.
-
-.OUTPUTS
-    JSON: { updated, changed[], count }
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Update-ThreadItem.ps1" -Topic 'RazorGraph' -Next 'publish both projects'
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Update-ThreadItem.ps1" -Notes 'ruled out threading' -AppendNotes
+.PARAMETER AppendRefs
+    Add to the existing refs rather than replacing them. Repeats are kept, deliberately: a
+    repeated ref is the caller's to decide about.
 #>
 [CmdletBinding()]
 param(
@@ -57,82 +38,28 @@ param(
 )
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'ThreadItems.Common.ps1')
+. (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
 
-$topicValue = $Topic
-$indexValue = $Index
-$statusValue = $Status
-$appendNotesSwitch = $AppendNotes.IsPresent
-$appendRefsSwitch = $AppendRefs.IsPresent
+$janet = Get-JanetCommand
 
-# Distinguish "not supplied" from "supplied as empty": clearing 'next' is a
-# legitimate request, so $null means untouched and '' means clear.
-$notesSupplied = $PSBoundParameters.ContainsKey('Notes')
-$nextSupplied = $PSBoundParameters.ContainsKey('Next')
-$refsSupplied = $PSBoundParameters.ContainsKey('Refs')
+$arguments = @('thread', 'update')
 
-if (-not ($notesSupplied -or $nextSupplied -or $refsSupplied -or $statusValue -ne '')) {
-    throw 'Nothing to change. Pass -Notes, -Next, -Refs, or -Status.'
+# Presence, not truthiness: -Notes '' is a request to clear, and testing the value would
+# silently drop it.
+if ($PSBoundParameters.ContainsKey('Notes')) { $arguments += @('--notes', $Notes) }
+if ($PSBoundParameters.ContainsKey('Next')) { $arguments += @('--next', $Next) }
+if ($PSBoundParameters.ContainsKey('Refs')) {
+    foreach ($value in @($Refs)) { $arguments += @('--ref', $value) }
 }
 
-$script:targetTopic = $null
-$script:changed = @()
+if ($Topic) { $arguments += @('--topic', $Topic) }
+if ($Index -ge 0) { $arguments += @('--index', $Index) }
+if ($Status) { $arguments += @('--status', $Status) }
+if ($Path) { $arguments += @('--path', $Path) }
+if ($AppendNotes) { $arguments += '--append-notes' }
+if ($AppendRefs) { $arguments += '--append-refs' }
 
-$updated = Invoke-ThreadItemsUpdate -Path $Path -Action {
-    param($current)
-
-    $items = @($current)
-    if ($items.Count -eq 0) { throw 'The thread item list is empty.' }
-
-    $target = Find-ThreadItemIndex -Items $items -Topic $topicValue -Index $indexValue
-    $item = $items[$target]
-    $script:targetTopic = $item.topic
-
-    if ($notesSupplied) {
-        if ($appendNotesSwitch -and $item.notes -ne '') {
-            $item.notes = $item.notes + "`n`n" + $Notes
-        }
-        else {
-            $item.notes = $Notes
-        }
-        $script:changed += 'notes'
-    }
-
-    if ($nextSupplied) {
-        $item.next = $Next
-        $script:changed += 'next'
-    }
-
-    if ($refsSupplied) {
-        if ($appendRefsSwitch) { $item.refs = @($item.refs) + @($Refs) }
-        else { $item.refs = @($Refs) }
-        $script:changed += 'refs'
-    }
-
-    if ($statusValue -ne '') {
-        if ($statusValue -eq 'active') {
-            foreach ($other in $items) {
-                if ($other.status -eq 'active') { $other.status = 'parked' }
-            }
-        }
-        $item.status = $statusValue
-        $script:changed += 'status'
-    }
-
-    return ,@($items)
-}
-
-$live = @($updated | Where-Object { $_.status -ne 'done' })
-
-if ($Text) {
-    Write-Host "Updated: $($script:targetTopic)"
-    Write-Host "Changed: $(@($script:changed) -join ', ')"
-    return
-}
-
-ConvertTo-Json -InputObject ([PSCustomObject]@{
-    updated = $script:targetTopic
-    changed = @($script:changed)
-    count   = $live.Count
-}) -Depth 3 -Compress
+& $janet @arguments
+exit $LASTEXITCODE

@@ -1,38 +1,30 @@
+# JANET-SHIM
 <#
 .SYNOPSIS
-    Add a topic to the thread item list.
+    Records an investigation topic on the thread item list.
 
 .DESCRIPTION
-    Appends. It does NOT change what is active unless you ask with -Active.
+    A shim. The implementation moved to Janet.Core and is reached through the `janet` CLI;
+    this script forwards to it so every existing caller keeps working.
 
-    That is the whole point of the list replacing the stack. Push-ThreadStack
-    made every new topic active and parked whatever was, so recording a piece of
-    work for later and descending into it now were the same operation -- there
-    was no way to note something without losing your place.
+    Adding does NOT take focus unless -Active is passed. That separation is the whole reason
+    this is a list rather than the push/pop stack it replaced: noting work you are not doing
+    now has to cost nothing, or you stop noting it.
+
+    Refuses a topic that already exists rather than creating a second one the selectors cannot
+    tell apart.
 
 .PARAMETER Topic
-    The topic to add. Must be unique enough to select later.
-
-.PARAMETER Notes
-    Free-form detail too small or too fresh to be worth a research.json node.
+    What the investigation is about. One line, distinctive enough to select on later.
 
 .PARAMETER Next
-    The resume cursor: the one thing to do first on returning to this topic.
+    The resume cursor: the one thing to do first on return.
 
 .PARAMETER Refs
-    research.json node ids carrying this topic's durable context.
+    Catalog node ids carrying the context for this topic.
 
 .PARAMETER Active
-    Also make this the active item, demoting the current one to parked.
-
-.OUTPUTS
-    JSON: { added, count, active }
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Add-ThreadItem.ps1" -Topic 'cache eviction' -Next 'query the telemetry table'
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Add-ThreadItem.ps1" -Topic 'chase the AV' -Active
+    Also take focus, parking whatever held it.
 #>
 [CmdletBinding()]
 param(
@@ -46,58 +38,22 @@ param(
 )
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'ThreadItems.Common.ps1')
+. (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
 
-$topicValue = $Topic
-$activeSwitch = $Active.IsPresent
+$janet = Get-JanetCommand
 
-$updated = Invoke-ThreadItemsUpdate -Path $Path -Action {
-    param($current)
+$arguments = @('thread', 'add', '--topic', $Topic)
 
-    $items = @($current)
+# Repeated flags rather than a delimited string: the CLI accumulates them, so no caller has to
+# know a separator. Getting that wrong is how a multi-value argument silently becomes one.
+foreach ($value in @($Refs)) { if ($value) { $arguments += @('--ref', $value) } }
 
-    foreach ($existing in $items) {
-        if ($existing.topic -eq $topicValue) {
-            throw "An item with topic '$topicValue' already exists. Use Update-ThreadItem.ps1 to amend it."
-        }
-    }
+if ($Notes) { $arguments += @('--notes', $Notes) }
+if ($Next) { $arguments += @('--next', $Next) }
+if ($Path) { $arguments += @('--path', $Path) }
+if ($Active) { $arguments += '--active' }
 
-    if ($activeSwitch) {
-        foreach ($existing in $items) {
-            if ($existing.status -eq 'active') { $existing.status = 'parked' }
-        }
-    }
-
-    $status = 'parked'
-    if ($activeSwitch) { $status = 'active' }
-
-    $items += [PSCustomObject]@{
-        topic  = $topicValue
-        status = $status
-        refs   = @($Refs)
-        next   = $Next
-        notes  = $Notes
-    }
-
-    return ,@($items)
-}
-
-$live = @($updated | Where-Object { $_.status -ne 'done' })
-$activeTopic = $null
-foreach ($item in $live) {
-    if ($item.status -eq 'active') { $activeTopic = $item.topic; break }
-}
-
-if ($Text) {
-    Write-Host "Added: $topicValue"
-    if ($null -ne $activeTopic) { Write-Host "Active: $activeTopic" } else { Write-Host 'Nothing active.' }
-    Write-Host "Items: $($live.Count)"
-    return
-}
-
-ConvertTo-Json -InputObject ([PSCustomObject]@{
-    added  = $topicValue
-    count  = $live.Count
-    active = $activeTopic
-}) -Depth 3 -Compress
+& $janet @arguments
+exit $LASTEXITCODE

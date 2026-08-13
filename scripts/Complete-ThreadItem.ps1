@@ -1,35 +1,23 @@
+# JANET-SHIM
 <#
 .SYNOPSIS
-    Mark a thread item done. Retains it -- never drops it.
+    Marks a thread item finished.
 
 .DESCRIPTION
-    Pop-ThreadStack removed completed items from the file by default, so
-    finishing a topic destroyed its notes, and the only record that the work had
-    happened was whatever a session had already written down elsewhere.
+    A shim. The implementation moved to Janet.Core and is reached through the `janet` CLI;
+    this script forwards to it so every existing caller keeps working.
 
-    Completing here is a status change. The item stays in the list and
-    Show-ThreadItems.ps1 -All prints it, so the list doubles as a record of what
-    was actually finished.
+    Completion is a status change, not a deletion. The stack this list replaced dropped items
+    when they finished, so completing work erased the record of having done it; here the item
+    stays and simply stops showing by default.
 
-    It also does NOT auto-activate anything. The stack promoted the next parked
-    item automatically, which quietly decided what you worked on next; use
-    Set-ActiveThread.ps1 to say so deliberately.
+    With no selector, completes whatever is in focus.
 
 .PARAMETER Topic
-    Case-insensitive substring selecting the item. Omit to complete the active one.
+    Substring of the topic to complete. Ambiguity is refused, not guessed at.
 
 .PARAMETER Index
-    Zero-based position instead of a topic match.
-
-.OUTPUTS
-    JSON: { completed, active, remaining } -- 'active' is null after completing
-    the active item, which is expected rather than an error.
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Complete-ThreadItem.ps1"
-
-.EXAMPLE
-    & "$env:JanetBase\scripts\Complete-ThreadItem.ps1" -Topic 'percentile slider'
+    Position in the list, as an alternative to -Topic.
 #>
 [CmdletBinding()]
 param(
@@ -40,48 +28,16 @@ param(
 )
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'ThreadItems.Common.ps1')
+. (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
 
-$topicValue = $Topic
-$indexValue = $Index
+$janet = Get-JanetCommand
 
-$script:completedTopic = $null
+$arguments = @('thread', 'complete')
+if ($Topic) { $arguments += @('--topic', $Topic) }
+if ($Index -ge 0) { $arguments += @('--index', $Index) }
+if ($Path) { $arguments += @('--path', $Path) }
 
-$updated = Invoke-ThreadItemsUpdate -Path $Path -Action {
-    param($current)
-
-    $items = @($current)
-    if ($items.Count -eq 0) { throw 'The thread item list is empty; there is nothing to complete.' }
-
-    $target = Find-ThreadItemIndex -Items $items -Topic $topicValue -Index $indexValue
-
-    if ($items[$target].status -eq 'done') {
-        throw "'$($items[$target].topic)' is already completed."
-    }
-
-    $items[$target].status = 'done'
-    $script:completedTopic = $items[$target].topic
-
-    return ,@($items)
-}
-
-$live = @($updated | Where-Object { $_.status -ne 'done' })
-$activeTopic = $null
-foreach ($item in $live) {
-    if ($item.status -eq 'active') { $activeTopic = $item.topic; break }
-}
-
-if ($Text) {
-    Write-Host "Done: $($script:completedTopic)"
-    if ($null -ne $activeTopic) { Write-Host "Active: $activeTopic" }
-    else { Write-Host 'Nothing active -- pick one with Set-ActiveThread.ps1.' }
-    Write-Host "Remaining: $($live.Count)"
-    return
-}
-
-ConvertTo-Json -InputObject ([PSCustomObject]@{
-    completed = $script:completedTopic
-    active    = $activeTopic
-    remaining = $live.Count
-}) -Depth 3 -Compress
+& $janet @arguments
+exit $LASTEXITCODE
