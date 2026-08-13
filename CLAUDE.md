@@ -57,10 +57,18 @@ last run. `-OutFile` changes the path; `-OutFile ''` skips writing.
 
 - `-Full` for every manifest field, `-Text` to read at a terminal, `-Pretty` to
   indent, `-SkipRun` to lint the manifest without executing anything.
-- The tool inventory is deliberately not loaded. Query `research.json` through
-  `scripts\Get-Research.ps1` and pull the two or three nodes you need.
-- Never hand-edit `research.json` — `Add-ResearchNode.ps1` / `Update-ResearchNode.ps1`.
+- The tool inventory is deliberately not loaded. Query `research.json` and pull the
+  two or three nodes you need — through the `research_query` MCP tool if it is
+  connected, otherwise `janet research query` or `scripts\Get-Research.ps1`.
+- Never hand-edit `research.json` — `research_add` / `research_update`, or their
+  `janet research` and `Add-`/`Update-ResearchNode.ps1` equivalents. All three are
+  the same code; the scripts shim to the CLI.
 - Run `scripts\Test-PowerShellRules.ps1` on any `.ps1` you touch. The hook does this
   when it is wired; do it yourself when it is not.
+- `dotnet test JanetHome.slnx` for the C# side. The catalog tests compare against
+  recorded answers in `tests\Janet.Tests\Goldens`, captured from the PowerShell as it
+  stood before the shims. Regenerate them with `dotnet run --project
+  tests\Janet.Goldens`, not by hand — a golden the implementation edits is not a
+  golden.
 
 Orientation lives in `README.md`; the patterns and their rationale in `DESIGN-NOTES.md`.

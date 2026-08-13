@@ -30,7 +30,9 @@
   "retrieval": {
     "graph": "research.json",
     "via": "scripts\\Get-Research.ps1",
-    "hint": "Run it with no arguments for kinds and tags; -Query for scored search, -Tag / -Id for exact lookup, -? for the full surface. Responses report their own truncation.",
+    "$comment.via": "'via' stays a path because startup resolves it and a broken pointer must fail loudly. The script is now a thin shim over the same code the MCP server and the CLI run, so it is still a correct answer -- just no longer the only one. 'tools' below names the other two. Do not put a tool name here: it would stop resolving, and startup would report a problem that is not one.",
+    "tools": "Three front ends over one implementation (Janet.Core), so they cannot disagree: the research_query / research_add / research_update / research_rename MCP tools; 'janet research query|add|update|rename' on the command line; and the scripts, which now shim to the CLI. Use the MCP tools when they are connected -- no process start, and the schema is typed. Hooks and other shell callers need the CLI, which is why it is not optional.",
+    "hint": "Run it with no arguments for kinds and tags; -Query for scored search, -Tag / -Id for exact lookup, -? for the full surface. Responses report their own truncation. The research_* MCP tools are the same code.",
     "$comment.hint": "'hint' is the only prose from this block that reaches the trimmed brief. The fields below are reference material, emitted under -Full -- keep them accurate, but do not grow 'hint'. See notes\\startup-brief-budget.md.",
     "$comment.json": "These scripts emit compressed JSON by default -- the consumer is a model, not a terminal. Node boundaries are unambiguous, new schema fields arrive without a formatter change, and nothing is spent on alignment no reader uses. -Text opts into the formatted view; -Pretty indents the JSON for debugging.",
     "usage": [
@@ -42,8 +44,8 @@
       "Add -Text for a human-readable form at the terminal; -Pretty to indent the JSON."
     ],
     "envelope": "Queries return { returned, totalMatches, truncated, nodes[] } -- check 'truncated' before concluding you have seen everything. An empty result uses the same shape, so never special-case it.",
-    "add": "scripts\\Add-ResearchNode.ps1 -Id <kind>.<slug> -Kind <kind> -NodePath <path> -Summary '<one line>' -Tags a,b -Links id1,id2 -Caveats 'what bites you'. Validates and splices; never hand-edit research.json. -DryRun to preview.",
-    "update": "scripts\\Update-ResearchNode.ps1 -Id <id> [-Summary|-Tags|-Links|-Caveats|-ScriptParams ...] [-Append] [-Remove field]. Preserves every field you do not name, including ones it has never heard of. Returns the before/after of each change. -DryRun to preview.",
+    "add": "research_add, 'janet research add', or scripts\\Add-ResearchNode.ps1 -Id <kind>.<slug> -Kind <kind> -NodePath <path> -Summary '<one line>' -Tags a,b -Links id1,id2 -Caveats 'what bites you'. Validates and splices; never hand-edit research.json. -DryRun to preview.",
+    "update": "research_update, 'janet research update', or scripts\\Update-ResearchNode.ps1 -Id <id> [-Summary|-Tags|-Links|-Caveats|-ScriptParams ...] [-Append] [-Remove field]. Preserves every field you do not name, including ones it has never heard of. Returns the before/after of each change. -DryRun to preview.",
     "caveats": "Nodes may carry a 'caveats' array -- missing dependencies, external services, platform limits, outright breakage. Retrieval always prints them prefixed with '!'. Read them before relying on a node; several scripts in this repo are known-broken and say so.",
     "fallback": "scripts\\Get-ScriptCatalog.ps1 scans the script directory directly, for when a lookup misses or research.json is stale"
   },
@@ -56,8 +58,8 @@
 
   "rules": [
     {
-      "text": "ENFORCED: never edit research.json directly -- use Add-ResearchNode.ps1 / Update-ResearchNode.ps1.",
-      "why": "A PreToolUse hook denies Write and Edit against it.",
+      "text": "ENFORCED: never edit research.json directly -- use the research_* MCP tools, 'janet research', or the Add-/Update-ResearchNode scripts.",
+      "why": "A PreToolUse hook denies Write and Edit against it. All three entry points splice into the file's existing text rather than reserializing it, which is what keeps the hand-curated grouping and comment keys alive; a direct edit is refused because it is the one path with no validation behind it.",
       "enforcedBy": "scripts\\Invoke-EditGuard.ps1"
     },
     {

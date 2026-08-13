@@ -2,8 +2,9 @@
 
 **Tooling and design patterns for making AI coding agents reliable: manifest-driven
 startup, a queryable research graph, graph-first code analysis, and contracts that
-fail loudly instead of degrading quietly.** Everything here is either a runnable
-PowerShell utility or a written-up pattern with the reasoning attached.
+fail loudly instead of degrading quietly.** Everything here is a runnable tool —
+an MCP server, a command-line twin, or a PowerShell utility — or a written-up
+pattern with the reasoning attached.
 
 New here? Jump to the [quick start](#quick-start). Want the ideas rather than the
 tools? Read [`DESIGN-NOTES.md`](DESIGN-NOTES.md) — it stands alone.
@@ -42,7 +43,7 @@ in this repo exists to close one of those gaps:
 | Problem | Answer here |
 |---|---|
 | Prose context files drift silently | `startup-manifest.json` — a checkable startup contract; a broken entry fails loudly |
-| "What exists?" answered by grepping | `research.json` + `Get-Research.ps1` — a ranked, self-truncation-reporting catalog of every script, pattern, and note |
+| "What exists?" answered by grepping | `research.json` + `research_query` / `janet research` — a ranked, self-truncation-reporting catalog of every script, pattern, and note |
 | Agents guess at code semantics | The graph-first pattern (DESIGN-NOTES §4), implemented as [RazorGraphTool](https://github.com/lorithantos/RazorGraphTool) |
 | Debugging loses the unwind path | Thread items — `Add-ThreadItem.ps1` and friends, a focus-explicit investigation list |
 | Mechanical multi-file edits drift | `Invoke-SurgicalEdit.ps1` — the model plans as JSON, a script executes deterministically |
@@ -57,17 +58,41 @@ quietly**, and give the agent evidence instead of the opportunity to guess.
 git clone https://github.com/lorithantos/JanetHome
 cd JanetHome
 
+# Build and install the two tools. Nothing is on nuget.org yet, so pack locally:
+dotnet pack JanetHome.slnx -c Release -o .janet-bin
+dotnet tool install --global --add-source .janet-bin Janet.Cli   # -> janet
+dotnet tool install --global --add-source .janet-bin Janet.Mcp   # -> janet-mcp
+
 # The catalog is the entry point — ask it what exists before opening anything:
-./scripts/Get-Research.ps1                          # kinds + tag index (cheap)
-./scripts/Get-Research.ps1 -Query 'thread items'    # scored search, top 5
-./scripts/Get-Research.ps1 -Id pattern.graph-first-analysis -Expand
+janet research query --base .                       # kinds + tag index (cheap)
+janet research query --query 'thread items'         # scored search, top 5
+janet research query --id pattern.graph-first-analysis --expand
 
 # Running an agent session against this repo? Let startup run the contract:
 ./scripts/Invoke-JanetStartup.ps1
 ```
 
-Scripts target **PowerShell 7**. Some carry known limitations; retrieval always
-prints a node's `caveats`, so ask the catalog rather than trusting a script blind.
+To reach the same catalog from an MCP client, start the server and point the client
+at it. Installing as a global tool puts it on `PATH`, so the config carries no
+absolute path:
+
+```powershell
+janet-mcp --http --port 7717 --base D:/Repos/JanetHome
+```
+
+```json
+{ "mcpServers": { "janet": { "type": "http", "url": "http://127.0.0.1:7717/" } } }
+```
+
+The HTTP transport is the one to develop against: the server is a separate process
+the client dials, so it can be killed, rebuilt and restarted while a session stays
+open — `scripts/Update-McpServer.ps1` does that rotation in about two seconds.
+`janet-mcp` with no `--http` speaks stdio instead, which every MCP client supports
+and no client reconnects to.
+
+The tools need the **.NET 10 SDK**; the scripts target **PowerShell 7**. Some carry
+known limitations; retrieval always prints a node's `caveats`, so ask the catalog
+rather than trusting a tool blind.
 
 ## The catalog is the entry point
 
@@ -78,8 +103,17 @@ it describes, which is the exact failure the manifest pattern exists to prevent.
 The catalog answers *what exists*; `-?` answers *how to call it*; a node's
 `caveats` answer *what will bite you*.
 
-Don't hand-edit `research.json` — `Add-ResearchNode.ps1` adds,
-`Update-ResearchNode.ps1` changes, both validate before splicing.
+Don't hand-edit `research.json` — `research_add` adds, `research_update` changes,
+`research_rename` moves a node and every link pointing at it. `janet research
+add|update|rename` and the `Add-`/`Update-`/`Rename-ResearchNode.ps1` scripts are
+the same operations; all of them validate, then *splice into the file's existing
+text* rather than reserializing it, which is what keeps the grouping and comment
+keys a serializer would flatten.
+
+The three front ends share one implementation (`src/Janet.Core`) so they cannot
+disagree, and the scripts are now shims over the CLI. The CLI is not a convenience:
+hooks run as separate processes and cannot speak MCP, so a command-line entry point
+has to exist for them to call.
 
 ## Layout
 
@@ -87,6 +121,8 @@ Don't hand-edit `research.json` — `Add-ResearchNode.ps1` adds,
 |---|---|
 | `DESIGN-NOTES.md` | The transferable patterns, with the failures that motivated them |
 | `research.json` | The node graph. Queried on demand, never loaded wholesale |
+| `src/` | `Janet.Core` (all behaviour), `Janet.Mcp` (the server), `Janet.Cli` (its twin) |
+| `tests/` | `Janet.Tests`, and `Janet.Goldens` — which records what the PowerShell answered so the tests need no PowerShell |
 | `scripts/` | Domain-agnostic PowerShell utilities — ask the catalog for the inventory |
 | `notes/` | Research notes, original analysis, PowerShell house rules |
 | `startup-manifest.json` | The startup contract: what to read, what to run, the rules in force |
