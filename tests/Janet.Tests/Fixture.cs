@@ -29,7 +29,7 @@ public static class Fixture
     public static string ReadGolden(string kind, string label, string extension) =>
         File.ReadAllText(Golden(kind, label, extension));
 
-    private static string Resolve(params string[] parts)
+    internal static string Resolve(params string[] parts)
     {
         string path = Path.Combine([AppContext.BaseDirectory, .. parts]);
 

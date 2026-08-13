@@ -150,6 +150,71 @@ public static class Cases
         ]),
     ];
 
+    /// <summary>
+    /// Thread-item operations, each run against a fresh copy of the threads fixture.
+    /// </summary>
+    /// <remarks>
+    /// Only cases that succeed. A refusal leaves the file untouched and exits non-zero, so
+    /// there is no resulting state to record; those are asserted directly in ThreadItemTests,
+    /// where the message can be checked rather than just the exit code.
+    ///
+    /// Both halves are captured: the file after the operation, byte for byte, and what the
+    /// script printed. The file is the state machine and the stdout is the contract callers
+    /// read -- a port could match either one alone and still be wrong.
+    /// </remarks>
+    public static readonly Write[] Threads =
+    [
+        new("thread add", "Add-ThreadItem.ps1", ["-Topic", "something noticed in passing"]),
+
+        new("thread add active", "Add-ThreadItem.ps1",
+            ["-Topic", "urgent detour", "-Active"]),
+
+        new("thread add furnished", "Add-ThreadItem.ps1",
+        [
+            "-Topic", "a topic with a comma, an apostrophe (') and a \"quote\"",
+            "-Notes", "Notes that run on, with punctuation: A -> B & C.",
+            "-Next", "do the next thing",
+            "-Refs", "note.one", "-Refs", "note.two",
+        ]),
+
+        new("thread update notes", "Update-ThreadItem.ps1",
+            ["-Topic", "cache eviction", "-Notes", "replaced wholesale"]),
+
+        new("thread update appending notes", "Update-ThreadItem.ps1",
+            ["-Topic", "cache eviction", "-Notes", "and then this", "-AppendNotes"]),
+
+        // Appending to an item whose notes are empty must not leave a blank line on top.
+        new("thread update appending to empty notes", "Update-ThreadItem.ps1",
+            ["-Topic", "cache warming", "-Notes", "first note", "-AppendNotes"]),
+
+        new("thread update appending refs", "Update-ThreadItem.ps1",
+            ["-Topic", "cache eviction", "-Refs", "note.cache", "-Refs", "note.new", "-AppendRefs"]),
+
+        // Supplied-as-empty is a request to clear, and is not the same as not supplied.
+        new("thread update clearing next", "Update-ThreadItem.ps1",
+            ["-Topic", "cache eviction", "-Next", ""]),
+
+        new("thread update status parks the other", "Update-ThreadItem.ps1",
+            ["-Topic", "cache eviction", "-Status", "active"]),
+
+        new("thread update by index", "Update-ThreadItem.ps1",
+            ["-Index", "1", "-Next", "reached by position"]),
+
+        new("thread complete by topic", "Complete-ThreadItem.ps1",
+            ["-Topic", "cache eviction"]),
+
+        // No selector means whatever is active.
+        new("thread complete the active one", "Complete-ThreadItem.ps1", []),
+
+        new("thread set active", "Set-ActiveThread.ps1", ["-Topic", "cache eviction"]),
+
+        new("thread clear active", "Set-ActiveThread.ps1", ["-None"]),
+
+        new("thread show", "Show-ThreadItems.ps1", []),
+
+        new("thread show all", "Show-ThreadItems.ps1", ["-All"]),
+    ];
+
     /// <summary>Turns a label into a file name. Stable, because it names a committed golden.</summary>
     public static string Slug(string label)
     {

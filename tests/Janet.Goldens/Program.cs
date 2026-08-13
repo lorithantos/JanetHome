@@ -31,7 +31,19 @@ public static class Program
         "Add-ResearchNode.ps1",
         "Update-ResearchNode.ps1",
         "Rename-ResearchNode.ps1",
+
+        // The thread-item entry points dot-source their shared helpers from $PSScriptRoot, so
+        // the extract has to carry that file too or none of them run.
+        "ThreadItems.Common.ps1",
+        "Add-ThreadItem.ps1",
+        "Update-ThreadItem.ps1",
+        "Complete-ThreadItem.ps1",
+        "Set-ActiveThread.ps1",
+        "Show-ThreadItems.ps1",
     ];
+
+    /// <summary>Files that define functions rather than doing anything, so the shim check does not apply.</summary>
+    private static readonly string[] NotEntryPoints = ["ThreadItems.Common.ps1"];
 
     /// <summary>
     /// Places where the port deliberately does NOT do what the original did.
@@ -68,8 +80,9 @@ public static class Program
 
         string corpus = Path.Combine(fixtures, "research.json");
         string layout = Path.Combine(fixtures, "layout.json");
+        string threadSeed = Path.Combine(fixtures, "threads.json");
 
-        foreach (string required in (string[])[corpus, layout])
+        foreach (string required in (string[])[corpus, layout, threadSeed])
         {
             if (!File.Exists(required))
             {
@@ -96,11 +109,13 @@ public static class Program
             int queries = WriteQueries(scripts, corpus, goldens, repoRoot);
             int texts = WriteTextViews(scripts, corpus, goldens, repoRoot);
             int writes = WriteWrites(scripts, layout, goldens, work, repoRoot);
+            int threads = WriteThreads(scripts, threadSeed, goldens, work, repoRoot);
 
             WriteMeta(goldens, gitRef, commit, scripts, corpus, layout);
 
             Console.WriteLine();
-            Console.WriteLine($"{queries} query, {texts} text, {writes} write goldens -> {goldens}");
+            Console.WriteLine(
+                $"{queries} query, {texts} text, {writes} write, {threads} thread goldens -> {goldens}");
             return 0;
         }
         catch (Exception ex)
@@ -187,6 +202,43 @@ public static class Program
     }
 
     /// <summary>
+    /// Runs each thread-item case against a fresh copy of the seed list.
+    /// </summary>
+    /// <remarks>
+    /// Both halves are recorded: the list after the operation, byte for byte, and what the
+    /// script printed. The file is the state machine; the stdout is the contract every caller
+    /// reads, and Show-ThreadItems' envelope is consumed by startup itself. A port could match
+    /// one and be wrong about the other.
+    /// </remarks>
+    private static int WriteThreads(string scripts, string seed, string goldens, string work, string repoRoot)
+    {
+        string listDirectory = Path.Combine(goldens, "thread");
+        string outputDirectory = Path.Combine(goldens, "thread-output");
+        Directory.CreateDirectory(listDirectory);
+        Directory.CreateDirectory(outputDirectory);
+
+        foreach (Cases.Write operation in Cases.Threads)
+        {
+            string slug = Cases.Slug(operation.Label);
+            string sandbox = Path.Combine(work, "thread", slug);
+            Directory.CreateDirectory(sandbox);
+
+            string list = Path.Combine(sandbox, "thread-stack.json");
+            File.Copy(seed, list);
+
+            string printed = Ps.Run(
+                Path.Combine(scripts, operation.Script), [.. operation.Args, "-Path", list], repoRoot);
+
+            File.Copy(list, Path.Combine(listDirectory, slug + ".json"), overwrite: true);
+            Save(Path.Combine(outputDirectory, slug + ".json"), printed);
+
+            Console.WriteLine($"  thread {operation.Label}");
+        }
+
+        return Cases.Threads.Length;
+    }
+
+    /// <summary>
     /// Pulls the scripts out of git at the given ref and returns the commit they came from.
     /// </summary>
     /// <remarks>
@@ -213,7 +265,8 @@ public static class Program
                 throw new InvalidOperationException($"{script} is not in the tree at {gitRef}");
             }
 
-            if (File.ReadLines(target).FirstOrDefault()?.Contains("JANET-SHIM", StringComparison.Ordinal) == true)
+            if (!NotEntryPoints.Contains(script, StringComparer.Ordinal) &&
+                File.ReadLines(target).FirstOrDefault()?.Contains("JANET-SHIM", StringComparison.Ordinal) == true)
             {
                 throw new InvalidOperationException(
                     $"{script} at {gitRef} is already a shim over the CLI; goldens taken from it would " +

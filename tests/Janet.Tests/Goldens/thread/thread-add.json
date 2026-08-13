@@ -1,0 +1,42 @@
+[
+  {
+    "topic": "cache eviction",
+    "status": "parked",
+    "refs": [
+      "note.cache",
+      "note.telemetry"
+    ],
+    "next": "query the telemetry table",
+    "notes": "Ruled out the obvious: it isn't the TTL."
+  },
+  {
+    "topic": "cache warming",
+    "status": "parked",
+    "refs": [],
+    "next": "",
+    "notes": ""
+  },
+  {
+    "topic": "chase the AV, and its \"quarantine\" behaviour",
+    "status": "active",
+    "refs": [
+      "note.av"
+    ],
+    "next": "reproduce on a clean box",
+    "notes": "Two lines here.\n\nThe second one, with a comma."
+  },
+  {
+    "topic": "finished thing",
+    "status": "done",
+    "refs": [],
+    "next": "",
+    "notes": "closed out"
+  },
+  {
+    "topic": "something noticed in passing",
+    "status": "parked",
+    "refs": [],
+    "next": "",
+    "notes": ""
+  }
+]
