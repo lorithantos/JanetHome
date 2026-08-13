@@ -20,7 +20,7 @@
       "section": "2",
       "summary": "Capability lives in per-topic skill files loaded on match, not one monolithic prompt; context is the scarce resource and instructions interfere.",
       "tags": ["skills", "context", "agent", "retrieval"],
-      "links": ["script.get-research", "file.research", "note.janet-origin", "file.readme"]
+      "links": ["script.get-research", "file.research", "note.janet-origin"]
     },
     {
       "id": "pattern.thread-items",
@@ -123,15 +123,13 @@
       "id": "script.get-research",
       "kind": "script",
       "path": "scripts\\Get-Research.ps1",
-      "summary": "Queries research.json by id, tag, kind, or scored free text, returning a ranked top-N shortlist; the single retrieval entry point so startup never loads the full inventory. Now a thin shim over 'janet research query' -- same code as the research_query MCP tool, so the three surfaces cannot disagree.",
+      "summary": "Queries research.json by id, tag, kind, or scored free text, returning a ranked top-N shortlist; the single retrieval entry point so startup never loads the full inventory.",
       "params": ["Id", "Tag", "Kind", "Query", "First", "All", "Expand", "Depth", "Full", "Text", "Pretty", "Path"],
       "caveats": [
-        "-Text is denser than the JSON for multi-node results (75% of the size: it drops the per-node field names), so it is the cheaper form for a model scanning a shortlist -- the opposite of Invoke-JanetStartup, where -Text is 251% because it adds every rule why. Choose by what the projection contains, not the flag name. -Text is written with Write-Host, so it cannot be captured by pipe, > redirection, or assignment; use 6>&1. See note.startup-brief-budget.",
-        "A shim since the cutover: it locates the janet CLI and forwards. It keeps writing the %TEMP% research trace itself, because Invoke-ResearchGuard.ps1 reads that file to tell 'asked and found nothing' from 'never asked' -- the CLI does not write it, so a shim that merely forwarded would silently disarm the research-first guard.",
-        "If the janet global tool is missing or stale, this fails or answers with old behaviour. A global tool is a separate copy on PATH and is NOT rotated when the MCP server is: use Update-McpServer.ps1 -ToolProject, which reinstalls it in the same pass."
+        "-Text is denser than the JSON for multi-node results (75% of the size: it drops the per-node field names), so it is the cheaper form for a model scanning a shortlist -- the opposite of Invoke-JanetStartup, where -Text is 251% because it adds every rule why. Choose by what the projection contains, not the flag name. -Text is written with Write-Host, so it cannot be captured by pipe, > redirection, or assignment; use 6>&1. See note.startup-brief-budget."
       ],
       "tags": ["retrieval", "research", "index", "entrypoint"],
-      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json", "note.startup-brief-budget", "script.get-api-doc", "script.invoke-research-guard", "note.janet-mcp-port", "note.golden-tests", "file.janet-core", "script.janet-cli-common"]
+      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json", "note.startup-brief-budget", "script.get-api-doc", "script.invoke-research-guard"]
     },
     {
       "id": "script.add-thread-item",
@@ -429,15 +427,15 @@
         "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
       ],
       "tags": ["startup", "contract", "config"],
-      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme"]
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget"]
     },
     {
       "id": "file.research",
       "kind": "file",
       "path": "research.json",
-      "summary": "This node graph. Queried on demand -- research_query, 'janet research query', or Get-Research.ps1, all one implementation -- rather than loaded at startup. Hand-curated: grouped, commented, and written by splicing so a serializer never flattens it.",
+      "summary": "This node graph. Queried on demand by Get-Research.ps1 rather than loaded at startup.",
       "tags": ["retrieval", "index", "config"],
-      "links": ["script.get-research", "pattern.progressive-disclosure", "note.janet-mcp-port", "file.janet-core", "script.rename-research-node", "script.swap-research-graph", "file.readme"]
+      "links": ["script.get-research", "pattern.progressive-disclosure"]
     },
     {
       "id": "file.provenance",
@@ -466,30 +464,26 @@
       "id": "script.add-research-node",
       "kind": "script",
       "path": "scripts\\Add-ResearchNode.ps1",
-      "summary": "Adds a validated node to research.json without hand-editing JSON; splices textually so the hand-curated file keeps its grouping and comments. Now a thin shim over 'janet research add' -- same code as the research_add MCP tool.",
+      "summary": "Adds a validated node to research.json without hand-editing JSON; splices textually so the hand-curated file keeps its grouping and comments.",
       "params": ["Id", "Kind", "Summary", "NodePath", "Tags", "Links", "Caveats", "ScriptParams", "Section", "GraphPath", "DryRun", "Text", "Json", "JsonPath"],
       "caveats": [
-        "Prefer -Json (or -JsonPath) for any prose containing apostrophes or quotes. Passing a summary as a quoted PowerShell string is how this catalog ended up storing assembly's: a single-quoted here-string doubled the apostrophe and nothing downstream could tell corruption from intent.",
-        "A shim since the cutover: it forwards to the janet CLI. A missing or stale global tool fails or writes old behaviour, and the tool is NOT rotated with the MCP server -- Update-McpServer.ps1 -ToolProject reinstalls it.",
-        "Field order changed at the port: a new node now carries caveats before tags, matching the hand-authored nodes rather than the ones this script wrote. Nodes added before the cutover still have the old order; nothing rewrites them, so the file holds both."
+        "Prefer -Json (or -JsonPath) for any prose containing apostrophes or quotes. Passing a summary as a quoted PowerShell string is how this catalog ended up storing assembly's: a single-quoted here-string doubled the apostrophe and nothing downstream could tell corruption from intent."
       ],
       "tags": ["research", "index", "retrieval", "authoring"],
-      "links": ["script.get-research", "file.research", "script.update-research-node", "note.janet-mcp-port", "file.janet-core", "note.golden-tests", "script.rename-research-node", "script.janet-cli-common"]
+      "links": ["script.get-research", "file.research", "script.update-research-node"]
     },
 
     {
       "id": "script.update-research-node",
       "kind": "script",
       "path": "scripts\\Update-ResearchNode.ps1",
-      "summary": "Updates an existing research.json node in place with validation; preserves unknown fields and splices textually so the file keeps its curation. Now a thin shim over 'janet research update' -- same code as the research_update MCP tool.",
+      "summary": "Updates an existing research.json node in place with validation; preserves unknown fields and splices textually so the file keeps its curation.",
       "params": ["Id", "Summary", "NodePath", "Kind", "Section", "Tags", "Links", "Caveats", "ScriptParams", "Append", "Remove", "GraphPath", "DryRun", "Text", "Json", "JsonPath"],
       "caveats": [
-        "Prefer -Json (or -JsonPath) for prose. The JSON form is a PATCH: only the fields present are touched, and it registers them as bound parameters so the same change-detection applies as the named-parameter form.",
-        "A shim since the cutover: it forwards to the janet CLI. A missing or stale global tool fails or writes old behaviour, and the tool is NOT rotated with the MCP server -- Update-McpServer.ps1 -ToolProject reinstalls it.",
-        "-Remove drops a FIELD, not a node. Nothing in Janet can delete a node: removing one means editing the file by hand past the guard, or restoring it. That is why a stray sandbox write is expensive rather than trivial to undo."
+        "Prefer -Json (or -JsonPath) for prose. The JSON form is a PATCH: only the fields present are touched, and it registers them as bound parameters so the same change-detection applies as the named-parameter form."
       ],
       "tags": ["research", "index", "retrieval", "authoring"],
-      "links": ["script.add-research-node", "script.get-research", "file.research", "note.janet-mcp-port", "file.janet-core", "script.rename-research-node", "script.janet-cli-common"]
+      "links": ["script.add-research-node", "script.get-research", "file.research"]
     },
 
     {
@@ -502,7 +496,7 @@
         "Wired twice: project-level .claude\\settings.json (live only when JanetHome is the project dir) and user-level ~\\.claude\\settings.json by absolute path (2026-08-01, skips when the project dir IS JanetHome so the levels never double-fire). Guards by leaf name, so a file named research.json in ANY repo is denied when the user-level hook is active."
       ],
       "tags": ["hooks", "enforcement", "research", "guard"],
-      "links": ["script.add-research-node", "script.update-research-node", "file.research", "script.invoke-research-guard", "note.janet-mcp-port", "script.swap-research-graph"]
+      "links": ["script.add-research-node", "script.update-research-node", "file.research", "script.invoke-research-guard"]
     },
 
     {
@@ -562,7 +556,7 @@
         "Escape reports cite the thrower METHOD node, not the throw site: a throw authored in a .cshtml code block whose enclosing method is generated scaffolding (ExecuteAsync) still displays the .g.cs path even after f97edee - the node is correctly marked generated:true with generatedFrom and a compiledInto edge back to the page, but the mapped .cshtml line of the throw itself is not persisted on the edge. Persisting throw-site locations is the open follow-up."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping"]
     },
 
     {
@@ -630,11 +624,11 @@
       "kind": "note",
       "path": "notes\\startup-brief-budget.md",
       "summary": "The startup brief grew until 84% of it was non-contract prose; measurement, the trim, and the switch-parameter/local variable collision that adding -Full exposed.",
+      "tags": ["startup", "brief", "progressive-disclosure", "powershell", "landmine", "measurement"],
       "caveats": [
         "The 54% reduction is measured against the 2026-08-01 manifest; re-measure after adding rules or retrieval fields. Trimming is done by the emitter, so growing manifest prose no longer costs the session but still costs -Full and -Text readers."
       ],
-      "tags": ["startup", "brief", "progressive-disclosure", "powershell", "landmine", "measurement"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup", "note.janet-mcp-port"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup"]
     },
 
     {
@@ -861,7 +855,7 @@
         "build-solution gained --no-tests (20ff394, 2026-08-08): skips test projects BEFORE compiling (detection by test-framework metadata references), reported on stderr and in output, never silent. Coverage query modes (--uncovered, --covering-tests, --covered-methods) now exit 1 with an explanation on ANY test-less graph - including single-project builds, which previously returned empty coverage silently. The refusal is the report."
       ],
       "tags": ["code-analysis", "csharp", "roslyn", "cli", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping"]
     },
 
     {
@@ -1037,128 +1031,6 @@
         "The failure is silent -- no error, no warning, just an empty JSON field on a populated object."
       ],
       "links": ["note.dotnet-object-sizing", "script.get-drive-survey"]
-    },
-
-    {
-      "id": "note.janet-mcp-port",
-      "kind": "note",
-      "path": "notes\\janet-mcp-port.md",
-      "summary": "The C# catalog port and its cutover, now complete for the catalog. Janet.Core holds the logic; janet (CLI) and janet-mcp (stdio + HTTP) are thin front ends, both .NET global tools so client config is a bare command name, and the four PowerShell scripts are shims over the CLI. HTTP transport is the point of the design: an HTTP server is a separate process the client dials, so it survives being killed and rebuilt mid-session (Claude Code reconnects with five-attempt backoff), while a stdio server is a child the client holds open and is never reconnected -- which is why RazorGraph needs a publish-and-restart per change. Query, splice writer and rename are ported with byte-identical output to the PowerShell, proven by 80 tests that compare against recorded answers rather than by re-running it.",
-      "caveats": [
-        "Neither implementation can DELETE a node. Update -Remove drops a field, not a node. Removing one means restoring the file, which is why a stray sandbox write is expensive rather than trivial to undo, and why Swap-ResearchGraph.ps1 refuses rather than stripping them for you.",
-        "A stale installed tool silently answers with old behaviour. The .nupkg is built from source at pack time, so changing Janet.Core and forgetting to repack leaves the global tool on the old code -- it wrote two nodes into the live graph that way. dotnet tool update no-ops on an identical version: uninstall and install, or bump it. Update-McpServer.ps1 -ToolProject is the structural fix.",
-        "Field order settled at the port: new nodes carry caveats before tags, matching the hand-authored majority rather than the order Add-ResearchNode.ps1 used. Nodes written before the cutover keep the old order and nothing rewrites them, so the file holds both. The deviation is declared in the golden generator and recorded in Goldens/meta.json -- see note.golden-tests.",
-        "MEASURED over HTTP, and the earlier readings this node carried were wrong twice before this one. A rotation swaps tool BEHAVIOUR, ARGUMENTS, and the tool LIST live: an attached session reconnects to the new process and runs new code with no restart (~1.9s per rotation, verified across five pids). A new PARAMETER on an existing tool works immediately -- the client forwards arguments without checking its cached schema. A new TOOL also works: research_rename was added, rotated in, and invoked from the already-running session. The first reading said new tools were invisible; that was checking too early. Reconnection is LAZY -- it happens on the next MCP call, not when the server restarts -- so a tool-list search immediately after a rotation reads the PRE-rotation list. Not-yet was recorded as never.",
-        "Still unresolved from that measurement: tool DESCRIPTIONS looked stale even after a reconnect, so names and descriptions may refresh on different schedules, or asynchronously. tools/list_changed did nothing in either direction -- tried from inside a tool call, and pushed out of band via RunSessionHandler. Practical rule: rotate, MAKE A CALL, then look; and do not trust description freshness in either direction without re-testing. Over stdio none of this applies: nothing swaps, and killing the server just removes the tools.",
-        "Still unported: thread items, API/assembly introspection, and dotnet check. Those scripts are untouched and remain the only implementation.",
-        "Historical, and the design lesson worth keeping: the port wrote only research.candidate.json while it was built, with research.candidate.base.json frozen beside it as the common ancestor. A seed HASH would have said only THAT the live graph moved, never WHICH nodes -- integrating them forward is a three-way comparison, and the first cut of the plan stored a hash and was not implementable. Both files are gone now; the swap consumed them."
-      ],
-      "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node"]
-    },
-
-    {
-      "id": "script.update-mcp-server",
-      "kind": "script",
-      "path": "scripts\\Update-McpServer.ps1",
-      "summary": "Publishes an MCP server to a fresh build-<stamp> directory and repoints a \"current\" junction at it, so a rebuild never contends with the running server. Client config names the junction and never changes again -- a stable path that resolves to the newest build by lookup. HTTP servers are stopped and restarted from the junction (measured: 1.9s from rotation start to serving again, against a ~31s reconnect backoff window, with the publish happening while the old server was still serving). stdio servers are left alone because the client owns the process: the win there is that the publish SUCCEEDS with sessions attached, and each new session picks up the newest build. Smoke-tests the new binary before repointing, keeps the last N builds for rollback, and skips pruning anything still locked.",
-      "params": ["Project", "Root", "ProcessName", "ServerArgument", "Keep", "ToolProject"],
-      "caveats": [
-        "Redirects BaseOutputPath only, never BaseIntermediateOutputPath. Moving obj\\ stops MSBuild excluding the project's ORIGINAL obj\\ from the default source glob, so both copies of the generated AssemblyInfo.cs compile and every assembly attribute collides with CS0579. The lock is on bin\\; moving obj\\ solves nothing and breaks the build.",
-        "MULTI-SESSION: -ProcessName stops only servers running from under -Root whose command line carries --http. Stopping by process NAME would also kill stdio servers belonging to other sessions, and stdio is never reconnected automatically -- those clients lose their tools silently, with no error and no recovery short of restarting. A rebuild must not be able to do that.",
-        "PRUNING CHECKS BEFORE DELETING, never delete-then-catch. Remove-Item -Recurse deletes what it can and only then throws, so a build with a live server loses every file the process has not currently mapped: measured 4 of 11, including the .deps.json the runtime needs for an assembly it has not loaded yet. The server survives until it reaches for one. Catching afterwards and reporting \"kept\" describes a directory already gutted.",
-        "A second session starting mid-rotation gets the newest build through the junction while an existing session keeps the one it started with, so two sessions can run different builds. That is inherent to stdio and harmless per-session, but it is the same version-skew note.razorgraph-cli warns about between the CLI and the MCP server -- check which build answered before trusting a disagreement.",
-        "Junctions are a Windows filesystem feature. A cross-platform port needs a symlink or a launcher shim that resolves the newest build.",
-        "-ToolProject packs and reinstalls global tools in the same pass. The CLI is NOT rotated -- a global tool is a separate copy on PATH -- so rebuilding the server leaves it stale, and a stale CLI reports a new verb as unknown while the server serves it fine. That was written down in a caveat and still caught us three times; the parameter is the structural fix a note could not be. Uninstalls then installs, because dotnet tool update no-ops on an identical version."
-      ],
-      "tags": ["agent", "deployment", "tooling", "csharp", "powershell", "failure-modes"],
-      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port"]
-    },
-
-    {
-      "id": "file.janet-core",
-      "kind": "file",
-      "path": "src\\Janet.Core",
-      "summary": "The catalog implementation, in C#: parse, score, project, and splice. Every behaviour worth preserving lives here so the three front ends -- the janet-mcp server, the janet CLI, and the PowerShell shims that call it -- cannot disagree. Reads and writes the graph as TEXT, splicing nodes into the existing file rather than reserializing, which is what keeps the hand-curated grouping and comment keys alive.",
-      "caveats": [
-        "Serializes with JavaScriptEncoder.UnsafeRelaxedJsonEscaping. System.Text.Json's default escapes <, >, &, ' and + as \\uXXXX; PowerShell's ConvertTo-Json does not. Left at the default, every node containing an apostrophe or an ampersand would round-trip into a different file -- valid JSON, unreadable diff, and byte parity gone.",
-        "Ordering is ordinal, not culture-aware. Verified identical to PowerShell's sort on all 92 nodes of the corpus at the time, which is evidence rather than proof: a node id mixing case or punctuation differently could still sort apart from the PowerShell that shipped before the port.",
-        "Substring matching, deliberately not -like. The PowerShell used -like, so a query term containing * or ? behaved as a wildcard by accident; that edge is not reproduced."
-      ],
-      "tags": ["csharp", "retrieval", "research", "index"],
-      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common"]
-    },
-
-    {
-      "id": "note.golden-tests",
-      "kind": "note",
-      "path": "tests\\Janet.Goldens\\Program.cs",
-      "summary": "How the catalog port is proven, and the failure that forced the design: parity tests that shell out to the old implementation stop testing anything the moment the old implementation becomes a shim over the new one -- they compare the port with itself and report PASSED. Forty green results standing for no verification. The fix is to record the original's answers once, from the scripts as they stood in git BEFORE the shims, and assert against the recording: tests/Janet.Goldens extracts them at a named ref, runs every case, and writes Goldens/ plus a meta.json carrying the commit and a hash of each script. The tests then need no PowerShell at all, which is the portability the port exists for.",
-      "caveats": [
-        "An early return is not a skip. The first attempt guarded each test with 'if the scripts are shims, return' -- which reports PASSED. xunit 2.x has no Assert.Skip (it arrived in v3), so there is no cheap honest version of that guard; recording the answers was the way out, not a nicer skip.",
-        "Goldens are generated from PowerShell only. There is deliberately no --from-csharp mode: a golden the implementation writes agrees with the implementation by construction. A deliberate behaviour change means editing the golden by hand, in a diff someone reads.",
-        "One declared deviation, in the generator's Corrections table and in meta.json: Add-ResearchNode.ps1 wrote a new node's tags before its caveats, while 37 of the 51 nodes carrying both -- the hand-authored ones -- have caveats first. The correction throws if the text it expects is absent, so it cannot silently become a no-op.",
-        "The weights are invisible to these tests. A score never reaches the envelope, only the order it produces, so a weight change that preserves the ranking of all 27 recorded queries fails nothing -- measured: 40 to 41 on the tag-exact weight. ScoringTests pins the constants directly for exactly that gap.",
-        "Tests read frozen fixtures, never the live research.json. They used to read the live graph, which meant their expectations changed whenever anyone added a node. Regenerating the fixtures (Build-Fixtures.ps1) invalidates every golden and needs the generator re-run."
-      ],
-      "tags": ["testing", "csharp", "powershell", "failure-modes", "contract"],
-      "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research"]
-    },
-
-    {
-      "id": "script.rename-research-node",
-      "kind": "script",
-      "path": "scripts\\Rename-ResearchNode.ps1",
-      "summary": "Renames a catalog node and moves every inbound link with it, in one splice. A rename that missed a link would leave a dangling id that reads exactly like a deleted node, which is the failure it exists to prevent. A shim over 'janet research rename' / the research_rename MCP tool.",
-      "params": ["Id", "NewId", "Kind", "GraphPath", "DryRun", "Text"],
-      "caveats": [
-        "Prose mentions are REPORTED, never rewritten. A rename fixes the graph's links and then tells you which markdown files still name the old id, on stderr and in the payload -- editing prose is a different and much larger promise. A caller reading only stdout will miss them.",
-        "Refuses to rename onto an existing id rather than merging: the merge would silently swallow the target node, and nothing here can delete a node to undo it.",
-        "Edits are applied back to front so earlier offsets stay valid, and the result is re-parsed before the file is written. If the renamed node is not found afterwards, the graph is left untouched."
-      ],
-      "tags": ["research", "index", "retrieval", "authoring", "refactoring"],
-      "links": ["script.update-research-node", "script.add-research-node", "file.research", "file.janet-core", "script.janet-cli-common"]
-    },
-
-    {
-      "id": "script.swap-research-graph",
-      "kind": "script",
-      "path": "scripts\\Swap-ResearchGraph.ps1",
-      "summary": "The catalog cutover, run by hand with -Approve: verify quiesce, parse both files, compute the delta the live graph accumulated while the port was built, validate the candidate, report and stop; then preserve research.json by renaming it to research.previous.json, swap the candidate in by rename, integrate the delta forward through the NEW writer, and re-validate or reverse both renames. Two renames in one directory, so no reader ever sees a partial or absent file.",
-      "params": ["GraphPath", "CandidatePath", "BasePath", "Approve", "AllowRemovals", "Keep"],
-      "caveats": [
-        "MANUAL BY DESIGN, and not because it is dangerous. Its precondition is that no other writer is active, and a session cannot quiesce itself: an agent running this from inside one of two concurrent sessions is a writer trying to prove there are no writers. The script VERIFIES the quiesce -- no janet-mcp running, neither file locked, no fresh research trace in %TEMP% -- and says plainly that none of that is proof. The user's own shutdown is what establishes it.",
-        "The quiesce checks catch the ordinary case only. A session that queried the catalog four minutes ago leaves a trace old enough to pass, and a second machine is invisible entirely.",
-        "Integration is the step with no dry run of its own -- it is the new writer's first run against real accumulated content. Rehearse it on a copied directory before the real thing. research.previous.json is left on disk deliberately and never deleted; that is the rollback.",
-        "Where a node id exists on both sides and differs, the PRESERVED side wins. Those are nodes real sessions authored; the candidate's copy is at best a stale seed.",
-        "Refuses rather than repairing: a dangling link, a missing path, a surviving sandbox.-prefixed node, or a lost node without -AllowRemovals all stop it before anything moves."
-      ],
-      "tags": ["research", "index", "migration", "powershell", "failure-modes"],
-      "links": ["file.research", "note.janet-mcp-port", "file.janet-core", "script.invoke-edit-guard"]
-    },
-
-    {
-      "id": "file.readme",
-      "kind": "file",
-      "path": "README.md",
-      "summary": "The public front door and the bootstrap: what Janet is for, the install, and the fact that the catalog -- not this file -- is the entry point for everything else. Startup reads it because it is what tells a fresh session the graph exists; it deliberately carries no script inventory, since a copied inventory drifts from the thing it describes.",
-      "caveats": [
-        "It has to survive alone. Startup reads it before anything else is available, so a claim here that depends on a tool being installed is a claim a fresh reader cannot check."
-      ],
-      "tags": ["documentation", "startup", "entrypoint"],
-      "links": ["note.janet-origin", "file.startup-manifest", "pattern.progressive-disclosure", "file.research"]
-    },
-
-    {
-      "id": "script.janet-cli-common",
-      "kind": "script",
-      "path": "scripts\\JanetCli.Common.ps1",
-      "summary": "Dot-sourced helper the four catalog shims share: locates the janet CLI (global tool on PATH, else a local build) and builds the --base/--graph arguments once, so four scripts do not each rediscover them and drift apart.",
-      "caveats": [
-        "Deliberately sets no StrictMode. A dot-sourced file runs in the CALLER's scope, so Set-StrictMode here would silently arm it for whatever script sourced this one -- a setting the caller never asked for and would debug as its own bug."
-      ],
-      "tags": ["powershell", "tooling", "research", "retrieval"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "script.rename-research-node", "file.janet-core"]
     }
   ]
 }

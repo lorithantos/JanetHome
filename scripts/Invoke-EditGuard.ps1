@@ -14,11 +14,21 @@
     An agent does not skip a step from fatigue; it skips from rationalisation. So the
     step is no longer optional.
 
+    The candidate and previous graphs are guarded on the same footing as the live one.
+    research.candidate.json is the file the C# port writes while it is being built, and
+    an unguarded candidate is a live graph one rename away: everything spliced into it
+    by hand becomes the catalog at cutover, having passed through none of the checks
+    the live file's own edits must pass. research.previous.json is the preserved copy
+    the swap leaves behind, and its whole value is being a byte-exact record of what
+    the catalog was -- an edit to it is not a mistake to catch later, it is the
+    rollback path being quietly destroyed.
+
     Reads the hook payload on stdin. Emits a deny decision, or nothing at all when the
     call is fine.
 
 .PARAMETER GuardedFile
-    File name to protect. Defaults to research.json.
+    File names to protect. Defaults to the live graph plus the candidate and preserved
+    copies the cutover uses.
 
 .PARAMETER InputJson
     Hook payload, for testing. Normally omitted -- the real invocation gets it on
@@ -31,7 +41,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$GuardedFile = 'research.json',
+    [string[]]$GuardedFile = @('research.json', 'research.candidate.json', 'research.previous.json',
+        'research.candidate.base.json'),
     [string]$InputJson
 )
 
@@ -53,10 +64,41 @@ try {
     if (-not $filePath) { exit 0 }
 
     $leaf = Split-Path $filePath -Leaf
-    if ($leaf -ne $GuardedFile) { exit 0 }
+    if ($GuardedFile -notcontains $leaf) { exit 0 }
+
+    if ($leaf -eq 'research.previous.json' -or $leaf -eq 'research.candidate.base.json') {
+        $preservedReason = @"
+Edits to $leaf are blocked, and this one has no validating path.
+
+research.previous.json is the byte-exact copy of the catalog as it stood immediately
+before the cutover swap, kept so the swap can be reversed by renaming it back.
+research.candidate.base.json is the common ancestor frozen when the candidate was
+seeded, and the cutover diffs against it to work out which nodes the live graph
+gained while the port was being built. Editing either does not improve it -- it
+destroys the record the swap reasons from, which is the one thing it is for.
+
+If the live catalog needs a change, change research.json through the validating
+scripts. If the swap needs reversing, reverse the renames; do not hand-edit either
+side into agreement.
+"@
+        [PSCustomObject]@{
+            hookSpecificOutput = [PSCustomObject]@{
+                hookEventName            = 'PreToolUse'
+                permissionDecision       = 'deny'
+                permissionDecisionReason = $preservedReason
+            }
+        } | ConvertTo-Json -Depth 4 -Compress
+        exit 0
+    }
+
+    $candidateNote = if ($leaf -eq 'research.candidate.json') {
+        "`nThis is the candidate graph the C# port writes. Pass -GraphPath to the scripts`nbelow, or use the janet CLI, so the same validation applies to it as to the live`nfile -- everything in it becomes the catalog at cutover.`n"
+    }
+    else { '' }
 
     $reason = @"
-Direct edits to $GuardedFile are blocked. Use the validating scripts instead:
+Direct edits to $leaf are blocked. Use the validating scripts instead:
+$candidateNote
 
   Add a node:     scripts\Add-ResearchNode.ps1 -Id <kind>.<slug> -Kind <kind> -NodePath <path> -Summary '<one line>' [-Tags a,b] [-Links id1,id2] [-Caveats '...']
   Change a node:  scripts\Update-ResearchNode.ps1 -Id <id> [-Summary|-Tags|-Links|-Caveats|-ScriptParams ...] [-Append] [-Remove field]
