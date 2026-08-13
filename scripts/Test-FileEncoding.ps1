@@ -46,7 +46,19 @@ param(
 )
 
 $hasIssues = $false
-$files = $Path | ForEach-Object { Get-Item $_ -ErrorAction SilentlyContinue } | Select-Object -ExpandProperty FullName -Unique
+$items = @($Path | ForEach-Object { Get-Item $_ -ErrorAction SilentlyContinue })
+
+# A directory used to reach the loop below, fail inside ReadAllBytes, and be reported
+# "OK: 0 non-ASCII bytes" with the run still exiting 0 -- the exception was not
+# terminating, so $bytes stayed empty and every count came out zero. A gate that passes
+# on an input it could not read is worse than one that refuses the input.
+$directories = @($items | Where-Object { $_.PSIsContainer } | Select-Object -ExpandProperty FullName)
+if ($directories.Count -gt 0) {
+    Write-Error "Directories are not accepted, only files: $($directories -join ', '). Pass a wildcard, such as '<dir>\*.ps1'."
+    exit 1
+}
+
+$files = @($items | Select-Object -ExpandProperty FullName -Unique)
 
 if ($files.Count -eq 0) {
     Write-Error "No files matched: $($Path -join ', ')"
