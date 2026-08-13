@@ -209,8 +209,13 @@
       "id": "script.test-file-encoding",
       "kind": "script",
       "path": "scripts\\Test-FileEncoding.ps1",
-      "summary": "Pre-push audit: scans files for non-ASCII bytes and line ending issues.",
-      "params": ["Path", "ExpectCrlf"],
+      "summary": "Pre-push audit with two policies chosen by extension: ASCII for code and data, valid UTF-8 with no BOM for markdown. Reports line endings for both and enforces CRLF only under -ExpectCrlf. -Strict applies the ASCII policy to everything, markdown included.",
+      "params": ["Path", "ExpectCrlf", "Strict"],
+      "caveats": [
+        "Split by file type on 2026-08-12 because one rule was wrong for prose: 28 of the repo's 37 markdown files carry an em dash, so ASCII-for-everything meant the gate failed on documentation that was correct, and a gate that always fails is a gate people commit past. research.json and the scripts stay strictly ASCII -- the writer's escaping story is built on it, and a smart quote pasted into a string literal is exactly what this catches.",
+        "Markdown is checked for validity, not for taste: valid UTF-8 and no BOM. It will not tell you an em dash should have been two hyphens. Use -Strict on prose that is meant to have stayed plain.",
+        "Now ends with an explicit 'exit 0'. Falling off the end left $LASTEXITCODE holding whatever ran before, which is the failure script.test-pre-commit documents and works around by resetting it per step -- the workaround stays, because other child scripts may still lack the explicit exit."
+      ],
       "tags": ["encoding", "files", "audit", "pre-commit"],
       "links": ["script.fix-file-encoding", "script.test-pre-commit"]
     },
