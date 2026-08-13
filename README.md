@@ -46,6 +46,7 @@ in this repo exists to close one of those gaps:
 | "What exists?" answered by grepping | `research.json` + `research_query` / `janet research` — a ranked, self-truncation-reporting catalog of every script, pattern, and note |
 | Agents guess at code semantics | The graph-first pattern (DESIGN-NOTES §4), implemented as [RazorGraphTool](https://github.com/lorithantos/RazorGraphTool) |
 | Debugging loses the unwind path | Thread items — `thread_add` / `janet thread`, a focus-explicit investigation list where nothing is ever deleted |
+| Guessing a library's API costs a build per wrong guess | `api_doc_query` / `assembly_api` — ranked search of a package's XML docs, and what a compiled assembly actually declares |
 | Mechanical multi-file edits drift | `Invoke-SurgicalEdit.ps1` — the model plans as JSON, a script executes deterministically |
 | Build/test output gets scraped | `Invoke-DotnetCheck.ps1` — structured, contract-numbered JSON instead of scrollback |
 
