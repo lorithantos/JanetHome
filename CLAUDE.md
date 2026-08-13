@@ -63,6 +63,10 @@ last run. `-OutFile` changes the path; `-OutFile ''` skips writing.
 - Never hand-edit `research.json` — `research_add` / `research_update`, or their
   `janet research` and `Add-`/`Update-ResearchNode.ps1` equivalents. All three are
   the same code; the scripts shim to the CLI.
+- Thread items are the backlog: `thread_show` on resuming, `thread_add` the moment
+  you notice work you are not doing now. Adding does not take focus, so noting
+  something costs nothing, and completing keeps the item rather than deleting it.
+  `janet thread ...` and the `*-ThreadItem.ps1` scripts are the same code.
 - Run `scripts\Test-PowerShellRules.ps1` on any `.ps1` you touch. The hook does this
   when it is wired; do it yourself when it is not.
 - `dotnet test JanetHome.slnx` for the C# side. The catalog tests compare against

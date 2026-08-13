@@ -45,7 +45,7 @@ in this repo exists to close one of those gaps:
 | Prose context files drift silently | `startup-manifest.json` — a checkable startup contract; a broken entry fails loudly |
 | "What exists?" answered by grepping | `research.json` + `research_query` / `janet research` — a ranked, self-truncation-reporting catalog of every script, pattern, and note |
 | Agents guess at code semantics | The graph-first pattern (DESIGN-NOTES §4), implemented as [RazorGraphTool](https://github.com/lorithantos/RazorGraphTool) |
-| Debugging loses the unwind path | Thread items — `Add-ThreadItem.ps1` and friends, a focus-explicit investigation list |
+| Debugging loses the unwind path | Thread items — `thread_add` / `janet thread`, a focus-explicit investigation list where nothing is ever deleted |
 | Mechanical multi-file edits drift | `Invoke-SurgicalEdit.ps1` — the model plans as JSON, a script executes deterministically |
 | Build/test output gets scraped | `Invoke-DotnetCheck.ps1` — structured, contract-numbered JSON instead of scrollback |
 
