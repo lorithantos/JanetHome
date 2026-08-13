@@ -1,0 +1,129 @@
+{
+  "$comment": "Node graph of everything in this repo worth retrieving. Startup does NOT load this -- it loads only the pointer to Get-Research.ps1, which queries it on demand. Progressive disclosure, DESIGN-NOTES section 2. Keep summaries one line: they are what retrieval matches against.",
+  "$comment.caveats": "The 'caveats' array is what bites you: missing dependencies, external services contacted, platform assumptions, outright breakage. Shown on every retrieval, never hidden behind a flag. In ranking they DEMOTE and never select -- a term appearing in a node's problems is weaker evidence than the same term in its purpose, and a node should not surface merely for describing its own breakage. Add them via Add-ResearchNode.ps1 -Caveats.",
+  "version": 1,
+
+  "nodes": [
+    {
+      "id": "pattern.progressive-disclosure",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "2",
+      "summary": "Capability lives in per-topic skill files loaded on match, not one monolithic prompt; context is the scarce resource and instructions interfere.",
+      "tags": ["skills", "context", "agent", "retrieval"],
+      "links": ["script.get-research", "file.research", "note.janet-origin"]
+    },
+    {
+      "id": "pattern.thread-items",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "3",
+      "summary": "A list of investigation topics with explicit focus. Debugging is depth-first search and working memory is not, so the descent gets written down. Replaced a push/pop stack on 2026-08-08 because the stack conflated recording work with descending into it, had no way to amend an item, and deleted items on completion.",
+      "tags": ["debugging", "session", "thread-items", "highest-value"],
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis"]
+    },
+    {
+      "id": "script.get-research",
+      "kind": "script",
+      "path": "scripts\\Get-Research.ps1",
+      "summary": "Queries research.json by id, tag, kind, or scored free text, returning a ranked top-N shortlist; the single retrieval entry point so startup never loads the full inventory.",
+      "params": ["Id", "Tag", "Kind", "Query", "First", "All", "Expand", "Depth", "Full", "Text", "Pretty", "Path"],
+      "caveats": [
+        "-Text is denser than the JSON for multi-node results (75% of the size: it drops the per-node field names), so it is the cheaper form for a model scanning a shortlist -- the opposite of Invoke-JanetStartup, where -Text is 251% because it adds every rule why. Choose by what the projection contains, not the flag name. -Text is written with Write-Host, so it cannot be captured by pipe, > redirection, or assignment; use 6>&1. See note.startup-brief-budget."
+      ],
+      "tags": ["retrieval", "research", "index", "entrypoint"],
+      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json", "note.startup-brief-budget", "script.get-api-doc", "script.invoke-research-guard", "note.janet-mcp-port"]
+    },
+    {
+      "id": "script.get-script-catalog",
+      "kind": "script",
+      "path": "scripts\\Get-ScriptCatalog.ps1",
+      "summary": "Lists all scripts with synopsis and parameter names by scanning the script directory; the exhaustive fallback when research.json lookup misses.",
+      "params": ["ScriptDir", "Text", "Pretty"],
+      "tags": ["catalog", "inventory", "fallback"],
+      "links": ["script.get-research", "file.research"]
+    },
+    {
+      "id": "file.research",
+      "kind": "file",
+      "path": "research.json",
+      "summary": "This node graph. Queried on demand by Get-Research.ps1 rather than loaded at startup.",
+      "tags": ["retrieval", "index", "config"],
+      "links": ["script.get-research", "pattern.progressive-disclosure", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "script.add-research-node",
+      "kind": "script",
+      "path": "scripts\\Add-ResearchNode.ps1",
+      "summary": "Adds a validated node to research.json without hand-editing JSON; splices textually so the hand-curated file keeps its grouping and comments.",
+      "params": ["Id", "Kind", "Summary", "NodePath", "Tags", "Links", "Caveats", "ScriptParams", "Section", "GraphPath", "DryRun", "Text", "Json", "JsonPath"],
+      "caveats": [
+        "Prefer -Json (or -JsonPath) for any prose containing apostrophes or quotes. Passing a summary as a quoted PowerShell string is how this catalog ended up storing assembly's: a single-quoted here-string doubled the apostrophe and nothing downstream could tell corruption from intent."
+      ],
+      "tags": ["research", "index", "retrieval", "authoring"],
+      "links": ["script.get-research", "file.research", "script.update-research-node", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "script.update-research-node",
+      "kind": "script",
+      "path": "scripts\\Update-ResearchNode.ps1",
+      "summary": "Updates an existing research.json node in place with validation; preserves unknown fields and splices textually so the file keeps its curation.",
+      "params": ["Id", "Summary", "NodePath", "Kind", "Section", "Tags", "Links", "Caveats", "ScriptParams", "Append", "Remove", "GraphPath", "DryRun", "Text", "Json", "JsonPath"],
+      "caveats": [
+        "Prefer -Json (or -JsonPath) for prose. The JSON form is a PATCH: only the fields present are touched, and it registers them as bound parameters so the same change-detection applies as the named-parameter form."
+      ],
+      "tags": ["research", "index", "retrieval", "authoring"],
+      "links": ["script.add-research-node", "script.get-research", "file.research", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "script.search-json",
+      "kind": "script",
+      "path": "scripts\\Search-Json.ps1",
+      "summary": "Generic JSON-blob search with Get-Research conventions: orientation view (arrays + field census), scored -Query, prop=value -Where filters with wildcards and dotted paths, -Select projection, { returned, totalMatches, truncated, items } envelope, -Text opt-in. Built 2026-08-01 for querying saved RazorGraph graphs without the MCP server; works on any JSON file whose interesting content is an array of objects.",
+      "caveats": [
+        "Fails on a path containing a comma, an apostrophe ('), or a quote (\") -- all three appear in real input.",
+        "A second caveat, with its own comma."
+      ],
+      "tags": ["retrieval", "json", "code-analysis", "powershell"],
+      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli", "script.invoke-dotnet-check"]
+    },
+
+    {
+      "id": "script.invoke-research-guard",
+      "kind": "script",
+      "path": "scripts/Invoke-ResearchGuard.ps1",
+      "summary": "PreToolUse hook enforcing RESEARCH FIRST: writing a NEW .ps1 into a scripts directory is denied unless Get-Research.ps1 has run recently. The denial is not a nag -- it runs the catalog query itself on terms taken from the file name and hands back the closest existing nodes, so the answer arrives with the block. Clearing it is one command, which is the command that should have been run. Written 2026-08-11 after Get-AssemblyApi.ps1 was authored while script.get-api-doc already answered the same question; nothing was violated, because the manifest explained HOW to query the catalog and never said TO. Deliberately narrow: creation only, .ps1 only, scripts/ only -- the moment a duplicate tool becomes permanent is when it is authored, and a guard that fires on everything gets clicked past. Get-Research.ps1 leaves the trace (-NoTrace suppresses it, used by the guard's own lookup so it cannot clear the check it is about to make). Graph-first is a technique for once you know what you are building; this ranks above it.",
+      "params": ["WindowMinutes", "InputJson"],
+      "caveats": [
+        "Wired in TWO places and needs both: .claude/settings.json arms it when the project dir is JanetHome, and ~/.claude/settings.json arms it by absolute path everywhere else. The failure that motivated it happened while the project dir was a DIFFERENT repo, so project-level wiring alone would not have caught it.",
+        "The trace is one file in the temp directory, so concurrent sessions share it -- one session's query clears another's guard. Accepted, not solved: the check is a prompt to think, not a security boundary.",
+        "Fires only on Write of a new .ps1 directly inside a folder named 'scripts'. Notes, source files, and edits to existing scripts pass untouched."
+      ],
+      "tags": ["hooks", "enforcement", "research", "retrieval", "powershell"],
+      "links": ["script.get-research", "script.invoke-edit-guard", "pattern.manifest-startup"]
+    },
+
+    {
+      "id": "note.janet-mcp-port",
+      "kind": "note",
+      "path": "notes\\janet-mcp-port.md",
+      "summary": "The C# catalog port and its cutover. Janet.Core holds the logic; janet (CLI) and janet-mcp (stdio + HTTP) are thin front ends, both .NET global tools so client config is a bare command name. HTTP transport is the point of the design: an HTTP server is a separate process the client dials, so it survives being killed and rebuilt mid-session (Claude Code reconnects with five-attempt backoff), while a stdio server is a child the client holds open and is never reconnected -- which is why RazorGraph needs a publish-and-restart per change. Query and splice writer are ported with byte-identical output to the PowerShell, proven by 41 tests. Staging: research.json stays under the scripts, research.candidate.json is the only thing the port writes, and research.candidate.base.json is the frozen common ancestor the cutover diffs against.",
+      "caveats": [
+        "Writes default to research.candidate.json, NOT the live graph, while the candidate exists. Targeting the live file needs an explicit --graph research.json. One forgotten flag would merge the two sides and destroy the delta arithmetic the cutover depends on; the default retires itself once the swap removes the candidate.",
+        "A stale installed tool silently ignores that default. The .nupkg is built from source at pack time, so changing GraphLocator and forgetting to repack leaves the global tool on the old behaviour -- it wrote two nodes into the live graph that way. dotnet tool update no-ops on an identical version: uninstall and install, or bump the version.",
+        "research.candidate.base.json is load-bearing and easy to omit: the seed hash can only say THAT the live graph moved, not WHICH nodes moved, and integrating them forward is a three-way comparison. The first cut of the plan stored only a hash and was not implementable.",
+        "Add-ResearchNode.ps1 and Update-ResearchNode.ps1 disagree on field order (add: tags before caveats; update: caveats before tags). Both are reproduced verbatim for parity, so a node added by one path and later touched by the other gets its fields reordered -- a whole-node diff through the back door. Unsettled.",
+        "Neither implementation can DELETE a node. Update -Remove drops a field, not a node. Removing one means restoring the file, which is why a stray sandbox write is expensive rather than trivial to undo, and why Swap-ResearchGraph.ps1 refuses rather than stripping them for you.",
+        "Still unported: research rename, thread items, API/assembly introspection, dotnet check, the shim pass, and the documentation pass. janet does not write the research trace Invoke-ResearchGuard.ps1 reads, so the shim must keep writing it or the guard silently stops firing at cutover.",
+        "MEASURED, not inferred: over HTTP a rotation hot-swaps tool BEHAVIOUR but not the tool SURFACE. An attached session reconnects to the new process and calls run the new code (verified across pids 25960 -> 37248 -> 2996 -> 38192 -> 9736, no session restart, ~1.9s per rotation), while tool descriptions and schemas stay as fetched at connection time. Firing NotificationMethods.ToolListChangedNotification from inside a tool did NOT clear it -- the notification was observed on the response stream and the surface still did not refresh. So: behaviour changes are free, signature/description/add/remove changes need a session restart. Over stdio nothing swaps at all; killing the server just removes the tools, with no respawn.",
+        "MEASURED, the full picture: over HTTP a rotation swaps tool BEHAVIOUR and ARGUMENTS live, but not the tool LIST. Attached sessions reconnect to the new process and run new code with no restart (~1.9s per rotation). A NEW PARAMETER on an existing tool works immediately -- the client forwards arguments without validating them against its cached schema, verified by adding a 'probe' parameter and having an attached session call it successfully. A NEW TOOL does not: research_ping existed on the server and was invisible to the attached session. Descriptions stay as fetched at connection time. tools/list_changed does not help and was tried twice -- from inside a tool call, and pushed out of band via RunSessionHandler three seconds after session establishment (the server logged the push; nothing refreshed). So a client's tool LIST is fixed at connect and nothing the server says changes it. Practical rule: change logic and add parameters freely mid-session; adding or removing a TOOL, or wanting an updated description, needs a session restart.",
+        "CORRECTION to the caveat above, which was wrong: a NEW TOOL *does* become usable mid-session over HTTP. research_rename was added, rotated in, and then invoked successfully from the already-running session -- schema and all. The earlier 'new tools are invisible' result came from checking too early: reconnection is LAZY, happening on the next MCP call rather than when the server restarts, and the research_ping test ran a tool-list search immediately after a rotation without making any call in between, so it read the client's pre-rotation list. Not-yet was recorded as never. Practical rule: rotate, then MAKE A CALL, then look -- the surface catches up on reconnect. Still genuinely unresolved: tool DESCRIPTIONS looked stale even after a reconnect, so names and descriptions may refresh on different schedules, or the refresh may simply be asynchronous and the checks kept beating it. Do not trust either direction without re-testing with a deliberate call in between."
+      ],
+      "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server"]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+
+script.fix-file-encoding
+  Two-pass non-ASCII to ASCII cleanup; handles raw Windows-1252 bytes in 0x80-0x9F that .NET's UTF-8 decoder silently destroys.
+  scripts\Fix-FileEncoding.ps1
+  tags:   encoding, files, repair
+
+script.test-file-encoding
+  Pre-push audit: scans files for non-ASCII bytes and line ending issues.
+  scripts\Test-FileEncoding.ps1
+  tags:   encoding, files, audit, pre-commit
+
+script.read-text-file
+  Read a text file with automatic encoding detection.
+  scripts\Read-TextFile.ps1
+  tags:   files, encoding
+
+note.powershell-house-rules
+  PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, parameter/local name collisions, plus a 5.1 backward-compatibility section.
+  notes\powershell-house-rules.md
+  tags:   powershell, rules, strictmode, encoding, quality, parameters
+
+top 4 of 7 matches. -First N for more, -All for every match.
+

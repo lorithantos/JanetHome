@@ -1,0 +1,8 @@
+
+script.get-research
+  Queries research.json by id, tag, kind, or scored free text, returning a ranked top-N shortlist; the single retrieval entry point so startup never loads the full inventory.
+  scripts\Get-Research.ps1
+  ! -Text is denser than the JSON for multi-node results (75% of the size: it drops the per-node field names), so it is the cheaper form for a model scanning a shortlist -- the opposite of Invoke-JanetStartup, where -Text is 251% because it adds every rule why. Choose by what the projection contains, not the flag name. -Text is written with Write-Host, so it cannot be captured by pipe, > redirection, or assignment; use 6>&1. See note.startup-brief-budget.
+
+1 node
+

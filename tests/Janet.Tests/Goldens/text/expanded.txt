@@ -1,0 +1,47 @@
+
+pattern.thread-items
+  A list of investigation topics with explicit focus. Debugging is depth-first search and working memory is not, so the descent gets written down. Replaced a push/pop stack on 2026-08-08 because the stack conflated recording work with descending into it, had no way to amend an item, and deleted items on completion.
+  DESIGN-NOTES.md (section 3)
+
+script.add-thread-item
+  Add a topic to the thread item list. Appends, and does NOT change what is active unless -Active is passed -- recording work for later no longer costs you your place.
+  scripts\Add-ThreadItem.ps1
+  ! Refuses a duplicate topic rather than creating a second entry that selectors cannot tell apart -- use Update-ThreadItem.ps1 to amend an existing one.
+
+script.complete-thread-item
+  Mark a thread item done. Retains it: Show-ThreadItems.ps1 -All prints completed items, so the list records what was finished and not only what is outstanding.
+  scripts\Complete-ThreadItem.ps1
+  ! Does not auto-activate anything. Pop-ThreadStack promoted the next parked item automatically, which quietly decided what you worked on next; choose with Set-ActiveThread.ps1 instead.
+
+script.set-active-thread
+  Set which thread item is active, by -Topic substring, -Index, or -None to clear. Focus is explicit rather than positional -- the stack made the top of the stack active by definition, so changing attention meant mutating the list.
+  scripts\Set-ActiveThread.ps1
+  ! An ambiguous -Topic is an error, never a first-match guess: the operation rewrites the file, and silently amending the wrong item is how notes get lost.
+
+script.show-thread-items
+  Show the thread item list as { count, active, items[], error }, each item being { topic, status, refs[], next, notes }; -All includes completed items.
+  scripts\Show-ThreadItems.ps1
+  ! Runs in the startup path so it never throws: an unreadable or corrupt list is reported in-band via the error field with an otherwise empty envelope, rather than taking the session down.
+
+script.thread-items-common
+  Dot-sourced read/write/lock helpers for the thread item list: Read-ThreadItems (normalises every entry to topic/status/refs/next/notes), Write-ThreadItems, Invoke-ThreadItemsUpdate (mutex-guarded read-modify-write) and Find-ThreadItemIndex (resolves a selector to exactly one item, refusing ambiguity).
+  scripts\ThreadItems.Common.ps1
+  ! Not a standalone script -- it defines functions and does nothing when run.
+  ! Deliberately does NOT Set-StrictMode: strict mode in a dot-sourced file leaks into the caller scope. Each entry-point script sets its own.
+  ! Read-ThreadItems comma-wraps its return. Assign it; never wrap the call in @(...) -- that yields one element holding the real array and the loop runs once (house rule 1). This trap bit during the 2026-08-08 migration and was caught only by running the script.
+
+script.update-thread-item
+  Amend an existing thread item in place -- notes, resume cursor, refs, or status -- preserving every field not named; -AppendNotes and -AppendRefs accumulate rather than replace.
+  scripts\Update-ThreadItem.ps1
+  ! The operation the push/pop stack never had, and the reason it lost data: on 2026-08-08 a session wanting to update its own entry had only push and pop, popped to reach it, and destroyed a concurrent session notes irrecoverably. A missing operation does not leave callers stuck -- it makes them improvise with a destructive one.
+
+skill.crash-escape-analysis
+  Diagnose no-trace app exits as a reachability question: check the process exception surface first (one get_node), run exception_escapes for the throw-to-entry-point shortlist, rule reachable sites out, hunt catch-shape mismatches and non-total render-loop callbacks, then fix in four layers (site guard, operation catch, process backstop, crash log). Distilled from the RetirementCore.App first-run crash, 2026-08-07.
+  notes\skill-crash-escape-analysis.md
+  ! Delegate following added 2026-08-07 (RazorGraphTool a9c1c01): the pre-fix RetirementCore crash commit reports 44 escapes including both hand-found crashes (CheckedCents into the labeler callback; MonteCarlo.Run ArgumentException into RunAsync). The first increment reported zero on the same commit because every hop was delegate-mediated - kept here as the war story.
+  ! Remaining blind spots: stored-and-forwarded delegates (one hop only), local functions, virtual dispatch, BCL throwers, top-level-statement Main. Zero still means "no static chain", never "safe".
+  ! Escapes are prove-me-safe prompts, not confirmed bugs: value guards are invisible (a labeler that checks IsFinite before FromDouble still reports), and a process-level backstop like DispatcherUnhandledException is not a catch on any chain - an escape may surface as a dialog, not an exit.
+  ! Covers MANAGED escapes only. A native access violation (0xc0000005) is not an exception: it bypasses DispatcherUnhandledException, TaskScheduler.UnobservedTaskException and AppDomain.UnhandledException alike and fails the process fast, so exception_escapes has nothing to find and a crash log written from those handlers stays EMPTY. Critically, an empty log is the signature of ANY native fault and therefore discriminates between no hypotheses -- do not read it as evidence about threading. Check the Application event log for the exception code and loaded-module list, and configure WER LocalDumps (script.set-crash-dump-capture) before concluding anything. RetirementCore 2026-08-07: two AVs in a charting stack over SkiaSharp, where the managed-escape hunt was the wrong tool entirely and a full thread-affinity audit came back clean.
+
+8 nodes
+

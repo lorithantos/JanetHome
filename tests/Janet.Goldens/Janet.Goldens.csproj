@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Janet.Goldens</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The case list is linked rather than copied. It is the one thing the generator and the
+      tests must agree on: a case regenerated under one set of arguments and asserted under
+      another looks green and means nothing.
+    -->
+    <Compile Include="..\Janet.Tests\Cases.cs" Link="Cases.cs" />
+  </ItemGroup>
+
+</Project>

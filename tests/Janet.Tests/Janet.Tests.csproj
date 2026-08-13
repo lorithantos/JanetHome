@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Janet.Core\Janet.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The frozen graphs the tests read, and the answers the original PowerShell gave for them.
+      Copied beside the assembly so the tests never reach back into the repo for the live
+      research.json: a test that reads the live catalog changes its own expectations every time
+      someone adds a node.
+    -->
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Goldens\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

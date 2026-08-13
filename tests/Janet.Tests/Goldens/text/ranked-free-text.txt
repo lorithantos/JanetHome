@@ -1,0 +1,22 @@
+
+script.show-thread-items
+  Show the thread item list as { count, active, items[], error }, each item being { topic, status, refs[], next, notes }; -All includes completed items.
+  scripts\Show-ThreadItems.ps1
+  ! Runs in the startup path so it never throws: an unreadable or corrupt list is reported in-band via the error field with an otherwise empty envelope, rather than taking the session down.
+  tags:   thread-items, session, debugging
+
+pattern.thread-items
+  A list of investigation topics with explicit focus. Debugging is depth-first search and working memory is not, so the descent gets written down. Replaced a push/pop stack on 2026-08-08 because the stack conflated recording work with descending into it, had no way to amend an item, and deleted items on completion.
+  DESIGN-NOTES.md (section 3)
+  tags:   debugging, session, thread-items, highest-value
+
+script.thread-items-common
+  Dot-sourced read/write/lock helpers for the thread item list: Read-ThreadItems (normalises every entry to topic/status/refs/next/notes), Write-ThreadItems, Invoke-ThreadItemsUpdate (mutex-guarded read-modify-write) and Find-ThreadItemIndex (resolves a selector to exactly one item, refusing ambiguity).
+  scripts\ThreadItems.Common.ps1
+  ! Not a standalone script -- it defines functions and does nothing when run.
+  ! Deliberately does NOT Set-StrictMode: strict mode in a dot-sourced file leaks into the caller scope. Each entry-point script sets its own.
+  ! Read-ThreadItems comma-wraps its return. Assign it; never wrap the call in @(...) -- that yields one element holding the real array and the loop runs once (house rule 1). This trap bit during the 2026-08-08 migration and was caught only by running the script.
+  tags:   thread-items, session, debugging, powershell
+
+top 3 of 11 matches. -First N for more, -All for every match.
+

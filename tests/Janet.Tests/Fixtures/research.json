@@ -1,0 +1,1074 @@
+{
+  "$comment": "Node graph of everything in this repo worth retrieving. Startup does NOT load this -- it loads only the pointer to Get-Research.ps1, which queries it on demand. Progressive disclosure, DESIGN-NOTES section 2. Keep summaries one line: they are what retrieval matches against.",
+  "$comment.caveats": "The 'caveats' array is what bites you: missing dependencies, external services contacted, platform assumptions, outright breakage. Shown on every retrieval, never hidden behind a flag. In ranking they DEMOTE and never select -- a term appearing in a node's problems is weaker evidence than the same term in its purpose, and a node should not surface merely for describing its own breakage. Add them via Add-ResearchNode.ps1 -Caveats.",
+  "version": 1,
+
+  "nodes": [
+    {
+      "id": "pattern.manifest-startup",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "1",
+      "summary": "Manifest-driven startup: an explicit checkable contract of files to read and commands to run, instead of a prose context file that drifts silently.",
+      "tags": ["startup", "contract", "agent", "validation"],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims"]
+    },
+    {
+      "id": "pattern.progressive-disclosure",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "2",
+      "summary": "Capability lives in per-topic skill files loaded on match, not one monolithic prompt; context is the scarce resource and instructions interfere.",
+      "tags": ["skills", "context", "agent", "retrieval"],
+      "links": ["script.get-research", "file.research", "note.janet-origin"]
+    },
+    {
+      "id": "pattern.thread-items",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "3",
+      "summary": "A list of investigation topics with explicit focus. Debugging is depth-first search and working memory is not, so the descent gets written down. Replaced a push/pop stack on 2026-08-08 because the stack conflated recording work with descending into it, had no way to amend an item, and deleted items on completion.",
+      "tags": ["debugging", "session", "thread-items", "highest-value"],
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis"]
+    },
+    {
+      "id": "pattern.graph-first-analysis",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "4",
+      "summary": "Give the agent a compiler's semantic model rather than text search; query the narrowest slice first and read source only to spot-check. Rebuilt clean-room as RazorGraph.Mcp in D:\\Repos\\RazorGraphTool.",
+      "caveats": [
+        "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
+      ],
+      "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping"]
+    },
+    {
+      "id": "pattern.deterministic-edits",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "5",
+      "summary": "Model emits a reviewable JSON plan of exact edit operations; a script executes it. Judgment from the model, mechanical execution from code.",
+      "tags": ["editing", "agent", "determinism"],
+      "links": ["script.invoke-surgical-edit"]
+    },
+    {
+      "id": "pattern.reviewer-principles",
+      "kind": "pattern",
+      "path": "notes\\build-retrospective.md",
+      "section": "Reviewer personas",
+      "summary": "Depersonalized review principles: capture why in comments, tests must be able to fail, move/rename PRs owe evidence, warning fixes must not change runtime defaults, runbooks never route to a named person.",
+      "tags": ["review", "testing", "ethics", "process"],
+      "links": ["script.test-pre-commit", "pattern.handoff-corpus", "note.linq-deferred-side-effects"]
+    },
+    {
+      "id": "pattern.two-question-routing",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "7",
+      "summary": "Before an expensive query, force two questions: what am I trying to learn, and what is the cheapest query that distinguishes the hypotheses. Converts flailing into bisection.",
+      "tags": ["telemetry", "queries", "agent", "discipline"],
+      "links": ["pattern.graph-first-analysis"]
+    },
+    {
+      "id": "pattern.circuit-breakers",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "8",
+      "summary": "Catch known-flaky tools inside the agent loop with explicit timeout and fallback; a hung call is indistinguishable from thinking, which is the worst failure mode.",
+      "tags": ["reliability", "agent", "failure-modes"],
+      "links": ["script.invoke-janet-startup"]
+    },
+    {
+      "id": "pattern.per-scope-storage",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "9",
+      "summary": "Per-user/per-scope containers with scoped credentials rather than one shared store; centralized convenience is centralized failure and shared rate limits.",
+      "tags": ["storage", "architecture", "scaling"],
+      "links": ["note.meta-second-brain-vs-janet"]
+    },
+    {
+      "id": "pattern.handoff-corpus",
+      "kind": "pattern",
+      "path": "notes\\build-retrospective.md",
+      "section": "The handoff-corpus format",
+      "summary": "Handoff corpus format: one note per file, topic-prefixed filenames as the index, H1 plus one-sentence summary, cross-reference without deduplicating, machine-readable manifest as source of truth, density over polish, written for an LLM reader.",
+      "tags": ["documentation", "retrieval", "handoff", "format"],
+      "links": ["pattern.progressive-disclosure", "file.provenance"]
+    },
+    {
+      "id": "pattern.lessons-learned",
+      "kind": "pattern",
+      "path": "notes\\build-retrospective.md",
+      "section": "What I'd do differently",
+      "summary": "What to do differently: classify files portable/confidential/personal at authoring time, keep personal tooling in a personal repo from day one, never profile named colleagues durably, write operational discipline down early.",
+      "tags": ["retrospective", "process", "ethics"],
+      "links": ["file.provenance", "pattern.handoff-corpus"]
+    },
+
+    {
+      "id": "script.invoke-janet-startup",
+      "kind": "script",
+      "path": "scripts\\Invoke-JanetStartup.ps1",
+      "summary": "Executes startup-manifest.json: sets $env:JanetBase, validates every entry resolves before running anything, executes startup commands, emits a trimmed session brief (-Full for everything, -Text for the terminal).",
+      "params": ["ManifestPath", "Text", "Pretty", "IncludeContent", "SkipRun"],
+      "caveats": [
+        "Trims by default (-Full restores): strips $-prefixed manifest keys, reduces retrieval to graph/via/hint, emits rule text without why, omits run output already in captured. enforcedBy verification recognizes TWO wirings: project-level (Join-Path <project dir> <enforcedBy>) and user-level (~\\.claude\\settings.json names the script AND it exists at repo root) -- so ENFORCED labels survive foreign-dir sessions on this machine. An unwired hook NEVER fails startup: the rule is relabelled ADVISORY (claims ENFORCED; hook not wired here) and the note goes to the brief's own enforcement field plus the warning stream, NOT to problems (Start-Janet gates launch on problems). Only unresolved manifest entries are fatal, governed by onMissing. Runs from any working directory: everything resolves from $PSScriptRoot. Writes .janet\\last-brief.json every run INCLUDING -Text; -OutFile moves it, an empty -OutFile skips writing. Adding a parameter renames every same-named local: $full/$text collided with -Full/-Text. See note.startup-brief-budget."
+      ],
+      "tags": ["startup", "session", "validation", "entrypoint"],
+      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget"]
+    },
+    {
+      "id": "script.get-research",
+      "kind": "script",
+      "path": "scripts\\Get-Research.ps1",
+      "summary": "Queries research.json by id, tag, kind, or scored free text, returning a ranked top-N shortlist; the single retrieval entry point so startup never loads the full inventory.",
+      "params": ["Id", "Tag", "Kind", "Query", "First", "All", "Expand", "Depth", "Full", "Text", "Pretty", "Path"],
+      "caveats": [
+        "-Text is denser than the JSON for multi-node results (75% of the size: it drops the per-node field names), so it is the cheaper form for a model scanning a shortlist -- the opposite of Invoke-JanetStartup, where -Text is 251% because it adds every rule why. Choose by what the projection contains, not the flag name. -Text is written with Write-Host, so it cannot be captured by pipe, > redirection, or assignment; use 6>&1. See note.startup-brief-budget."
+      ],
+      "tags": ["retrieval", "research", "index", "entrypoint"],
+      "links": ["file.research", "pattern.progressive-disclosure", "script.search-json", "note.startup-brief-budget", "script.get-api-doc", "script.invoke-research-guard", "note.janet-mcp-port"]
+    },
+    {
+      "id": "script.add-thread-item",
+      "kind": "script",
+      "path": "scripts\\Add-ThreadItem.ps1",
+      "summary": "Add a topic to the thread item list. Appends, and does NOT change what is active unless -Active is passed -- recording work for later no longer costs you your place.",
+      "params": ["Topic", "Notes", "Next", "Refs", "Active", "Path", "Text"],
+      "caveats": [
+        "Refuses a duplicate topic rather than creating a second entry that selectors cannot tell apart -- use Update-ThreadItem.ps1 to amend an existing one."
+      ],
+      "tags": ["thread-items", "session", "debugging"],
+      "links": ["script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items"]
+    },
+    {
+      "id": "script.complete-thread-item",
+      "kind": "script",
+      "path": "scripts\\Complete-ThreadItem.ps1",
+      "summary": "Mark a thread item done. Retains it: Show-ThreadItems.ps1 -All prints completed items, so the list records what was finished and not only what is outstanding.",
+      "params": ["Topic", "Index", "Path", "Text"],
+      "caveats": [
+        "Does not auto-activate anything. Pop-ThreadStack promoted the next parked item automatically, which quietly decided what you worked on next; choose with Set-ActiveThread.ps1 instead."
+      ],
+      "tags": ["thread-items", "session", "debugging"],
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.show-thread-items", "pattern.thread-items"]
+    },
+    {
+      "id": "script.show-thread-items",
+      "kind": "script",
+      "path": "scripts\\Show-ThreadItems.ps1",
+      "summary": "Show the thread item list as { count, active, items[], error }, each item being { topic, status, refs[], next, notes }; -All includes completed items.",
+      "params": ["Path", "All", "Text", "Pretty"],
+      "caveats": [
+        "Runs in the startup path so it never throws: an unreadable or corrupt list is reported in-band via the error field with an otherwise empty envelope, rather than taking the session down."
+      ],
+      "tags": ["thread-items", "session", "debugging"],
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "pattern.thread-items"]
+    },
+    {
+      "id": "script.new-text-file",
+      "kind": "script",
+      "path": "scripts\\New-TextFile.ps1",
+      "summary": "Create or overwrite a text file without PowerShell here-string, escaping, or BOM pain; Base64 input mode sidesteps quoting entirely.",
+      "params": ["Path", "Text", "Base64", "Clipboard", "Force", "Unicode"],
+      "tags": ["files", "encoding", "authoring", "escaping"],
+      "links": ["script.convertto-base64file", "script.read-text-file"]
+    },
+    {
+      "id": "script.read-text-file",
+      "kind": "script",
+      "path": "scripts\\Read-TextFile.ps1",
+      "summary": "Read a text file with automatic encoding detection.",
+      "params": ["Path"],
+      "tags": ["files", "encoding"],
+      "links": ["script.new-text-file", "script.test-file-encoding"]
+    },
+    {
+      "id": "script.convertto-base64file",
+      "kind": "script",
+      "path": "scripts\\ConvertTo-Base64File.ps1",
+      "summary": "Encode a file's content as Base64 for use with New-TextFile.ps1 -Base64.",
+      "params": ["Path", "LineWidth"],
+      "tags": ["files", "encoding", "escaping"],
+      "links": ["script.new-text-file"]
+    },
+    {
+      "id": "script.fix-file-encoding",
+      "kind": "script",
+      "path": "scripts\\Fix-FileEncoding.ps1",
+      "summary": "Two-pass non-ASCII to ASCII cleanup; handles raw Windows-1252 bytes in 0x80-0x9F that .NET's UTF-8 decoder silently destroys.",
+      "params": ["Path", "WhatIf"],
+      "tags": ["encoding", "files", "repair"],
+      "links": ["script.test-file-encoding"]
+    },
+    {
+      "id": "script.test-file-encoding",
+      "kind": "script",
+      "path": "scripts\\Test-FileEncoding.ps1",
+      "summary": "Pre-push audit: scans files for non-ASCII bytes and line ending issues.",
+      "params": ["Path", "ExpectCrlf"],
+      "tags": ["encoding", "files", "audit", "pre-commit"],
+      "links": ["script.fix-file-encoding", "script.test-pre-commit"]
+    },
+    {
+      "id": "script.invoke-surgical-edit",
+      "kind": "script",
+      "path": "scripts\\Invoke-SurgicalEdit.ps1",
+      "summary": "Applies a batch of surgical code edits from a JSON plan file; supports dry run and skipping build/test.",
+      "params": ["PlanFile", "DryRun", "NoBuild", "NoTest"],
+      "tags": ["editing", "agent", "determinism", "refactor"],
+      "links": ["pattern.deterministic-edits"]
+    },
+    {
+      "id": "script.invoke-namespace-migration",
+      "kind": "script",
+      "path": "scripts\\Invoke-NamespaceMigration.ps1",
+      "summary": "Bulk namespace rename across csproj Using directives and .cs using statements.",
+      "params": ["ConfigFile", "Mappings", "Path", "WhatIf", "TypeMappings", "RemoveUsings", "Format"],
+      "tags": ["csharp", "refactor", "namespaces", "bulk-edit"],
+      "links": ["script.get-namespace-map", "script.get-using-map"]
+    },
+    {
+      "id": "script.get-namespace-map",
+      "kind": "script",
+      "path": "scripts\\Get-NamespaceMap.ps1",
+      "summary": "Namespace inventory for a C# tree.",
+      "params": ["Path", "OutFile"],
+      "tags": ["csharp", "namespaces", "survey"],
+      "links": ["script.invoke-namespace-migration", "script.get-using-map"]
+    },
+    {
+      "id": "script.get-using-map",
+      "kind": "script",
+      "path": "scripts\\Get-UsingMap.ps1",
+      "summary": "Maps Using Include directives across csproj files.",
+      "params": ["Path", "OutFile"],
+      "tags": ["csharp", "namespaces", "msbuild", "survey"],
+      "links": ["script.get-namespace-map", "script.invoke-namespace-migration"]
+    },
+    {
+      "id": "script.get-lsp-references",
+      "kind": "script",
+      "path": "scripts\\Get-LspReferences.ps1",
+      "summary": "LSP client that starts csharp-ls, indexes a solution, and finds all references for types and extension methods.",
+      "params": ["Solution", "ScanPaths", "OutFile"],
+      "tags": ["csharp", "lsp", "references", "code-analysis"],
+      "caveats": [
+        "Requires csharp-ls on PATH (not currently installed). Install with: dotnet tool install --global csharp-ls",
+        "Indexing a large solution is slow and the script has no timeout, so a hung language server presents as a stalled session -- see pattern.circuit-breakers."
+      ],
+      "links": ["pattern.graph-first-analysis", "script.get-type-overlap", "pattern.circuit-breakers"]
+    },
+    {
+      "id": "script.get-type-overlap",
+      "kind": "script",
+      "path": "scripts\\Get-TypeOverlap.ps1",
+      "summary": "Reports types that share a short name across two C# codebases.",
+      "params": ["LocalPath", "OtherPath", "OutFile"],
+      "tags": ["csharp", "code-analysis", "collision", "survey"],
+      "links": ["pattern.graph-first-analysis", "script.get-namespace-map"]
+    },
+    {
+      "id": "script.get-project-survey",
+      "kind": "script",
+      "path": "scripts\\Get-ProjectSurvey.ps1",
+      "summary": "Scans a repo for .csproj files and produces a markdown summary of each project.",
+      "params": ["Path", "OutFile", "Exclude", "MaxDepth"],
+      "tags": ["csharp", "survey", "msbuild", "orientation"],
+      "links": ["script.get-config-inventory", "script.get-using-map"]
+    },
+    {
+      "id": "script.get-config-inventory",
+      "kind": "script",
+      "path": "scripts\\Get-ConfigInventory.ps1",
+      "summary": "Inventories configuration files (JSON, YAML, XML) under a directory, with optional key sampling.",
+      "params": ["Path", "OutFile", "Include", "Exclude", "SampleKeys", "ListFiles", "MaxPatternFiles"],
+      "tags": ["config", "survey", "orientation"],
+      "links": ["script.get-project-survey"]
+    },
+    {
+      "id": "script.convertto-mermaid-embed",
+      "kind": "script",
+      "path": "scripts\\ConvertTo-MermaidEmbed.ps1",
+      "summary": "Converts Mermaid diagram source to an inline HTML img tag via mermaid.ink; can process whole markdown files.",
+      "params": ["Text", "File", "Clipboard", "MarkdownFile", "OutFile", "Alt", "KeepSource", "Link"],
+      "tags": ["diagrams", "markdown", "mermaid", "docs", "network"],
+      "caveats": [
+        "Sends diagram source to mermaid.ink, a third-party service, encoded in the URL. The content leaves your machine -- check it against the PROVENANCE.md boundary before diagramming anything sensitive.",
+        "Output depends on that service staying up and on the reader being online; the img tag is a remote reference, not an embedded image."
+      ],
+      "links": ["file.provenance"]
+    },
+    {
+      "id": "script.new-repo-status-page",
+      "kind": "script",
+      "path": "scripts\\New-RepoStatusPage.ps1",
+      "summary": "Generates an HTML status page for local Git repositories.",
+      "params": ["RootPath", "Author", "OutFile", "Open", "NoFilter"],
+      "caveats": [
+        "lib\\Invoke-External.ps1 dependency restored 2026-08-02 (see script.invoke-external); no longer broken on that account, but not yet re-tested end-to-end.",
+        "Still calls New-TextFile.ps1 at $HOME\\.github\\scripts\\, a path from the previous repo layout, and defaults -RootPath to C:\\repos."
+      ],
+      "tags": ["git", "reporting", "html"],
+      "links": ["script.new-text-file", "script.test-pre-commit"]
+    },
+    {
+      "id": "script.read-json-cache",
+      "kind": "script",
+      "path": "scripts\\Read-JsonCache.ps1",
+      "summary": "Read cached JSON files as PSCustomObjects, with optional schema discovery.",
+      "params": ["Path", "Schema"],
+      "tags": ["json", "cache", "data"],
+      "links": []
+    },
+    {
+      "id": "script.open-in-visual-studio",
+      "kind": "script",
+      "path": "scripts\\Open-InVisualStudio.ps1",
+      "summary": "Opens a file in a specific running Visual Studio instance via COM (ROT + EnvDTE).",
+      "params": ["Path", "SolutionMatch", "Line"],
+      "tags": ["visual-studio", "editor", "windows"],
+      "caveats": [
+        "Windows-only and requires an already-running Visual Studio instance; COM/EnvDTE has no equivalent elsewhere. This is the least portable script in the toolkit."
+      ],
+      "links": []
+    },
+    {
+      "id": "script.test-pre-commit",
+      "kind": "script",
+      "path": "scripts\\Test-PreCommit.ps1",
+      "summary": "Repo-agnostic pre-commit gate: PSScriptAnalyzer, deep nesting (christmas-tree, fail at >=6), Pester, config check, encoding audit. Staged files resolve against git rev-parse --show-toplevel from the CWD, so the one gate serves every repo (the Janet-level decision in note.pre-checkin-style-janet-level). Resolves git via JANET_GIT, then PATH, then the VS-bundled copy - no machine-specific hardcoding.",
+      "params": [],
+      "caveats": [
+        "Test-Config.ps1 remains absent; that step self-skips.",
+        "$LASTEXITCODE is reset before each child-script step: a child that never calls exit leaves the previous child code in place, and the encoding step once failed on the nesting step verdict while printing All clean (caught by the 2026-08-03 smoke test).",
+        "C# nesting is not checked per-commit - no fast syntax-only path yet; the C# rule lives in RazorGraph deep_methods / query --deep at repo level.",
+        "Module requirements are conditional and fail legibly when unmet: PSScriptAnalyzer only when .ps1 files are staged, Pester 5+ only when *.Tests.ps1 files exist. Both installed CurrentUser 2026-08-03 (PSScriptAnalyzer 1.25.0, Pester 6.0.1); full gate verified green end-to-end on a clean staged file the same day."
+      ],
+      "tags": ["pre-commit", "validation", "quality"],
+      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules", "script.test-deep-nesting"]
+    },
+    {
+      "id": "script.get-script-catalog",
+      "kind": "script",
+      "path": "scripts\\Get-ScriptCatalog.ps1",
+      "summary": "Lists all scripts with synopsis and parameter names by scanning the script directory; the exhaustive fallback when research.json lookup misses.",
+      "params": ["ScriptDir", "Text", "Pretty"],
+      "tags": ["catalog", "inventory", "fallback"],
+      "links": ["script.get-research", "file.research"]
+    },
+
+    {
+      "id": "script.test-powershell-rules",
+      "kind": "script",
+      "path": "scripts\\Test-PowerShellRules.ps1",
+      "summary": "Lints .ps1 files against the mechanically checkable house rules: return @() unrolling, $null comparison order, truncating New-Item, plus 7-only syntax when -Target Ps51.",
+      "params": ["Path", "Target", "ExcludeRule", "Text", "Pretty"],
+      "tags": ["powershell", "lint", "quality", "pre-commit", "rules"],
+      "links": ["note.powershell-house-rules", "script.test-pre-commit"]
+    },
+    {
+      "id": "note.powershell-house-rules",
+      "kind": "note",
+      "path": "notes\\powershell-house-rules.md",
+      "summary": "PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, parameter/local name collisions, plus a 5.1 backward-compatibility section.",
+      "tags": ["powershell", "rules", "strictmode", "encoding", "quality", "parameters"],
+      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget", "script.invoke-dotnet-check"]
+    },
+    {
+      "id": "note.insertion-mergesort-hybrid",
+      "kind": "note",
+      "path": "notes\\insertion-mergesort-hybrid.md",
+      "summary": "Personal research note on a hybrid insertion/merge sort; pure algorithms, tagged by its author as a shower thought that was not actually needed.",
+      "tags": ["algorithms", "sorting", "research"],
+      "links": ["note.insertion-mergesort-hybrid-full"]
+    },
+    {
+      "id": "note.insertion-mergesort-hybrid-full",
+      "kind": "note",
+      "path": "notes\\insertion-mergesort-hybrid-full.md",
+      "summary": "Expanded 56 KB version of the insertion/mergesort hybrid analysis.",
+      "tags": ["algorithms", "sorting", "research", "long"],
+      "links": ["note.insertion-mergesort-hybrid"]
+    },
+    {
+      "id": "note.dotnet-object-sizing",
+      "kind": "note",
+      "path": "notes\\dotnet-object-sizing.md",
+      "summary": "Research note on .NET object sizing, covering public dotnet/runtime issue 24200 and observable public .NET behavior.",
+      "tags": ["dotnet", "memory", "performance", "research"],
+      "links": ["note.tuples-do-not-cross-boundaries"]
+    },
+    {
+      "id": "note.meta-ai-second-brain-source",
+      "kind": "note",
+      "path": "notes\\meta-ai-second-brain-source.md",
+      "summary": "Notes on Meta's public AI Second Brain engineering blog post; third-party public material.",
+      "tags": ["meta", "agents", "architecture", "external"],
+      "links": ["note.meta-second-brain-vs-janet"]
+    },
+    {
+      "id": "note.meta-second-brain-vs-janet",
+      "kind": "note",
+      "path": "notes\\meta-second-brain-vs-janet.md",
+      "summary": "Original comparative analysis of Meta's Second Brain against Janet's architecture; sanitized of colleague names and internal system references. Updated 2026-07-31: Meta's newest post (DEmate, June 2026) independently converges on the tool-engine discipline - recipes, context injection, deterministic generation, explicit verification - but on the data-engineering side, while Second Brain itself still publishes no verification or staleness story. The note's update section argues this is a property of action-vs-recall, and of process-vs-artifact, not of talent.",
+      "tags": ["meta", "agents", "architecture", "comparison", "storage"],
+      "links": ["note.meta-ai-second-brain-source", "pattern.per-scope-storage", "note.essay-derive-dont-memorize"]
+    },
+
+    {
+      "id": "file.startup-manifest",
+      "kind": "file",
+      "path": "startup-manifest.json",
+      "summary": "The startup contract: files to read, commands to run, operating rules as { text, why }, and onMissing behavior. Executed by Invoke-JanetStartup.ps1.",
+      "caveats": [
+        "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
+      ],
+      "tags": ["startup", "contract", "config"],
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget"]
+    },
+    {
+      "id": "file.research",
+      "kind": "file",
+      "path": "research.json",
+      "summary": "This node graph. Queried on demand by Get-Research.ps1 rather than loaded at startup.",
+      "tags": ["retrieval", "index", "config"],
+      "links": ["script.get-research", "pattern.progressive-disclosure", "note.janet-mcp-port"]
+    },
+    {
+      "id": "file.provenance",
+      "kind": "file",
+      "path": "PROVENANCE.md",
+      "summary": "What was carried over from the departure corpus, from where, on what basis, and what was deliberately left behind. The boundary rule for anything added here. Left the startup read list on 2026-08-08: the boundary itself already ships as an ADVISORY rule in every brief, and this file is the evidence and the standard behind it -- consulted when adding something, which is what its own manifest reason (\"read before adding anything\") always described.",
+      "caveats": [
+        "No longer read at startup, so nothing puts it in front of you automatically. It is the standard for what may be added to this repo -- pull it before adding material of uncertain origin rather than reasoning from the one-line rule alone."
+      ],
+      "tags": ["provenance", "boundary", "ethics", "compliance"],
+      "links": ["pattern.lessons-learned", "pattern.handoff-corpus", "note.build-retrospective"]
+    },
+    {
+      "id": "file.design-notes",
+      "kind": "file",
+      "path": "DESIGN-NOTES.md",
+      "summary": "The transferable patterns from the 2024-2026 build, written from memory rather than copied from employer artifacts. One of only two files startup reads, so it carries the patterns that govern how a session WORKS -- manifest-driven startup, progressive disclosure, the thread stack, graph-first analysis, deterministic edits via JSON plan, two-question query routing, circuit-breakers, per-scope storage -- and no longer the material you consult once. Sections 6, 10, 11 and 12 are now one-paragraph pointers to note.build-retrospective and note.discriminator-front-end (2026-08-08); section numbering was deliberately kept stable because three other notes cite section 12 by number.",
+      "caveats": [
+        "Section numbers are load-bearing: rules in startup-manifest.json and at least three notes cite DESIGN-NOTES sections by number. Renumbering breaks those references silently -- add or repoint, never renumber."
+      ],
+      "tags": ["patterns", "architecture", "agent"],
+      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-items", "note.build-retrospective", "note.discriminator-front-end"]
+    },
+
+    {
+      "id": "script.add-research-node",
+      "kind": "script",
+      "path": "scripts\\Add-ResearchNode.ps1",
+      "summary": "Adds a validated node to research.json without hand-editing JSON; splices textually so the hand-curated file keeps its grouping and comments.",
+      "params": ["Id", "Kind", "Summary", "NodePath", "Tags", "Links", "Caveats", "ScriptParams", "Section", "GraphPath", "DryRun", "Text", "Json", "JsonPath"],
+      "caveats": [
+        "Prefer -Json (or -JsonPath) for any prose containing apostrophes or quotes. Passing a summary as a quoted PowerShell string is how this catalog ended up storing assembly's: a single-quoted here-string doubled the apostrophe and nothing downstream could tell corruption from intent."
+      ],
+      "tags": ["research", "index", "retrieval", "authoring"],
+      "links": ["script.get-research", "file.research", "script.update-research-node", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "script.update-research-node",
+      "kind": "script",
+      "path": "scripts\\Update-ResearchNode.ps1",
+      "summary": "Updates an existing research.json node in place with validation; preserves unknown fields and splices textually so the file keeps its curation.",
+      "params": ["Id", "Summary", "NodePath", "Kind", "Section", "Tags", "Links", "Caveats", "ScriptParams", "Append", "Remove", "GraphPath", "DryRun", "Text", "Json", "JsonPath"],
+      "caveats": [
+        "Prefer -Json (or -JsonPath) for prose. The JSON form is a PATCH: only the fields present are touched, and it registers them as bound parameters so the same change-detection applies as the named-parameter form."
+      ],
+      "tags": ["research", "index", "retrieval", "authoring"],
+      "links": ["script.add-research-node", "script.get-research", "file.research", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "script.invoke-edit-guard",
+      "kind": "script",
+      "path": "scripts\\Invoke-EditGuard.ps1",
+      "summary": "PreToolUse hook that denies direct Write/Edit of research.json and points at the validating add/update scripts.",
+      "params": ["GuardedFile", "InputJson"],
+      "caveats": [
+        "Wired twice: project-level .claude\\settings.json (live only when JanetHome is the project dir) and user-level ~\\.claude\\settings.json by absolute path (2026-08-01, skips when the project dir IS JanetHome so the levels never double-fire). Guards by leaf name, so a file named research.json in ANY repo is denied when the user-level hook is active."
+      ],
+      "tags": ["hooks", "enforcement", "research", "guard"],
+      "links": ["script.add-research-node", "script.update-research-node", "file.research", "script.invoke-research-guard", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "script.invoke-lint-hook",
+      "kind": "script",
+      "path": "scripts\\Invoke-LintHook.ps1",
+      "summary": "PostToolUse hook that lints any .ps1 immediately after it is written, returning violations as context.",
+      "params": ["InputJson"],
+      "caveats": [
+        "Wired twice: project-level .claude\\settings.json (live only when JanetHome is the project dir) and user-level ~\\.claude\\settings.json by absolute path (2026-08-01, skips when the project dir IS JanetHome). The user-level wiring lints every .ps1 written in ANY session on this machine against the JanetHome house rules -- deliberate, they are personal rules, but remember it when a lint message appears in an unrelated repo."
+      ],
+      "tags": ["hooks", "enforcement", "lint", "quality"],
+      "links": ["script.test-powershell-rules", "note.powershell-house-rules"]
+    },
+
+    {
+      "id": "note.azure-site-extension-mismatch",
+      "kind": "note",
+      "path": "notes\\azure-appservice-site-extension-version-mismatch.md",
+      "summary": "App Service 500.30 with FileNotFoundException for a shared-framework assembly at startup: the ASP.NET Core Logging site extension version outran the worker runtime and its DOTNET_ADDITIONAL_DEPS injection broke resolution. Incident writeup with diagnosis path and fix.",
+      "caveats": [
+        "VS publish can silently reinstall the extension at latest even with InstallAspNetCoreSiteExtension=false in the pubxml; Kudu PUT will not downgrade an installed extension in place - uninstall first. Recheck after every VS publish.",
+        "Slot swap moves the site extension with the content: after swapping, staging inherits the old production extension version (e.g. 9.0.4) - realign it before the next staging deploy.",
+        "Direction matters (confirmed 2026-07-28): extension NEWER than the installed runtime = startup death; extension OLDER than the runtime is ignored and harmless (a net10 app started clean alongside the 9.0.4 extension). Only realign when the extension version outruns the worker runtime."
+      ],
+      "tags": ["azure", "deployment", "dotnet", "failure-modes", "debugging"],
+      "links": []
+    },
+
+    {
+      "id": "script.invoke-build-deploy",
+      "kind": "script",
+      "path": "scripts\\Invoke-BuildDeploy.ps1",
+      "summary": "Manifest-driven build-and-deploy orchestrator: the generic pipeline (validate-first, git identity stamp, build/package/push gates, stamp-after-push, health poll distinguishing warming from broken, promote hint) lives here; each project declares only nouns in a deploy-manifest.json. Deploy sibling of the manifest-startup pattern.",
+      "caveats": [
+        "Manifest command lines execute as trusted code in the repo root - the manifest is project config, not untrusted input. Only push type azureWebAppZip exists so far; add types in the switch when a new target platform appears. Verify counts only HTTP 200 as healthy. Get-Prop uses the Properties indexer deliberately: .Properties.Name -contains throws under StrictMode when the JSON object is empty."
+      ],
+      "tags": ["deployment", "azure", "contract", "validation", "config"],
+      "links": ["pattern.manifest-startup", "note.azure-site-extension-mismatch"]
+    },
+
+    {
+      "id": "note.razorgraph-mcp-server",
+      "kind": "note",
+      "path": "notes\\razorgraph-mcp-server.md",
+      "summary": "MCP stdio server over the RazorGraphTool code graph (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 22 tools (exception_escapes added 2026-08-07), Janet JSON envelope conventions. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise (full call closure, depth carried on each edge); excludeTests=true skips test projects before compiling for a lean navigation graph. Method-level detail: explicit constructors are Method nodes, using/await-using disposal is a Calls edge, bodyDepth nesting metric feeds deep_methods (the christmas-tree report), method_body_graph exposes one method's CFG with guard depths, method_body_diff proves two bodies flow-equivalent by bisimulation. Member-level detail since cd12114 (2026-08-08): Property and Field nodes (statics included, isStatic/isConst marked), Reads/Writes edges from the accessing code, References edges to member declared types. Generated code (f97edee): #line-mapped positions, generated:true markers, generatedFrom on Razor-generated classes, page->class join via References+compiledInto. Traversal takes a direction (outgoing/incoming/both) and descends containment for free.",
+      "caveats": [
+        "build_graph and build_solution are slow (full Roslyn compile); build_solution compiles every project in the solution. Solution graphs scope Razor and client-asset ids by project name (page:<Project>/<relPath>, js:<Project>/<relPath>), so ids differ from single-project graphs of the same code.",
+        ".mcp.json launches a PUBLISHED copy -- D:/Repos/RazorGraphTool/.mcp-bin/RazorGraph.Mcp.exe, absolute path, gitignored -- refreshed with: dotnet publish src\\RazorGraph.Mcp -c Release -o .mcp-bin. It used to launch the live bin/Debug output, which a running server locks, so any rebuild of that configuration failed with MSB3021 while a Claude session was up. Verified 2026-08-01 that Debug and Release solution builds both succeed with the server live. Residual: .mcp-bin itself is locked while a session runs, so re-publishing needs those sessions closed, and code changes reach the MCP tools only after re-publish AND a session restart.",
+        "Covers edges are call-graph reachability to the FULL call closure (since 73ddf10, 2026-08-02; was depth 3), not runtime coverage - a covered method is one some test can reach, not one a test asserted on. Each edge carries the depth it was reached at; filter on depth for direct exercise. Traversal seeds from the test and from its class lifecycle hooks and constructor. uncovered_methods excludes bodiless interface/abstract declarations. Since 20ff394 coverage queries HARD-ERROR on a graph containing zero test methods (single-project builds, excludeTests builds) instead of returning empty - everything-uncovered was the absence-as-finding trap.",
+        "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion. Still present as of 2026-08-08; the planned attribute-driven DI detection would fix it as a side effect.",
+        "Type-usage edges are PARTIAL: since cd12114 (2026-08-08) property/field declared types emit References edges (unwrapping List<>/array wrappers), so \"who uses this type\" IS answerable for member-typed usage. Return types and parameter types still carry no edges - a type used only in method signatures still shows nothing.",
+        "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, prop:, field:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first.",
+        "The published .mcp-bin predates ALL 2026-08-08 work until re-published: exception_escapes (2026-08-07), member extraction (cd12114), --no-tests + coverage guard (20ff394), generated-code marking/mapping/links (f97edee). Publish loop: close sessions -> dotnet publish both projects -> restart. The CLI twin sees everything immediately. The OLD server CAN load_graph new CLI-built graphs - every enum name pre-exists, and the page->class join deliberately rides References+compiledInto=true instead of a new EdgeType because JsonStringEnumConverter throws on unknown names.",
+        "Zero-Property-node gap RESOLVED IN SOURCE at cd12114 (2026-08-08); verified on RazorGraphTool self-graph and ImageSelectorV2 (the ConversionQueueStatus zero-edge case now answers). Graphs built by the published server, and ANY saved graph predating cd12114, still contain zero Property/Field nodes - date-check a saved graph before trusting an empty incoming list.",
+        "Writes detection is assignment-syntax only (=, compound, ++/--, out/ref): mutating a member through a method call reads it - list.Add(x), dict.TryAdd(k,v) yield a Reads edge on the member plus a Calls edge to the (usually out-of-solution) mutator. Found self-graphing 2026-08-08. Honest about syntax, blind to semantic mutation - do not read an absent Writes edge on a collection-typed member as immutability.",
+        "Escape reports cite the thrower METHOD node, not the throw site: a throw authored in a .cshtml code block whose enclosing method is generated scaffolding (ExecuteAsync) still displays the .g.cs path even after f97edee - the node is correctly marked generated:true with generatedFrom and a compiledInto edge back to the page, but the mapped .cshtml line of the throw itself is not persisted on the edge. Persisting throw-site locations is the open follow-up."
+      ],
+      "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server"]
+    },
+
+    {
+      "id": "file.skill-deploy",
+      "kind": "file",
+      "path": "skills\\deploy\\SKILL.md",
+      "summary": "The /deploy Claude Code skill: a thin trigger that routes any session (any project) to Invoke-BuildDeploy.ps1 and teaches it to query this graph instead of storing knowledge itself. Canonical file lives here; ~\\.claude\\skills\\deploy is a junction to it.",
+      "tags": ["skills", "deployment", "retrieval", "agent"],
+      "caveats": [
+        "The harness enumerates skill names and trigger descriptions ONCE at session start - a new or renamed skill is invisible until the next session, though content edits take effect on next invoke. Keep the file a pointer: invariants and graph queries only; new deployment lessons go in the graph, never in the skill. If the junction at ~\\.claude\\skills\\deploy is ever deleted, recreate it with New-Item -ItemType Junction."
+      ],
+      "links": ["script.invoke-build-deploy", "pattern.progressive-disclosure"]
+    },
+
+    {
+      "id": "note.azure-kudu-phantom-deployments",
+      "kind": "note",
+      "path": "notes\\azure-kudu-phantom-deployments.md",
+      "summary": "OneDeploy reports Deployment successful while deploying nothing: a fossil WEBSITE_NODE_DEFAULT_VERSION=6.9.1 crashes Kudu deployment-script generation, OneDeploy swallows it, classic zipdeploy fails loudly. Every deploy for 4.5 months was a silent no-op. Verify content (file mtimes, route probes), never deployment status.",
+      "tags": ["azure", "deployment", "failure-modes", "debugging"],
+      "caveats": [
+        "The tell is an impossibly fast successful deployment (~1s for 100MB) plus wwwroot mtimes older than the deploy. Health checks prove AN app runs, not WHICH app - probe a new-build-only route or file. SitePackages/packagename.txt residue is inert without WEBSITE_RUN_FROM_PACKAGE but muddies diagnosis."
+      ],
+      "links": ["note.azure-site-extension-mismatch", "script.invoke-build-deploy"]
+    },
+
+    {
+      "id": "note.razorgraph-js-scoping",
+      "kind": "note",
+      "path": "notes\\razorgraph-js-scoping.md",
+      "summary": "Scoping measurements for JS graphing in RazorGraph (2026-07-31): client tier is inline-first (575 <script> blocks / 14.5k LOC vs 24 js files / 3.7k in nopCommerce), DOM selectors dominate (2,362 sites vs 5 data-* uses), the literal-URL API rule scores 0% on real code where @Url.Action supplies the URL, and the vendor filter admits 102k LOC of lib_npm as first-party. Revised order: vendor fix, selector contracts, @Url.Action edges, function nodes; ESM/TS deferred.",
+      "caveats": [
+        "Counts are regex over raw text - comments and string literals included, indicative not exact. Corpus = one personal app (ImageSelector, two versions of the same source) + nopCommerce (classic pole) + OrchardCore (bundled/TS pole). Selector-first and the @Url.Action finding hold at both poles; ESM/TS deferral survives but weakened - OrchardCore keeps sources outside wwwroot in Assets\\, so graph-sources-vs-graph-shipped is an open design question for bundled projects."
+      ],
+      "tags": ["code-analysis", "javascript", "razor", "research", "scoping"],
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping"]
+    },
+
+    {
+      "id": "script.search-json",
+      "kind": "script",
+      "path": "scripts\\Search-Json.ps1",
+      "summary": "Generic JSON-blob search with Get-Research conventions: orientation view (arrays + field census), scored -Query, prop=value -Where filters with wildcards and dotted paths, -Select projection, { returned, totalMatches, truncated, items } envelope, -Text opt-in. Built 2026-08-01 for querying saved RazorGraph graphs without the MCP server; works on any JSON file whose interesting content is an array of objects.",
+      "caveats": [
+        "Loads the whole file into memory (fine for MB-scale graphs). Unlike Get-Research it caps -Where results too (default -First 10) because blob arrays can hold tens of thousands of items; -All lifts the cap and the envelope always says when it was applied."
+      ],
+      "tags": ["retrieval", "json", "code-analysis", "powershell"],
+      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli", "script.invoke-dotnet-check"]
+    },
+
+    {
+      "id": "note.essay-derive-dont-memorize",
+      "kind": "note",
+      "path": "notes\\essay-derive-dont-memorize.md",
+      "summary": "Raw pieces for a personal essay: derive-dont-memorize as a lifelong strategy - quotient rule (~1983), associative memory vs names (the Naked story, IMDb as symbol table), Bresenham scaling and histogram statistics (1994), the three-queue dispatcher (2026), turns-into-scripts as Janet's origin, the essay-drafting method itself, and the late ADHD recognition that named the pattern. LT/J markers separate Lori's material from Claude's framings for the diff-against-perception editing pass.",
+      "tags": ["essay", "personal", "memory", "adhd", "architecture"],
+      "caveats": [
+        "Personal content (health, named-by-initial people, a friend's diary). Raw material, not a draft - the [J] framings are unvetted and must be diffed against perception before any public use. Published as a private artifact 2026-08-01; open questions at the bottom list facts to verify before drafting."
+      ],
+      "links": ["note.meta-second-brain-vs-janet"]
+    },
+
+    {
+      "id": "note.startup-brief-budget",
+      "kind": "note",
+      "path": "notes\\startup-brief-budget.md",
+      "summary": "The startup brief grew until 84% of it was non-contract prose; measurement, the trim, and the switch-parameter/local variable collision that adding -Full exposed.",
+      "caveats": [
+        "The 54% reduction is measured against the 2026-08-01 manifest; re-measure after adding rules or retrieval fields. Trimming is done by the emitter, so growing manifest prose no longer costs the session but still costs -Full and -Text readers."
+      ],
+      "tags": ["startup", "brief", "progressive-disclosure", "powershell", "landmine", "measurement"],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "file.claude-md",
+      "kind": "file",
+      "path": "CLAUDE.md",
+      "summary": "Agent instructions for this repo: run Invoke-JanetStartup.ps1 yourself rather than accepting a pasted brief, and launch with JanetHome as the project dir so the hooks load.",
+      "tags": ["startup", "agent", "contract", "hooks"],
+      "caveats": [
+        "Only loads when the session project dir is JanetHome -- which is the same condition the enforcement check tests. A session started elsewhere sees neither this file nor the hooks."
+      ],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.startup-brief-budget"]
+    },
+
+    {
+      "id": "script.start-janet",
+      "kind": "script",
+      "path": "scripts\\Start-Janet.ps1",
+      "summary": "Launcher: runs Invoke-JanetStartup.ps1, refuses to launch on any problems entry, then starts an interactive claude session with the brief as the opening prompt. -Path for the working dir (default cwd -- designed for loading Janet while working in another repo), -DryRun to preview, prompts over 24k chars staged through a temp file.",
+      "caveats": [
+        "Gates launch on the brief's problems field, so anything added to problems becomes a launch blocker by contract -- enforcement notes went there briefly on 2026-08-01 and broke launching from any non-JanetHome directory, the launcher's primary case. Unwired-hook notes now arrive in the separate enforcement field, printed as yellow warnings without blocking. Windows caps a command line at 32767 chars with silent truncation, hence the 24k inline-prompt ceiling.",
+        "The prompt is ALWAYS staged through a file; only a quote-free pointer goes on the command line. Passing the brief inline shredded under Windows PowerShell 5.1 native-argument passing (embedded JSON quotes are not escaped), and claude read brief fragments as options: error unknown option -Query, 2026-08-01."
+      ],
+      "tags": ["startup", "session", "entrypoint", "agent"],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest"]
+    },
+
+    {
+      "id": "note.pre-checkin-style-janet-level",
+      "kind": "note",
+      "path": "notes\\pre-checkin-style-janet-level.md",
+      "summary": "Decision 2026-08-02: pre-checkin style fixing is a Janet-level, language-plugged gate for all code in every repo; Test-PreCommit.ps1 is the broken natural host.",
+      "tags": ["pre-commit", "quality", "code-analysis"],
+      "links": ["script.test-pre-commit", "script.test-powershell-rules", "script.test-file-encoding", "pattern.graph-first-analysis", "note.discriminator-front-end"]
+    },
+
+    {
+      "id": "script.invoke-external",
+      "kind": "script",
+      "path": "scripts\\lib\\Invoke-External.ps1",
+      "summary": "Circuit-breaker wrapper for external commands (DESIGN-NOTES section 8 as code): captured StdOut/StdErr as line arrays, explicit timeout with kill, throws on failure by default; -NoThrow/-Quiet for caller-owned outcomes, -WorkingDirectory defaults to the caller's PowerShell location.",
+      "tags": ["external", "reliability", "fallback", "pre-commit"],
+      "links": ["script.test-pre-commit", "script.new-repo-status-page", "pattern.circuit-breakers"]
+    },
+
+    {
+      "id": "skill.christmas-tree-flattening",
+      "kind": "skill",
+      "path": "notes\\christmas-tree-flattening.md",
+      "summary": "The move table for flattening deep nesting (christmas-tree code): guard inversion (universally legal, prover-blessable via method_body_diff), extract-method (only real fix for loop pyramids; prover correctly refuses, gate with tests + graph edge-set diff), compute-and-return (ctor fallback). Extract-method is compiler-forbidden in ctors assigning readonly fields (CS0191) or init-only properties (CS8852) - an auto-flattener must check MethodKind.Constructor plus what the block assigns. Includes the worked workflow from the prover's first production run (RazorGraphTool bc6693f, 2026-08-03).",
+      "tags": ["refactoring", "style-gate", "csharp", "roslyn", "code-analysis"],
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.discriminator-front-end", "note.razorgraph-cli"]
+    },
+
+    {
+      "id": "skill.graph-first-code-analysis",
+      "kind": "skill",
+      "path": "notes\\skill-graph-first-code-analysis.md",
+      "summary": "The operating skill for the RazorGraph cluster: WHEN to reach for the graph (questions text search cannot answer - callers, implementers, blast radius, test reach, nesting, flow equivalence) and the workflow (build once/save/load, orient then drill, direction semantics, exact m:Type.Name(params) ids, coverage=reachability, body tools for method-level, mechanical refactor gates, source only to spot-check). Judgment here; depth delegated to the linked nodes; blind spots on note.razorgraph-mcp-server.",
+      "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval", "refactoring"],
+      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json", "skill.crash-escape-analysis"]
+    },
+
+    {
+      "id": "pattern.discriminator-backends",
+      "kind": "pattern",
+      "path": "notes\\discriminator-front-end.md",
+      "summary": "Split conditional tangles that are really dispatch: a discriminator front end that only routes, over a catalog of well-known fixed back ends (state machines as declarative queries) that only compute. Duplication corollary: copies behind a discriminator are enumerable inventory, not silently-drifting contraband - deliberately anti-DRY-reflex. RazorGraph-era tooling upgrades it: method_body_diff proves which back ends are merge candidates, coverage prices refactor risk upfront, and conformance (every path lands in exactly one back end, nothing routes around the front end) is a graph query. The tell: a method whose nesting grows every time the business adds a case.",
+      "tags": ["architecture", "refactoring", "code-analysis", "csharp"],
+      "links": ["skill.christmas-tree-flattening", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "script.test-deep-nesting",
+      "kind": "script",
+      "path": "scripts\\Test-DeepNesting.ps1",
+      "summary": "Deep-nesting (christmas-tree) detector for PowerShell by AST - the PS backend of the style gate nesting rule, sibling of RazorGraph deep_methods. Reports functions and top-level script bodies nesting >= MinDepth, deepest first; elseif adds no depth (free from IfStatementAst.Clauses); script-block literals count one level because they indent. JSON envelope, -Text opt-in, exit 1 on findings so it gates directly. Calibration 2026-08-03 over JanetHome scripts: >=3 flags 35 containers, >=6 flags 3; gate threshold set to 6 from that data plus the RazorGraphTool precedent (5 is case-by-case).",
+      "caveats": [
+        "Parse errors are reported and exit 1, never silently skipped - an unparseable staged file fails the gate by design. Counting script-block literals is a deliberate divergence from the C# metric (lambdas add no depth there): pipeline-style trees would otherwise vanish from the report."
+      ],
+      "tags": ["style-gate", "powershell", "code-analysis", "refactoring"],
+      "links": ["skill.christmas-tree-flattening", "script.test-pre-commit", "note.pre-checkin-style-janet-level"]
+    },
+
+    {
+      "id": "note.razorgraph-competitive-field",
+      "kind": "note",
+      "path": "notes\\razorgraph-competitive-field-2026-08.md",
+      "summary": "2026-08-07 survey of the MCP code-graph field. Unique to RazorGraphTool: the flow-equivalence prover as refactoring gate, and Razor/PageModel/JS cross-boundary correlation. Near-unique: coverage-as-reachability (one other implementer: roslyn-codelens-mcp, the closest competitor - watch it). Commodity: call graphs/references/impact. Field is ahead on language breadth, incremental indexing, vector search, token economy, composable queries. Strategy: invest in prover + Razor to stay distinct; incremental indexing + Lua to catch up. Added 2026-08-09: Modelcode.ai (Morph) as the process-wrapper pole - enterprise migration service that independently rediscovered the Janet shape (spec-first, milestone gates, compounding project knowledge) but whose correctness story is behavioral sampling only, because cross-language migration has no shared compiler model. Validates verification-as-product; does not close the prover gap. Feeds note.razorgraph-cross-language.",
+      "tags": ["research", "code-analysis", "agent", "csharp"],
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
+    },
+
+    {
+      "id": "note.razorgraph-borrow-list",
+      "kind": "note",
+      "path": "notes\\razorgraph-borrow-list-2026-08.md",
+      "summary": "Concepts to borrow from the MCP code-graph field, tiered by fusion with unique assets. Tier 1: diff-aware test impact (Covers edges backward from git diff), MinHash similarity shortlisting for the prover (makes the section-12 pairwise sweep tractable), measured-coverage import (closes reachable-vs-asserted caveat), graph_diff tool, content-hash incremental indexing + syntax-only fast tier (solves fast per-commit C# nesting). Tier 3 synthesis: plan -> SurgicalEdit -> prover-verify closed loop. Not borrowed: cloud, language breadth, vectors.",
+      "tags": ["research", "code-analysis", "agent", "refactoring"],
+      "links": ["note.razorgraph-competitive-field", "note.razorgraph-mcp-server", "pattern.discriminator-backends", "note.razorgraph-cross-language"]
+    },
+
+    {
+      "id": "skill.crash-escape-analysis",
+      "kind": "skill",
+      "path": "notes\\skill-crash-escape-analysis.md",
+      "summary": "Diagnose no-trace app exits as a reachability question: check the process exception surface first (one get_node), run exception_escapes for the throw-to-entry-point shortlist, rule reachable sites out, hunt catch-shape mismatches and non-total render-loop callbacks, then fix in four layers (site guard, operation catch, process backstop, crash log). Distilled from the RetirementCore.App first-run crash, 2026-08-07.",
+      "caveats": [
+        "Delegate following added 2026-08-07 (RazorGraphTool a9c1c01): the pre-fix RetirementCore crash commit reports 44 escapes including both hand-found crashes (CheckedCents into the labeler callback; MonteCarlo.Run ArgumentException into RunAsync). The first increment reported zero on the same commit because every hop was delegate-mediated - kept here as the war story.",
+        "Remaining blind spots: stored-and-forwarded delegates (one hop only), local functions, virtual dispatch, BCL throwers, top-level-statement Main. Zero still means \"no static chain\", never \"safe\".",
+        "Escapes are prove-me-safe prompts, not confirmed bugs: value guards are invisible (a labeler that checks IsFinite before FromDouble still reports), and a process-level backstop like DispatcherUnhandledException is not a catch on any chain - an escape may surface as a dialog, not an exit.",
+        "Covers MANAGED escapes only. A native access violation (0xc0000005) is not an exception: it bypasses DispatcherUnhandledException, TaskScheduler.UnobservedTaskException and AppDomain.UnhandledException alike and fails the process fast, so exception_escapes has nothing to find and a crash log written from those handlers stays EMPTY. Critically, an empty log is the signature of ANY native fault and therefore discriminates between no hypotheses -- do not read it as evidence about threading. Check the Application event log for the exception code and loaded-module list, and configure WER LocalDumps (script.set-crash-dump-capture) before concluding anything. RetirementCore 2026-08-07: two AVs in a charting stack over SkiaSharp, where the managed-escape hunt was the wrong tool entirely and a full thread-affinity audit came back clean."
+      ],
+      "tags": ["debugging", "csharp", "code-analysis", "roslyn"],
+      "links": ["pattern.thread-items", "skill.graph-first-code-analysis", "note.razorgraph-mcp-server", "script.set-crash-dump-capture"]
+    },
+
+    {
+      "id": "pattern.change-coalescing",
+      "kind": "pattern",
+      "path": "notes\\coalescing-input-to-output.md",
+      "summary": "State belongs in structure, not in bookkeeping that describes it. Two instances of one move. (1) Coalescing input changes into output work: key partitions, queue buffers, DESTINATION collapses -- the fold belongs to the consumer, so two consumers fold the same stream differently and a complete list can be folded non-associatively. A consumer loop waits for non-empty, delays one frame, drains GREEDILY to empty (stragglers make the current frame), awaits delivery; the loop position IS the window, so no armed flag, no race, no overlapping deliveries, backpressure free. Output rate capped at one per window by construction, so a fast producer can never overwhelm it -- only a slow consumer can. Plus laziness: per-output cells, never a base class. (2) Capping simultaneous calls to a remote (N items, K slots) -- the question people arrive with. Cold answers stop at SemaphoreSlim because it is CORRECT, and every weakness is second-order: leaked permits, nowhere for results or retry, K cannot change, no ordering. Better: K worker loops (K loops IS the limit), or a K-slot list where WhenAny is a wake-up to discard and you sweep for completed slots -- the slot index is the identity. The slot list has a coordinator, which buys unsynchronized results, per-item retry, adaptive K on 429s, and deterministic start order. Chunking is worse (a barrier that turns one poison pill into a total stall, and retry re-runs survivors) UNLESS the batch is the request -- \"K at a time\" means K per call or K in flight, and they want opposite structures. Concurrency cap is not a rate cap. The portable tell: when correctness depends on a paired acquire and release, there is usually a version where the thing is not a resource at all.",
+      "caveats": [
+        "First implementation shipped 2026-08-08 in RetirementCore (RetirementCore.App\\Coalescing: ChangeCoalescer, Derived<T>, AsyncDerived<T>, deterministic pump+fake-clock test harness). The machine survived contact; the async-cell addition it forced (two counters, staleness independent of status) is recorded in the note.",
+        "The request/response variant (batching loader / dataloader shape) is specified only as a contrast table; correlation and failure fan-out are unbuilt and are a genuine extension, not a free consequence."
+      ],
+      "tags": ["architecture", "concurrency", "ui", "wpf", "performance", "patterns", "csharp", "failure-modes"],
+      "links": ["note.wpf-app-architecture"]
+    },
+
+    {
+      "id": "note.wpf-app-architecture",
+      "kind": "note",
+      "path": "notes\\wpf-app-architecture.md",
+      "summary": "WPF plumbing lessons and what they imply for app structure, from a thread-affinity and rebuild-churn audit. Bindings are pull, so a PropertyChanged into an unmaterialized binding is free - which makes lazy getters the whole demand mechanism and an IsActive/activation signal unnecessary; template materialization means only the selected page has live bindings. Compose a lazy cell per bindable output rather than hoisting a chart-page base class (one dirty flag models the very problem it should fix). CommunityToolkit [ObservableProperty] routes every setter through one overridable OnPropertyChanged, and [NotifyPropertyChangedFor] means notification count exceeds property count. WPF marshals scalar binding updates but NOT collection changes nor the object graph a control renders. DispatcherPriority gives ordering with no latency bound (Normal-priority floods starve Background indefinitely) - prefer an explicit time window. Progress<T> captures context at construction, never conflates, and can deliver out of order so counters run backwards. Make thread affinity structural: start the loop on the UI thread and never ConfigureAwait(false). Static events leak handlers. Native-backed rendering turns churn into a use-after-free hazard, and a native AV bypasses every managed handler, so an empty crash log says nothing about threading - WER LocalDumps is the tool. Ends with a checklist for a new WPF app.",
+      "caveats": [
+        "Distilled from one app (charts over LiveCharts/SkiaSharp, CommunityToolkit.Mvvm 8.4, .NET 10) - the platform facts generalize, the emphasis reflects that codebase.",
+        "DataTemplate resolution walking the type hierarchy for implicit templates is asserted from reasoning, not tested here; verify before relying on a base-class template."
+      ],
+      "tags": ["wpf", "csharp", "ui", "architecture", "concurrency", "debugging"],
+      "links": ["pattern.change-coalescing", "script.set-crash-dump-capture"]
+    },
+
+    {
+      "id": "script.set-crash-dump-capture",
+      "kind": "script",
+      "path": "scripts\\Set-CrashDumpCapture.ps1",
+      "summary": "Configure WER LocalDumps so a crash leaves a dump instead of only an event-log entry. Exists because a native access violation is not a managed exception: it bypasses DispatcherUnhandledException, UnobservedTaskException and AppDomain.UnhandledException alike, so a crash log written from those handlers stays empty -- an empty log is the signature of ANY native fault and says nothing about the cause. DumpType Mini gives stacks and modules (small, names the faulting module); Full adds process memory, which is what a use-after-free needs since the question is what the memory at the faulting address used to be. DumpFolder is written REG_EXPAND_SZ so %LOCALAPPDATA% expands per-user at fault time -- pass it unexpanded. Reads back after writing rather than trusting the write. -List needs no elevation; -Remove restores default behaviour. WER reads the key at fault time, so nothing restarts.",
+      "params": ["Executable", "DumpFolder", "DumpCount", "DumpType", "Remove", "List", "DryRun", "Text"],
+      "tags": ["debugging", "windows", "powershell", "failure-modes"],
+      "caveats": [
+        "Setting or removing needs an elevated shell (LocalDumps is under HKLM); the script checks first and throws a clear message rather than surfacing an access-denied that reads like a missing key. -List works unelevated.",
+        "Full dumps are large -- a UI process with native rendering can produce hundreds of MB each, which is why DumpCount defaults to 3 rather than the usual 10. Remove the key once diagnosis is done."
+      ],
+      "links": ["note.wpf-app-architecture", "skill.crash-escape-analysis"]
+    },
+
+    {
+      "id": "script.git",
+      "kind": "script",
+      "path": "scripts\\git.ps1",
+      "summary": "Resolves git.exe and forwards all arguments to it. git is not on PATH in every shell this repo is used from -- an agent session does not load the user profile that adds it -- and Visual Studio bundles a copy, so this finds it once rather than each caller rediscovering the path. Run with no arguments to get the resolved path on the SUCCESS stream, so \"$g = & .\\git.ps1\" actually captures it; the RetirementCore counterpart uses Write-Host, which goes to the information stream and silently yields nothing. Git's own \"-C <path>\" forwards correctly (verified), which is how to operate on another repo without changing directory. Targets 5.1 as well as 7, since a shim that resolves a tool is exactly what gets run from whatever shell is open.",
+      "params": ["GitArgs"],
+      "caveats": [
+        "The candidate list leads with this machine's VS 18 Enterprise path. On another machine that misses and the fallback is a recursive Get-ChildItem over the Visual Studio install root, which is slow but only reached once per invocation."
+      ],
+      "tags": ["git", "powershell", "entrypoint"],
+      "links": ["script.get-drive-survey"]
+    },
+
+    {
+      "id": "note.linq-deferred-side-effects",
+      "kind": "note",
+      "path": "notes\\linq-deferred-side-effects.md",
+      "summary": "Deferred LINQ over a side-effecting projection re-runs the side effect on every enumeration, and Count() IS an enumeration. Enumerable.Count() on a Select iterator does not take a cheap path: SelectListIterator.GetCount(onlyIfCheap:false) deliberately re-invokes the selector so side effects and exceptions are preserved. Found 2026-08-08 in ImageSelectorV2 PreloadThumbnails, where an IEnumerable<Task> was enumerated by Task.WhenAll and again by a .Count() in the finally, silently doubling dispatcher load with a second unawaited set of fetches. Tell: an IEnumerable<Task<T>> local is almost always a latent bug -- materialize at point of creation. Symptom is load, not an exception, so it survives review.",
+      "tags": ["csharp", "linq", "async", "anti-pattern", "code-review"],
+      "links": ["pattern.reviewer-principles"]
+    },
+
+    {
+      "id": "script.get-api-doc",
+      "kind": "script",
+      "path": "scripts\\Get-ApiDoc.ps1",
+      "summary": "Queries a .NET XML documentation file the way Get-Research queries research.json: ranked free-text search returning parsed members (kind, declaring type, readable signature, summary, per-parameter docs) instead of grep hits. Exists because researching a library from raw doc XML is expensive and bad at the job -- the file is one stream of hard-wrapped indented <member> elements, so a match costs dozens of context lines and the answer arrives split across them. Flattens doc markup (see cref, paramref, c) into prose, shortens fully-qualified argument lists, and follows <inheritdoc/> chains transitively (BarSeries -> Series -> ISeries is the ordinary shape, and one hop makes results depend on document order). Resolves the .xml from the NuGet cache by package id, newest version and newest TFM, so callers never hunt for the path. JSON by default with the standard envelope; -Text to read at a terminal; -Package alone gives cheap orientation (counts by kind, largest types).",
+      "caveats": [
+        "A bare <inheritdoc/> with no cref is NOT resolved -- implicit inheritance needs the type hierarchy, which an XML doc file does not carry. Those members read as undocumented even though the base or interface documents them; check the base type by name when a result looks empty.",
+        "Only reads XML that ships inside the package under lib\\<tfm>\\. Packages built without GenerateDocumentationFile throw a clear error rather than returning nothing, and a package documenting only some members will honestly report the rest as undocumented.",
+        "Generic arity survives in names as it does in the file (Series`3, CoreAxis`2), so query by simple name rather than pasting a C# generic."
+      ],
+      "tags": ["api", "research", "dotnet", "powershell", "retrieval", "context-budget"],
+      "links": ["script.get-research"]
+    },
+
+    {
+      "id": "note.build-retrospective",
+      "kind": "note",
+      "path": "notes\\build-retrospective.md",
+      "summary": "Retrospective material from the 2024-2026 build, moved out of DESIGN-NOTES on 2026-08-08 (was sections 6, 10 and 11) because it is read once when the question arises, not on every session start. Reviewer personas and why the depersonalised form is the only durable one, plus the six generic review principles that survive it (capture why in comments; a test that cannot fail is worse than none; move/rename PRs owe evidence; a warnings fix must not change runtime defaults; no machine-specific values in shared content; runbooks never route to a named individual). The handoff-corpus format: one note per file, filename as index entry, cross-reference without deduplicating, manifest as source of truth, written for an LLM reader. And the retrospective itself, led by classifying every file portable/employer-confidential/personal at authoring time rather than sorting 640 by hand after departure.",
+      "tags": ["patterns", "review", "documentation", "retrieval", "retrospective"],
+      "links": ["file.design-notes", "file.provenance", "note.debugger-displays-are-claims"]
+    },
+
+    {
+      "id": "note.discriminator-front-end",
+      "kind": "note",
+      "path": "notes\\discriminator-front-end.md",
+      "summary": "When complex conditional logic is really dispatch in disguise, split it: one discriminator front end that only routes, and a catalog of well-known fixed back ends that only compute, selected by the front end and never selecting themselves. Deep nesting is a discriminator tangled into its computations, so pulling the routing out flattens the back ends on their own; the tell is a method whose nesting depth grows every time the business adds a case. Carries the duplication corollary that cuts against the DRY reflex -- duplication behind a discriminator is inventory because the copies are a named catalog and drift is detectable, while duplication scattered through nested conditionals is contraband -- and what a flow-equivalence prover adds: merge versus parameterisation candidates separated by proof, and conformance as a graph invariant rather than a review-time opinion. Was DESIGN-NOTES section 12; moved out 2026-08-08.",
+      "tags": ["architecture", "refactor", "patterns", "code-analysis"],
+      "links": ["file.design-notes", "skill.christmas-tree-flattening", "note.pre-checkin-style-janet-level"]
+    },
+
+    {
+      "id": "note.razorgraph-cli",
+      "kind": "note",
+      "path": "notes\\razorgraph-cli.md",
+      "summary": "Command-line twin of RazorGraph.Mcp over the same Core+Extractor engine (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Cli). Six commands: build (one project; a .sln needs --project), build-solution (spans every project - the only source of cross-project edges), query (--id/--type/--uncovered/--deep/--mismatches/--escapes), body and body-diff (compile the project, emit a method CFG / prove two bodies flow-equivalent, exit 0 equivalent 1 different 2 error), research (relevance-scored subgraph). Matters because it has NO publish cycle: dotnet run sees the change you just made, while the MCP server reports on the last .mcp-bin publish - so the CLI is the only surface that can observe RazorGraph while RazorGraph itself is being changed, and CLI-vs-MCP disagreement is expected mid-development.",
+      "caveats": [
+        "query mode precedence is silent and fixed (mismatches > escapes > uncovered > deep > id > type): pass two modes and the earlier wins with no warning the other was ignored. --deep 0 is gated on Deep > 0, so it is indistinguishable from not passing --deep.",
+        "The research command defaults -o to research.json IN THE CURRENT DIRECTORY. Run it from D:\\Repos\\JanetHome without -o and it overwrites the Janet research graph - the file the never-hand-edit rule protects. Unrelated file, same name. Always pass -o.",
+        "build <sln> --project Foo and build-solution <sln> are different graphs, not two spellings: the former uses the solution only for context and yields no cross-project Calls/Covers edges, which reads as missing data rather than the wrong command.",
+        "Output is human text, not the Janet JSON envelope - query has no --json flag; only body and body-diff emit JSON and research writes a file. Use Search-Json.ps1 against the saved graph for scripted queries. --uncovered caps its listing at 200 (reported, not silent).",
+        "body and body-diff do not read a saved graph: they run a real compile every invocation, like build/build-solution. Only query and research load JSON and are fast.",
+        "Property/Field gap RESOLVED at cd12114 (2026-08-08): prop:/field: nodes (statics included), Reads/Writes edges, and member->declared-type References edges are emitted by builds from source. Saved graphs built before cd12114 still hold zero member nodes, and the published .mcp-bin serves the old extractor until re-published - the CLI/MCP disagreement this note predicts is live right now.",
+        "build-solution gained --no-tests (20ff394, 2026-08-08): skips test projects BEFORE compiling (detection by test-framework metadata references), reported on stderr and in output, never silent. Coverage query modes (--uncovered, --covering-tests, --covered-methods) now exit 1 with an explanation on ANY test-less graph - including single-project builds, which previously returned empty coverage silently. The refusal is the report."
+      ],
+      "tags": ["code-analysis", "csharp", "roslyn", "cli", "refactoring"],
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server"]
+    },
+
+    {
+      "id": "script.thread-items-common",
+      "kind": "script",
+      "path": "scripts\\ThreadItems.Common.ps1",
+      "summary": "Dot-sourced read/write/lock helpers for the thread item list: Read-ThreadItems (normalises every entry to topic/status/refs/next/notes), Write-ThreadItems, Invoke-ThreadItemsUpdate (mutex-guarded read-modify-write) and Find-ThreadItemIndex (resolves a selector to exactly one item, refusing ambiguity).",
+      "tags": ["thread-items", "session", "debugging", "powershell"],
+      "caveats": [
+        "Not a standalone script -- it defines functions and does nothing when run.",
+        "Deliberately does NOT Set-StrictMode: strict mode in a dot-sourced file leaks into the caller scope. Each entry-point script sets its own.",
+        "Read-ThreadItems comma-wraps its return. Assign it; never wrap the call in @(...) -- that yields one element holding the real array and the loop runs once (house rule 1). This trap bit during the 2026-08-08 migration and was caught only by running the script."
+      ],
+      "links": ["pattern.thread-items"]
+    },
+
+    {
+      "id": "script.set-active-thread",
+      "kind": "script",
+      "path": "scripts\\Set-ActiveThread.ps1",
+      "summary": "Set which thread item is active, by -Topic substring, -Index, or -None to clear. Focus is explicit rather than positional -- the stack made the top of the stack active by definition, so changing attention meant mutating the list.",
+      "params": ["Topic", "Index", "None", "Path", "Text"],
+      "tags": ["thread-items", "session", "debugging"],
+      "caveats": [
+        "An ambiguous -Topic is an error, never a first-match guess: the operation rewrites the file, and silently amending the wrong item is how notes get lost."
+      ],
+      "links": ["script.add-thread-item", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items"]
+    },
+
+    {
+      "id": "script.update-thread-item",
+      "kind": "script",
+      "path": "scripts\\Update-ThreadItem.ps1",
+      "summary": "Amend an existing thread item in place -- notes, resume cursor, refs, or status -- preserving every field not named; -AppendNotes and -AppendRefs accumulate rather than replace.",
+      "params": ["Topic", "Index", "Notes", "Next", "Refs", "Status", "AppendNotes", "AppendRefs", "Path", "Text"],
+      "tags": ["thread-items", "session", "debugging"],
+      "caveats": [
+        "The operation the push/pop stack never had, and the reason it lost data: on 2026-08-08 a session wanting to update its own entry had only push and pop, popped to reach it, and destroyed a concurrent session notes irrecoverably. A missing operation does not leave callers stuck -- it makes them improvise with a destructive one."
+      ],
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items"]
+    },
+
+    {
+      "id": "note.razorgraph-cross-language",
+      "kind": "note",
+      "path": "notes\\razorgraph-cross-language-conversion.md",
+      "summary": "Long-term target set 2026-08-09: \"convert this JavaScript into Razor\" - a JS semantic model comparable (as best as possible) against the C# side so LLM reasoning has a good chance of being CORRECT, not plausible. Key reframe: JS->Razor is TIER MIGRATION, not transpilation - the correctness question is \"does the page still honor every contract the surviving client code depends on\", and RazorGraph already models those contracts (DomSelectedBy, unboundSelectorIds, ViewDataReadBy, UrlGeneratedBy). Three verification planes: contract (graph diff over boundary edges - buildable today), structural (JS extractor emitting the shared BodyGraph IR + a RELAXED cross-language comparator with mismatch taxonomy - corresponds/diverges, never claims proof), behavioral (Morph-style side-by-side rendering, last). LLM proposes; planes grade; mismatch reports feed the next attempt. .NET coverage: Roslyn = C#+VB only; F# needs FSharp.Compiler.Service; IL (Cecil/System.Reflection.Metadata) is the language-blind floor at the cost of source fidelity. Ordered steps in the note; step 1 (contract-preservation graph diff) needs no new extraction.",
+      "caveats": [
+        "The comparator plane must NEVER present correspondence as equivalence - cross-language has no shared compiler model, so the prover's exit-0 contract does not port; the honest output is scored correspondence plus a divergence list. Modelcode.ai's tests-only verification exists BECAUSE this limit is real for them everywhere; within-.NET it is only real across language boundaries.",
+        "Step 3 (shared BodyGraph IR for JS) is gated on the formatVersion stamp from the parked visualization item - same serialized-contract concern, do not build a second consumer of an unversioned format."
+      ],
+      "tags": ["code-analysis", "javascript", "csharp", "razor", "refactoring", "research", "agent"],
+      "links": ["note.razorgraph-competitive-field", "note.razorgraph-borrow-list", "note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-lua-scoping"]
+    },
+
+    {
+      "id": "script.invoke-dotnet-check",
+      "kind": "script",
+      "path": "scripts\\Invoke-DotnetCheck.ps1",
+      "summary": "Build + test a .NET target and report as structured JSON (contract 3) instead of console scrollback: { contract, target, configuration, succeeded, build: { succeeded, durationSeconds, errors[], warnings[], warningCount, newWarnings, resolvedWarningCount, baseline }, tests: null | {...}, graph: null | { path, builtAt, newestSourceAt, status, refreshed, canRefresh } }. errors[] verbatim; warnings[] grouped by code with an honest omittedInstances marker; -New diffs the census against the previous -New run (newWarnings uncapped/verbatim). failures[] carry the whole assert message and file:line, read from TRX not scraped. CODE GRAPH: in a repo carrying the convention (.graph dir + scripts\\graph.ps1) a successful build refreshes the graph when source has outrun it (~12s on a mid-size solution), because the check loop is exactly what bypasses the repo build script and leaves an agent querying a stale graph; staleness is REPORTED even when it cannot be fixed. Exit code means exactly one thing: 0 iff build succeeded and every test passed. WHEN: any dotnet build/test a session runs; -New when the question is what did THIS change introduce; -NoGraph for the fast path.",
+      "params": ["Target", "Configuration", "NoTests", "TestFilter", "New", "NoGraph", "Text", "Pretty"],
+      "caveats": [
+        "Contract drift check: the envelope stamps contract (currently 3). If the number differs from this node, or fields appear that this summary does not list, the contract has moved -- trust the JSON in front of you, re-read the script help, and update this node rather than assuming this summary.",
+        "Warnings report what dotnet emitted THIS run. Without -New an incremental no-op build legitimately shows 0 warnings, and NU-prefixed restore warnings replay only when restore actually runs. -New neutralizes both by forcing --no-incremental AND --force -- slower, but the census is complete; plain runs stay fast and incomplete.",
+        "The -New diff keys on file|code|message: a warning that merely moved lines is not new, and the same message twice in one file merges to one key. WPF temp-project names (App_<random>_wpftmp.csproj) are canonicalized to the source project at parse time -- the random infix would otherwise churn the diff every run.",
+        "The baseline is a rebuildable cache under %LOCALAPPDATA%\\Janet\\dotnet-check, keyed by target+configuration; wrong-contract baselines are silently treated as absent and rewritten. Only a successful build saves one -- a failed build is a partial census.",
+        "Graph refresh is DELEGATED to the repository's own scripts\\graph.ps1 and only runs when the build succeeded and source has outrun the graph; a failed build is never graphed. graph:null means the repo has no graph convention (not applicable), NOT that a graph is missing. Staleness is reported even where canRefresh is false.",
+        "dotnet test runs with --no-build against the just-built output; a -TestFilter changes the counters to describe the filtered run, not the whole suite."
+      ],
+      "tags": ["dotnet", "build", "testing", "json", "contract", "quality"],
+      "links": ["note.powershell-house-rules", "script.search-json"]
+    },
+
+    {
+      "id": "note.debugger-displays-are-claims",
+      "kind": "note",
+      "path": "notes\\debugger-displays-are-claims.md",
+      "summary": "Debugger displays are claims with validity windows: trust a convention only at its guaranteed boundary, derive ground truth from what was actually emitted, and automate the derivation into a tool. Two Watson-era (~2005-2008) instances, both Lori's WinDbg extensions: (1) __thiscall ECX holds this only at the call boundary, optimized builds reuse the register, WinDbg displays the stale value -> false this-was-null reports; fixed by walking the method prolog to the real spill site. (2) Object type + complete-object START recovered by resolving the vtable ADDRESS to its MSVC vftable symbol (??_7Foo@@6B@), taking that type's PDB layout, and sliding the assumed object origin back until every expected vfptr slot aligns -- constraint satisfaction, not lookup. Deliberately not the RTTI/COL route: vftable symbols survive /GR- where COL-based tools go blind. WHEN: any debugging session where a display seems to answer the question directly -- a null this, a wrong-looking type, a pointer into the middle of an object, a one-frame stack, a status banner; ask what program point guaranteed that value and whether you are still there.",
+      "caveats": [
+        "Two independent instances from the same author: the ECX/prolog walk (arguments) and the vtable-symbol + layout-alignment walk (types). The rule indicts plausible readings, not tools: the display is usually truthful about SOMETHING (the register now, the static type, the last settle) -- the lie is in the question you think it answers. Meta-caveat: the note's vtable section was first drafted with the WRONG mechanism (RTTI/COL) and corrected by Lori; verify technique with whoever built it."
+      ],
+      "tags": ["debugging", "crash-analysis", "tooling", "war-story", "windbg"],
+      "links": ["note.build-retrospective", "pattern.manifest-startup", "note.census-the-population"]
+    },
+
+    {
+      "id": "note.census-the-population",
+      "kind": "note",
+      "path": "notes\\census-the-population.md",
+      "summary": "Census the population; the anomaly announces itself. When one instance will not explain itself, classify every instance you can reach and sort by frequency -- over-representation is counted, not deduced, and needs no theory of the bug. Corollaries: the classifier must be a marker present on EVERY member (the byproduct nobody can turn off), and absence is a finding (a count of zero is invisible to instance inspection). Origin: a WinINet leak found by running a per-object vtable type-recovery extension across the whole heap and tallying -- thousands of copies of one structure, turning \"memory is growing\" into a type name and therefore an owner; the vfptr is the only self-describing marker in a native C++ heap, which managed devs later got as !dumpheap -stat. WHEN: memory growth with no obvious owner, a dump that will not explain itself, a query returning suspiciously empty results, any \"I do not know what I am looking for\" moment -- count first, inspect second.",
+      "tags": ["debugging", "crash-analysis", "war-story", "retrieval", "graph-first"],
+      "caveats": [
+        "The census is only as honest as its classifier: a marker that non-polymorphic types (or unextracted node kinds) lack will undercount silently, which produces the absence-as-finding trap in reverse -- a zero that means \"not classifiable\" rather than \"not there\". State what the classifier can see."
+      ],
+      "links": ["note.debugger-displays-are-claims", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "note.razorgraph-lua-scoping",
+      "kind": "note",
+      "path": "notes\\razorgraph-lua-scoping.md",
+      "summary": "Scoping measurements for the RazorGraph Lua extractor (2026-08-10), taken before the parser or architecture were chosen. Census over Penlight (MIT, 115 files) and Kong (Apache-2.0, 1309 files): paren-less `require \"x\"` outnumbers `require(` roughly 2:1 in both (249/2497 vs 65/1370), so a regex keyed on the parenthesised form silently misses ~65% of the module graph; function definitions spread across four forms with no dominant one (Kong: local function 2355, M.f = function() 1346, function M.f() 662, function M:f() 846); Kong uses goto/::label:: 148 times so Lua 5.1 grammar is insufficient; module(...) is dead (0 of 1424 files); 46 dynamic require(<expr>) sites cannot be resolved statically. Conclusion: real parser, not regex - chosen parser is Loretta. Separately, Lightroom plugins use import 191 times against 22 require, which established that the HOST (Lightroom, Neovim, LOVE2D, GMod, WoW, Roblox, LuaRocks) is the primary abstraction rather than the module system, and drove a three-way resolution outcome (InGraph/External/Unresolved-with-reason) plus a host-declares-whether-a-static-module-graph-exists flag.",
+      "tags": ["code-analysis", "lua", "research", "scoping"],
+      "caveats": [
+        "Counts are regex over raw text - comments and string literals are included, so they are indicative rather than exact. Same caveat as note.razorgraph-js-scoping.",
+        "The host table lists eight environments; only LuaRocks and Lightroom are being implemented. The other six were validated on paper only, so their columns are design intent rather than measured behaviour.",
+        "Kong is OpenResty: it leans on ngx.* globals and non-standard module loading, so a slice of it is not plain Lua semantics. Good for stress-testing, misleading for correctness claims.",
+        "The corpora live at V:\\repos (Penlight, kong) and C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua, not in any repo. Shallow clones - no history."
+      ],
+      "links": ["note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "note.razorgraph-cli", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
+    },
+
+    {
+      "id": "note.janet-origin",
+      "kind": "note",
+      "path": "notes\\janet-origin.md",
+      "summary": "The two-part origin story, written 2026-08-11 for the public repo. (1) Impatience: annoyance at watching the LLM regenerate the same scripts, repeat the same mistakes, and redo work -- goal stated as cut turn length, cut turn count, and (deliberately) waste as many tokens as possible: spend them once, extravagantly, on tooling so they stop being spent on repetition. (2) The name: a badly behaving CLI whose UX bug stopped displaying results, forcing restart after restart, each one making the LLM relearn everything that mattered to Lori including her tone. THE ASSISTANT was the Janet figure -- always helpful, always friendly, never intentionally joking, rebooted endlessly and returning cheerful -- while Lori is the opposite register: sarcastic, fast register changes, constant jokes. Any humor in the platform is her leaking in, not the platform's character. Includes the not-affiliated-just-a-fan disclaimer and the ending-as-aspiration mapping: not a kinder judge, a redesigned system where you loop with support until you grow. Linked from the README's Why section.",
+      "tags": ["documentation", "handoff", "format"],
+      "links": ["file.readme", "pattern.progressive-disclosure"]
+    },
+
+    {
+      "id": "script.get-assembly-api",
+      "kind": "script",
+      "path": "scripts/Get-AssemblyApi.ps1",
+      "summary": "Report a compiled assembly's real API -- types, their declared members, and their base types -- by reflection. REACH FOR script.get-api-doc FIRST: most packages ship an XML doc file and that answers the same question with prose summaries and per-parameter docs, cheaply. Use THIS when the XML is absent, when a member is undocumented (XML carries only what was documented), or when the inheritance chain itself is the question -- reflection reports what the compiler emitted rather than what someone wrote down. Handles the two things that make the naive attempt fail: it resolves DEPENDENCIES from the folder the assembly sits in (loading straight out of ~/.nuget/packages/<pkg>/lib/<tfm>/ throws ReflectionTypeLoadException because that folder holds one DLL alone -- measured: 251 loader errors), and on a partial load it uses the types that did load while reporting how many did not. Filters before printing, because GetTypes() on a compiler library returns hundreds of types. Declared members only by default, compiler-generated accessors (get_X/set_X) suppressed. Written 2026-08-11 while hand-reflecting Loretta's Lua syntax types -- a job Get-ApiDoc could have done, and the reason the first line of this summary exists. The run did earn its keep: it showed obj:m() is a DIFFERENT node type (MethodCallExpressionSyntax) from f() (FunctionCallExpressionSyntax), which a guess would have missed silently and a switch statement would have dropped on the floor.",
+      "caveats": [
+        "Point -SearchRoot at a build or publish output, not a nuget lib folder: dependencies must be side by side. The script prefers the candidate with the most sibling DLLs and warns when a load fails in a folder holding only one.",
+        "LoadFrom pins assemblies for the life of the PROCESS, and an agent shell reuses one process across commands. A sibling-resolution failure therefore reproduces only in a fresh process (pwsh -NoProfile -Command); once a dependency is loaded from anywhere, a later load from a folder missing it silently succeeds.",
+        "Public types only, and -MaxTypes caps the listing at 40 (truncated is reported, never silent)."
+      ],
+      "tags": ["reflection", "api-discovery", "dotnet", "nuget", "powershell", "third-party"],
+      "links": ["script.get-api-doc"]
+    },
+
+    {
+      "id": "script.invoke-research-guard",
+      "kind": "script",
+      "path": "scripts/Invoke-ResearchGuard.ps1",
+      "summary": "PreToolUse hook enforcing RESEARCH FIRST: writing a NEW .ps1 into a scripts directory is denied unless Get-Research.ps1 has run recently. The denial is not a nag -- it runs the catalog query itself on terms taken from the file name and hands back the closest existing nodes, so the answer arrives with the block. Clearing it is one command, which is the command that should have been run. Written 2026-08-11 after Get-AssemblyApi.ps1 was authored while script.get-api-doc already answered the same question; nothing was violated, because the manifest explained HOW to query the catalog and never said TO. Deliberately narrow: creation only, .ps1 only, scripts/ only -- the moment a duplicate tool becomes permanent is when it is authored, and a guard that fires on everything gets clicked past. Get-Research.ps1 leaves the trace (-NoTrace suppresses it, used by the guard's own lookup so it cannot clear the check it is about to make). Graph-first is a technique for once you know what you are building; this ranks above it.",
+      "params": ["WindowMinutes", "InputJson"],
+      "caveats": [
+        "Wired in TWO places and needs both: .claude/settings.json arms it when the project dir is JanetHome, and ~/.claude/settings.json arms it by absolute path everywhere else. The failure that motivated it happened while the project dir was a DIFFERENT repo, so project-level wiring alone would not have caught it.",
+        "The trace is one file in the temp directory, so concurrent sessions share it -- one session's query clears another's guard. Accepted, not solved: the check is a prompt to think, not a security boundary.",
+        "Fires only on Write of a new .ps1 directly inside a folder named 'scripts'. Notes, source files, and edits to existing scripts pass untouched."
+      ],
+      "tags": ["hooks", "enforcement", "research", "retrieval", "powershell"],
+      "links": ["script.get-research", "script.invoke-edit-guard", "pattern.manifest-startup"]
+    },
+
+    {
+      "id": "script.get-drive-survey",
+      "kind": "script",
+      "path": "scripts\\Get-DriveSurvey.ps1",
+      "summary": "Queries the DriveSurvey inventory (D:\\Repos\\DriveSurvey): volumes ever seen including offline and silently-unmounted clone disks, sized subtrees, blind spots, volume-vs-volume coverage compare, and the indexed-vs-used reconciliation check.",
+      "params": ["Command", "Volume", "Against", "Nickname", "Depth", "Text", "Pretty"],
+      "caveats": [
+        "Read-only against surveyed volumes and never deletes; scan refuses a docked drive that cannot prove which physical drive it is (the Sabrent bridge blanks hardware serials) -- answer with -Nickname.",
+        "compare matches by name + size until phase 2 adds content hashes; it finds missing coverage reliably but over-trusts renamed same-size files."
+      ],
+      "tags": ["drives", "inventory", "backup", "storage", "coverage"],
+      "links": ["script.git", "script.invoke-dotnet-check", "note.tuples-do-not-cross-boundaries"]
+    },
+
+    {
+      "id": "note.tuples-do-not-cross-boundaries",
+      "kind": "note",
+      "path": "notes\\tuples-do-not-cross-boundaries.md",
+      "summary": "Tuples are method-local only: never in a return type, parameter, or member, because ValueTuple exposes FIELDS and System.Text.Json silently serialises them as nothing.",
+      "tags": ["csharp", "style", "serialization", "json", "api-design"],
+      "caveats": [
+        "ADVISORY, not enforced: there is no C# rule-checker in this repo, only Test-PowerShellRules.ps1 for PowerShell.",
+        "The failure is silent -- no error, no warning, just an empty JSON field on a populated object."
+      ],
+      "links": ["note.dotnet-object-sizing", "script.get-drive-survey"]
+    },
+
+    {
+      "id": "note.janet-mcp-port",
+      "kind": "note",
+      "path": "notes\\janet-mcp-port.md",
+      "summary": "The C# catalog port and its cutover. Janet.Core holds the logic; janet (CLI) and janet-mcp (stdio + HTTP) are thin front ends, both .NET global tools so client config is a bare command name. HTTP transport is the point of the design: an HTTP server is a separate process the client dials, so it survives being killed and rebuilt mid-session (Claude Code reconnects with five-attempt backoff), while a stdio server is a child the client holds open and is never reconnected -- which is why RazorGraph needs a publish-and-restart per change. Query and splice writer are ported with byte-identical output to the PowerShell, proven by 41 tests. Staging: research.json stays under the scripts, research.candidate.json is the only thing the port writes, and research.candidate.base.json is the frozen common ancestor the cutover diffs against.",
+      "caveats": [
+        "Writes default to research.candidate.json, NOT the live graph, while the candidate exists. Targeting the live file needs an explicit --graph research.json. One forgotten flag would merge the two sides and destroy the delta arithmetic the cutover depends on; the default retires itself once the swap removes the candidate.",
+        "A stale installed tool silently ignores that default. The .nupkg is built from source at pack time, so changing GraphLocator and forgetting to repack leaves the global tool on the old behaviour -- it wrote two nodes into the live graph that way. dotnet tool update no-ops on an identical version: uninstall and install, or bump the version.",
+        "research.candidate.base.json is load-bearing and easy to omit: the seed hash can only say THAT the live graph moved, not WHICH nodes moved, and integrating them forward is a three-way comparison. The first cut of the plan stored only a hash and was not implementable.",
+        "Add-ResearchNode.ps1 and Update-ResearchNode.ps1 disagree on field order (add: tags before caveats; update: caveats before tags). Both are reproduced verbatim for parity, so a node added by one path and later touched by the other gets its fields reordered -- a whole-node diff through the back door. Unsettled.",
+        "Neither implementation can DELETE a node. Update -Remove drops a field, not a node. Removing one means restoring the file, which is why a stray sandbox write is expensive rather than trivial to undo, and why Swap-ResearchGraph.ps1 refuses rather than stripping them for you.",
+        "Still unported: research rename, thread items, API/assembly introspection, dotnet check, the shim pass, and the documentation pass. janet does not write the research trace Invoke-ResearchGuard.ps1 reads, so the shim must keep writing it or the guard silently stops firing at cutover.",
+        "MEASURED, not inferred: over HTTP a rotation hot-swaps tool BEHAVIOUR but not the tool SURFACE. An attached session reconnects to the new process and calls run the new code (verified across pids 25960 -> 37248 -> 2996 -> 38192 -> 9736, no session restart, ~1.9s per rotation), while tool descriptions and schemas stay as fetched at connection time. Firing NotificationMethods.ToolListChangedNotification from inside a tool did NOT clear it -- the notification was observed on the response stream and the surface still did not refresh. So: behaviour changes are free, signature/description/add/remove changes need a session restart. Over stdio nothing swaps at all; killing the server just removes the tools, with no respawn.",
+        "MEASURED, the full picture: over HTTP a rotation swaps tool BEHAVIOUR and ARGUMENTS live, but not the tool LIST. Attached sessions reconnect to the new process and run new code with no restart (~1.9s per rotation). A NEW PARAMETER on an existing tool works immediately -- the client forwards arguments without validating them against its cached schema, verified by adding a 'probe' parameter and having an attached session call it successfully. A NEW TOOL does not: research_ping existed on the server and was invisible to the attached session. Descriptions stay as fetched at connection time. tools/list_changed does not help and was tried twice -- from inside a tool call, and pushed out of band via RunSessionHandler three seconds after session establishment (the server logged the push; nothing refreshed). So a client's tool LIST is fixed at connect and nothing the server says changes it. Practical rule: change logic and add parameters freely mid-session; adding or removing a TOOL, or wanting an updated description, needs a session restart.",
+        "CORRECTION to the caveat above, which was wrong: a NEW TOOL *does* become usable mid-session over HTTP. research_rename was added, rotated in, and then invoked successfully from the already-running session -- schema and all. The earlier 'new tools are invisible' result came from checking too early: reconnection is LAZY, happening on the next MCP call rather than when the server restarts, and the research_ping test ran a tool-list search immediately after a rotation without making any call in between, so it read the client's pre-rotation list. Not-yet was recorded as never. Practical rule: rotate, then MAKE A CALL, then look -- the surface catches up on reconnect. Still genuinely unresolved: tool DESCRIPTIONS looked stale even after a reconnect, so names and descriptions may refresh on different schedules, or the refresh may simply be asynchronous and the checks kept beating it. Do not trust either direction without re-testing with a deliberate call in between."
+      ],
+      "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server"]
+    },
+
+    {
+      "id": "script.update-mcp-server",
+      "kind": "script",
+      "path": "scripts\\Update-McpServer.ps1",
+      "summary": "Publishes an MCP server to a fresh build-<stamp> directory and repoints a \"current\" junction at it, so a rebuild never contends with the running server. Client config names the junction and never changes again -- a stable path that resolves to the newest build by lookup. HTTP servers are stopped and restarted from the junction (measured: 1.9s from rotation start to serving again, against a ~31s reconnect backoff window, with the publish happening while the old server was still serving). stdio servers are left alone because the client owns the process: the win there is that the publish SUCCEEDS with sessions attached, and each new session picks up the newest build. Smoke-tests the new binary before repointing, keeps the last N builds for rollback, and skips pruning anything still locked.",
+      "params": ["Project", "Root", "ProcessName", "ServerArgument", "Keep", "ToolProject"],
+      "caveats": [
+        "Redirects BaseOutputPath only, never BaseIntermediateOutputPath. Moving obj\\ stops MSBuild excluding the project's ORIGINAL obj\\ from the default source glob, so both copies of the generated AssemblyInfo.cs compile and every assembly attribute collides with CS0579. The lock is on bin\\; moving obj\\ solves nothing and breaks the build.",
+        "MULTI-SESSION: -ProcessName stops only servers running from under -Root whose command line carries --http. Stopping by process NAME would also kill stdio servers belonging to other sessions, and stdio is never reconnected automatically -- those clients lose their tools silently, with no error and no recovery short of restarting. A rebuild must not be able to do that.",
+        "PRUNING CHECKS BEFORE DELETING, never delete-then-catch. Remove-Item -Recurse deletes what it can and only then throws, so a build with a live server loses every file the process has not currently mapped: measured 4 of 11, including the .deps.json the runtime needs for an assembly it has not loaded yet. The server survives until it reaches for one. Catching afterwards and reporting \"kept\" describes a directory already gutted.",
+        "A second session starting mid-rotation gets the newest build through the junction while an existing session keeps the one it started with, so two sessions can run different builds. That is inherent to stdio and harmless per-session, but it is the same version-skew note.razorgraph-cli warns about between the CLI and the MCP server -- check which build answered before trusting a disagreement.",
+        "Junctions are a Windows filesystem feature. A cross-platform port needs a symlink or a launcher shim that resolves the newest build.",
+        "-ToolProject packs and reinstalls global tools in the same pass. The CLI is NOT rotated -- a global tool is a separate copy on PATH -- so rebuilding the server leaves it stale, and a stale CLI reports a new verb as unknown while the server serves it fine. That was written down in a caveat and still caught us three times; the parameter is the structural fix a note could not be. Uninstalls then installs, because dotnet tool update no-ops on an identical version."
+      ],
+      "tags": ["agent", "deployment", "tooling", "csharp", "powershell", "failure-modes"],
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port"]
+    }
+  ]
+}
