@@ -1,0 +1,52 @@
+{
+  "Get-Research.ps1": {
+    "ref": "51c7930e607f37c85d576681227155cf514c260d",
+    "source": "scripts/Get-Research.ps1",
+    "sha256": "8894fb1cb84df0c800198d28aa10aafe6a44ff072398b4f6ddf408b1600c524c"
+  },
+  "Add-ResearchNode.ps1": {
+    "ref": "51c7930e607f37c85d576681227155cf514c260d",
+    "source": "scripts/Add-ResearchNode.ps1",
+    "sha256": "57ae7c0c0cb66cee76432c3ac19a5e18909a93bb6bc68c31aa8dda0599a433bb"
+  },
+  "Update-ResearchNode.ps1": {
+    "ref": "51c7930e607f37c85d576681227155cf514c260d",
+    "source": "scripts/Update-ResearchNode.ps1",
+    "sha256": "006409d94244fa74ef1f9c6e1739b8dda581420cb3b3ce3d6f5b3edf85bb5937"
+  },
+  "Rename-ResearchNode.ps1": {
+    "ref": "51c7930e607f37c85d576681227155cf514c260d",
+    "source": "scripts/Rename-ResearchNode.ps1",
+    "sha256": "accaa814e5c4e815248f8294d5fd96350a3e9d10c8d815a60480f8775908e835"
+  },
+  "Show-ThreadItems.ps1": {
+    "ref": "4d83dbf65b69620183c03f2c5450ac7a42198a71",
+    "source": "scripts/Show-ThreadItems.ps1",
+    "sha256": "894e994e97700756ba85a1930710be7d5642d6847280c6e44a984c31e8499922"
+  },
+  "Add-ThreadItem.ps1": {
+    "ref": "4d83dbf65b69620183c03f2c5450ac7a42198a71",
+    "source": "scripts/Add-ThreadItem.ps1",
+    "sha256": "43a16c0fd4e53b5fb3c88be9eaa3f558bc617acc74585fb73259b259139f44fc"
+  },
+  "Update-ThreadItem.ps1": {
+    "ref": "4d83dbf65b69620183c03f2c5450ac7a42198a71",
+    "source": "scripts/Update-ThreadItem.ps1",
+    "sha256": "8d5b7b688cfd3331737de6fc6d6718977e706f50d1d4a5c603aac3f6c20b5384"
+  },
+  "Complete-ThreadItem.ps1": {
+    "ref": "4d83dbf65b69620183c03f2c5450ac7a42198a71",
+    "source": "scripts/Complete-ThreadItem.ps1",
+    "sha256": "d5540a0cc2b4e050bb5386bc44415cefc9343e03b3f80cd9b2b11e738a82475f"
+  },
+  "Set-ActiveThread.ps1": {
+    "ref": "4d83dbf65b69620183c03f2c5450ac7a42198a71",
+    "source": "scripts/Set-ActiveThread.ps1",
+    "sha256": "e14f8957b86bec30c59d7809496fadbbf6c33bba888acb54431d818682005726"
+  },
+  "ThreadItems.Common.ps1": {
+    "ref": "4d83dbf65b69620183c03f2c5450ac7a42198a71",
+    "source": "scripts/ThreadItems.Common.ps1",
+    "sha256": "f84f4389a7efe2551b39d654ce696db2fda3705ef2e70f98d40080e1e28fdd56"
+  }
+}

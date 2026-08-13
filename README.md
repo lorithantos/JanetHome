@@ -115,6 +115,13 @@ disagree, and the scripts are now shims over the CLI. The CLI is not a convenien
 hooks run as separate processes and cannot speak MCP, so a command-line entry point
 has to exist for them to call.
 
+Shimming costs something real, though: a script you can read and run is worth more than
+one that forwards to a binary you have to build first. So the last self-contained version
+of every shimmed script is kept in [`standalone/`](standalone/) — the catalog and the
+thread-item list in PowerShell 7 alone, no SDK, no build, nothing to install. They are
+frozen rather than maintained, and `scripts/Test-StandaloneScripts.ps1` checks they are
+still what they claim to be.
+
 ## Layout
 
 | Path | Contents |
@@ -124,6 +131,7 @@ has to exist for them to call.
 | `src/` | `Janet.Core` (all behaviour), `Janet.Mcp` (the server), `Janet.Cli` (its twin) |
 | `tests/` | `Janet.Tests`, and `Janet.Goldens` — which records what the PowerShell answered so the tests need no PowerShell |
 | `scripts/` | Domain-agnostic PowerShell utilities — ask the catalog for the inventory |
+| `standalone/` | The nine shimmed scripts, in their last self-contained form. Frozen; no SDK needed |
 | `notes/` | Research notes, original analysis, PowerShell house rules |
 | `startup-manifest.json` | The startup contract: what to read, what to run, the rules in force |
 | `PROVENANCE.md` | What this repo deliberately does not contain, and why |
