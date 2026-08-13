@@ -137,37 +137,41 @@
       "id": "script.add-thread-item",
       "kind": "script",
       "path": "scripts\\Add-ThreadItem.ps1",
-      "summary": "Add a topic to the thread item list. Appends, and does NOT change what is active unless -Active is passed -- recording work for later no longer costs you your place.",
+      "summary": "Add a topic to the thread item list. Appends, and does NOT change what is active unless -Active is passed -- recording work for later no longer costs you your place. Now a shim over 'janet thread add' / the thread_add MCP tool.",
       "params": ["Topic", "Notes", "Next", "Refs", "Active", "Path", "Text"],
       "caveats": [
-        "Refuses a duplicate topic rather than creating a second entry that selectors cannot tell apart -- use Update-ThreadItem.ps1 to amend an existing one."
+        "Refuses a duplicate topic rather than creating a second entry that selectors cannot tell apart -- use Update-ThreadItem.ps1 to amend an existing one. Case-insensitively, as the PowerShell's -eq was.",
+        "A shim since the Phase 2 cutover: it forwards to the janet CLI. A missing or stale global tool fails or writes old behaviour -- the global tool is a separate copy on PATH and is NOT rotated with the MCP server. Update-McpServer.ps1 -ToolProject reinstalls it."
       ],
       "tags": ["thread-items", "session", "debugging"],
-      "links": ["script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items"]
+      "links": ["script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items", "file.janet-core", "note.graph-write-queue"]
     },
     {
       "id": "script.complete-thread-item",
       "kind": "script",
       "path": "scripts\\Complete-ThreadItem.ps1",
-      "summary": "Mark a thread item done. Retains it: Show-ThreadItems.ps1 -All prints completed items, so the list records what was finished and not only what is outstanding.",
+      "summary": "Mark a thread item done. Retains it: Show-ThreadItems.ps1 -All prints completed items, so the list records what was finished and not only what is outstanding. Now a shim over 'janet thread complete' / the thread_complete MCP tool.",
       "params": ["Topic", "Index", "Path", "Text"],
       "caveats": [
-        "Does not auto-activate anything. Pop-ThreadStack promoted the next parked item automatically, which quietly decided what you worked on next; choose with Set-ActiveThread.ps1 instead."
+        "Does not auto-activate anything. Pop-ThreadStack promoted the next parked item automatically, which quietly decided what you worked on next; choose with Set-ActiveThread.ps1 instead.",
+        "A status change, never a removal -- nothing is ever deleted from this list. Completing an already-done item is refused rather than being a no-op, so a mis-aimed selector is visible."
       ],
       "tags": ["thread-items", "session", "debugging"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.show-thread-items", "pattern.thread-items"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.show-thread-items", "pattern.thread-items", "file.janet-core", "note.graph-write-queue"]
     },
     {
       "id": "script.show-thread-items",
       "kind": "script",
       "path": "scripts\\Show-ThreadItems.ps1",
-      "summary": "Show the thread item list as { count, active, items[], error }, each item being { topic, status, refs[], next, notes }; -All includes completed items.",
+      "summary": "Show the thread item list as { count, active, items[], error }, each item being { topic, status, refs[], next, notes }; -All includes completed items. Now a shim over 'janet thread show' -- same code as the thread_show MCP tool.",
       "params": ["Path", "All", "Text", "Pretty"],
       "caveats": [
-        "Runs in the startup path so it never throws: an unreadable or corrupt list is reported in-band via the error field with an otherwise empty envelope, rather than taking the session down."
+        "Runs in the startup path so it never throws: an unreadable or corrupt list is reported in-band via the error field with an otherwise empty envelope, rather than taking the session down.",
+        "Its envelope is a CONTRACT, not an output format: startup-manifest.json runs this script and captures the JSON under 'threadStack'. Reordering or renaming a field would break a session's first move. The shape is asserted against output recorded from the pre-shim script, and the shim was verified end to end -- shim to CLI to Janet.Core -- as exact, field for field.",
+        "-Text now goes to stdout rather than Write-Host, so it can be captured by a pipe, a redirect, or an assignment without 6>&1."
       ],
       "tags": ["thread-items", "session", "debugging"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "pattern.thread-items"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests"]
     },
     {
       "id": "script.new-text-file",
@@ -873,40 +877,45 @@
       "id": "script.thread-items-common",
       "kind": "script",
       "path": "scripts\\ThreadItems.Common.ps1",
-      "summary": "Dot-sourced read/write/lock helpers for the thread item list: Read-ThreadItems (normalises every entry to topic/status/refs/next/notes), Write-ThreadItems, Invoke-ThreadItemsUpdate (mutex-guarded read-modify-write) and Find-ThreadItemIndex (resolves a selector to exactly one item, refusing ambiguity).",
-      "tags": ["thread-items", "session", "debugging", "powershell"],
+      "summary": "RETIRED at the Phase 2 cutover, and left in place only as history. The read/normalise/lock/select helpers moved to Janet.Core (ThreadItems.cs); the five entry points are now shims over 'janet thread' and no longer dot-source this file. Its mutex is superseded by the shared write queue, which batches, writes atomically, and excludes across processes without any writer having to opt in.",
       "caveats": [
+        "Nothing calls it. It is kept because the goldens are generated from it: tests/Janet.Goldens extracts this file alongside the five entry points at a pre-shim commit, because they dot-source it and none of them run without it. Deleting it from the working tree would not break that -- the generator reads git -- but the node is what says so.",
         "Not a standalone script -- it defines functions and does nothing when run.",
-        "Deliberately does NOT Set-StrictMode: strict mode in a dot-sourced file leaks into the caller scope. Each entry-point script sets its own.",
-        "Read-ThreadItems comma-wraps its return. Assign it; never wrap the call in @(...) -- that yields one element holding the real array and the loop runs once (house rule 1). This trap bit during the 2026-08-08 migration and was caught only by running the script."
+        "Deliberately did NOT Set-StrictMode: strict mode in a dot-sourced file leaks into the caller scope. The lesson survives the port and is why JanetCli.Common.ps1 does the same.",
+        "Read-ThreadItems comma-wrapped its return. Assign it; never wrap the call in @(...) -- that yields one element holding the real array and the loop runs once (house rule 1). This trap bit during the 2026-08-08 migration and was caught only by running the script."
       ],
-      "links": ["pattern.thread-items"]
+      "tags": ["thread-items", "session", "debugging", "powershell"],
+      "links": ["pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests"]
     },
 
     {
       "id": "script.set-active-thread",
       "kind": "script",
       "path": "scripts\\Set-ActiveThread.ps1",
-      "summary": "Set which thread item is active, by -Topic substring, -Index, or -None to clear. Focus is explicit rather than positional -- the stack made the top of the stack active by definition, so changing attention meant mutating the list.",
+      "summary": "Set which thread item is active, by -Topic substring, -Index, or -None to clear. Focus is explicit rather than positional -- the stack made the top of the stack active by definition, so changing attention meant mutating the list. Now a shim over 'janet thread active' / the thread_set_active MCP tool.",
       "params": ["Topic", "Index", "None", "Path", "Text"],
-      "tags": ["thread-items", "session", "debugging"],
       "caveats": [
-        "An ambiguous -Topic is an error, never a first-match guess: the operation rewrites the file, and silently amending the wrong item is how notes get lost."
+        "An ambiguous -Topic is an error, never a first-match guess: the operation rewrites the file, and silently amending the wrong item is how notes get lost. Every candidate is named, so you can disambiguate without going and reading the list.",
+        "The shim keeps its own argument check rather than forwarding it: -None with -Topic or -Index is a contradiction, and the CLI would silently honour one of them.",
+        "A completed item cannot take focus until it is reopened with Update-ThreadItem.ps1 -Status parked. Focus on finished work is almost always a mis-aimed selector."
       ],
-      "links": ["script.add-thread-item", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items"]
+      "tags": ["thread-items", "session", "debugging"],
+      "links": ["script.add-thread-item", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items", "file.janet-core", "note.graph-write-queue"]
     },
 
     {
       "id": "script.update-thread-item",
       "kind": "script",
       "path": "scripts\\Update-ThreadItem.ps1",
-      "summary": "Amend an existing thread item in place -- notes, resume cursor, refs, or status -- preserving every field not named; -AppendNotes and -AppendRefs accumulate rather than replace.",
+      "summary": "Amend an existing thread item in place -- notes, resume cursor, refs, or status -- preserving every field not named; -AppendNotes and -AppendRefs accumulate rather than replace. Now a shim over 'janet thread update' / the thread_update MCP tool.",
       "params": ["Topic", "Index", "Notes", "Next", "Refs", "Status", "AppendNotes", "AppendRefs", "Path", "Text"],
-      "tags": ["thread-items", "session", "debugging"],
       "caveats": [
-        "The operation the push/pop stack never had, and the reason it lost data: on 2026-08-08 a session wanting to update its own entry had only push and pop, popped to reach it, and destroyed a concurrent session notes irrecoverably. A missing operation does not leave callers stuck -- it makes them improvise with a destructive one."
+        "The operation the push/pop stack never had, and the reason it lost data: on 2026-08-08 a session wanting to update its own entry had only push and pop, popped to reach it, and destroyed a concurrent session notes irrecoverably. A missing operation does not leave callers stuck -- it makes them improvise with a destructive one.",
+        "Not supplied and supplied-as-empty are different requests. An omitted -Next leaves the resume cursor alone; -Next '' clears it. The shim forwards on $PSBoundParameters presence rather than truthiness, and the port carries the same distinction as nullability -- testing the value would drop a clear silently.",
+        "-AppendRefs concatenates and does NOT deduplicate, deliberately unlike catalog tags: a repeated ref is the caller's to decide about, and dropping one they meant twice is a silent edit to their notes."
       ],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items"]
+      "tags": ["thread-items", "session", "debugging"],
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items", "file.janet-core", "note.graph-write-queue"]
     },
 
     {
