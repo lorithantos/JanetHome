@@ -218,7 +218,8 @@
       "caveats": [
         "Split by file type on 2026-08-12 because one rule was wrong for prose: 28 of the repo's 37 markdown files carry an em dash, so ASCII-for-everything meant the gate failed on documentation that was correct, and a gate that always fails is a gate people commit past. research.json and the scripts stay strictly ASCII -- the writer's escaping story is built on it, and a smart quote pasted into a string literal is exactly what this catches.",
         "Markdown is checked for validity, not for taste: valid UTF-8 and no BOM. It will not tell you an em dash should have been two hyphens. Use -Strict on prose that is meant to have stayed plain.",
-        "Now ends with an explicit 'exit 0'. Falling off the end left $LASTEXITCODE holding whatever ran before, which is the failure script.test-pre-commit documents and works around by resetting it per step -- the workaround stays, because other child scripts may still lack the explicit exit."
+        "Now ends with an explicit 'exit 0'. Falling off the end left $LASTEXITCODE holding whatever ran before, which is the failure script.test-pre-commit documents and works around by resetting it per step -- the workaround stays, because other child scripts may still lack the explicit exit.",
+        "Takes files and wildcards, never a directory -- a directory is named and refused. It used to accept one, fail inside ReadAllBytes without terminating, and report 'OK: 0 non-ASCII bytes' with exit 0, so the gate passed on input it had not read (found and fixed 2026-08-12, 19b3761). Pass '<dir>\\*.ps1'."
       ],
       "tags": ["encoding", "files", "audit", "pre-commit"],
       "links": ["script.fix-file-encoding", "script.test-pre-commit"]
@@ -445,6 +446,9 @@
       "kind": "file",
       "path": "research.json",
       "summary": "This node graph. Queried on demand -- research_query, 'janet research query', or Get-Research.ps1, all one implementation -- rather than loaded at startup. Hand-curated: grouped, commented, and written by splicing so a serializer never flattens it.",
+      "caveats": [
+        "Links are not reliably symmetric. Measured 2026-08-12: 81 one-way links across 105 nodes. research_add writes the back-edge on every target; research_update does not, so any link added by update or by hand-edit is one-way. Do not read an empty inbound side as 'nothing references this' -- follow both directions, or expand from the node you suspect. Whether symmetry SHOULD be an invariant is undecided and is a question about what a link means; see the thread item."
+      ],
       "tags": ["retrieval", "index", "config"],
       "links": ["script.get-research", "pattern.progressive-disclosure", "note.janet-mcp-port", "file.janet-core", "script.rename-research-node", "script.swap-research-graph", "file.readme"]
     },
@@ -496,7 +500,8 @@
       "caveats": [
         "Prefer -Json (or -JsonPath) for prose. The JSON form is a PATCH: only the fields present are touched, and it registers them as bound parameters so the same change-detection applies as the named-parameter form.",
         "A shim since the cutover: it forwards to the janet CLI. A missing or stale global tool fails or writes old behaviour, and the tool is NOT rotated with the MCP server -- Update-McpServer.ps1 -ToolProject reinstalls it.",
-        "-Remove drops a FIELD, not a node. Nothing in Janet can delete a node: removing one means editing the file by hand past the guard, or restoring it. That is why a stray sandbox write is expensive rather than trivial to undo."
+        "-Remove drops a FIELD, not a node. Nothing in Janet can delete a node: removing one means editing the file by hand past the guard, or restoring it. That is why a stray sandbox write is expensive rather than trivial to undo.",
+        "Does NOT write reverse links, and research_add does. Adding a link here creates a one-way edge: the target never learns about it, nothing warns, and the result reports success naming the field it changed. Discovery is the whole point of the graph, and a one-way link is invisible from the side that needs it -- so add the back-edge yourself with a second update on the target, or use research_add if the node is new. Found 2026-08-12; measured 81 one-way links across 105 nodes at that point, though not all of those are defects."
       ],
       "tags": ["research", "index", "retrieval", "authoring"],
       "links": ["script.add-research-node", "script.get-research", "file.research", "note.janet-mcp-port", "file.janet-core", "script.rename-research-node", "script.janet-cli-common", "file.standalone"]
