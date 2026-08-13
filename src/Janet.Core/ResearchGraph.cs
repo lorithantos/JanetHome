@@ -50,8 +50,20 @@ public sealed class ResearchGraph
             throw new GraphException($"Research graph not found: {path}");
         }
 
-        string text = File.ReadAllText(path);
+        return Parse(File.ReadAllText(path), path);
+    }
 
+    /// <summary>
+    /// Validates graph text that has already been read.
+    /// </summary>
+    /// <remarks>
+    /// The write queue reads the file once per batch and hands the same text to every operation
+    /// in it. Re-reading from disk per operation is what let a batch see a file it had itself
+    /// half-written, and re-reading outside the lock is what lost updates in the first place.
+    /// The path is carried for error messages only; nothing here touches disk.
+    /// </remarks>
+    public static ResearchGraph Parse(string text, string path)
+    {
         JsonNode? parsed;
         try
         {

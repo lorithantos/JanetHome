@@ -41,7 +41,12 @@ public sealed record AddResult(
     int TotalNodes,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<string> ReverseLinks,
-    string? NodeText);
+    string? NodeText,
+    int Batched = 1) : IGraphResult<AddResult>
+{
+    public AddResult WithBatch(int totalNodes, int batched) =>
+        this with { TotalNodes = totalNodes, Batched = batched };
+}
 
 public sealed record UpdateResult(
     bool Updated,
@@ -50,7 +55,12 @@ public sealed record UpdateResult(
     IReadOnlyList<FieldChange> Changes,
     IReadOnlyList<string> Warnings,
     int TotalNodes,
-    string? NodeText);
+    string? NodeText,
+    int Batched = 1) : IGraphResult<UpdateResult>
+{
+    public UpdateResult WithBatch(int totalNodes, int batched) =>
+        this with { TotalNodes = totalNodes, Batched = batched };
+}
 
 /// <summary>
 /// Adds and updates nodes by splicing the graph's text. Validates before writing, and
@@ -65,9 +75,22 @@ public static class GraphWriter
     private static readonly Regex IdConvention =
         new("^[a-z]+\\.[a-z0-9-]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public static AddResult Add(string graphPath, AddRequest request)
+    public static AddResult Add(string graphPath, AddRequest request) =>
+        GraphQueue.Submit(graphPath, text => ApplyAdd(text, graphPath, request));
+
+    /// <summary>
+    /// The add itself, against text the queue holds. Returns the new text rather than writing it.
+    /// </summary>
+    /// <remarks>
+    /// Separated from <see cref="Add"/> so the reverse links can be applied to the same text in
+    /// memory. They used to be a file write each, which left the node visible without its
+    /// back-links for as long as that took, and left it that way for good if anything failed
+    /// partway. It also means this cannot re-enter the queue, which would deadlock: the thread
+    /// draining a batch cannot wait on that batch.
+    /// </remarks>
+    internal static (string Text, AddResult Result) ApplyAdd(string text, string graphPath, AddRequest request)
     {
-        ResearchGraph graph = ResearchGraph.Load(graphPath);
+        ResearchGraph graph = ResearchGraph.Parse(text, graphPath);
         string repoRoot = Path.GetDirectoryName(Path.GetFullPath(graphPath))!;
 
         if (!CatalogQuery.Kinds.Contains(request.Kind, StringComparer.OrdinalIgnoreCase))
@@ -111,8 +134,8 @@ public static class GraphWriter
 
         if (request.DryRun)
         {
-            return new AddResult(false, true, request.Id, graph.Nodes.Count, warnings,
-                [.. request.Links.Where(graph.Contains)], nodeText);
+            return (text, new AddResult(false, true, request.Id, graph.Nodes.Count, warnings,
+                [.. request.Links.Where(graph.Contains)], nodeText));
         }
 
         // The ']' closing the nodes array is the last one in the file: the array is the final
@@ -136,7 +159,6 @@ public static class GraphWriter
         string updated = trimmed + "," + newline + newline + nodeText + newline + "  " + after.TrimStart();
 
         int newCount = VerifySplice(updated, graphPath, graph.Nodes.Count + 1, "Splice");
-        NodeText.WriteUtf8NoBom(graphPath, updated);
 
         // The graph's convention is bidirectional, so writing only the forward direction
         // leaves the new node invisible from its own neighbours. Done here rather than left
@@ -153,7 +175,7 @@ public static class GraphWriter
 
             try
             {
-                UpdateResult back = Update(graphPath, new UpdateRequest
+                (string relinked, UpdateResult back) = ApplyUpdate(updated, graphPath, new UpdateRequest
                 {
                     Id = link,
                     Append = true,
@@ -165,6 +187,7 @@ public static class GraphWriter
 
                 if (back.Updated)
                 {
+                    updated = relinked;
                     reverseLinked.Add(link);
                 }
             }
@@ -175,12 +198,17 @@ public static class GraphWriter
             }
         }
 
-        return new AddResult(true, false, request.Id, newCount, warnings, reverseLinked, null);
+        return (updated, new AddResult(true, false, request.Id, newCount, warnings, reverseLinked, null));
     }
 
-    public static UpdateResult Update(string graphPath, UpdateRequest request)
+    public static UpdateResult Update(string graphPath, UpdateRequest request) =>
+        GraphQueue.Submit(graphPath, text => ApplyUpdate(text, graphPath, request));
+
+    /// <summary>The update itself, against text the queue holds. Returns the new text rather than writing it.</summary>
+    internal static (string Text, UpdateResult Result) ApplyUpdate(
+        string text, string graphPath, UpdateRequest request)
     {
-        ResearchGraph graph = ResearchGraph.Load(graphPath);
+        ResearchGraph graph = ResearchGraph.Parse(text, graphPath);
         string repoRoot = Path.GetDirectoryName(Path.GetFullPath(graphPath))!;
 
         if (!graph.TryGet(request.Id, out ResearchNode node))
@@ -267,8 +295,8 @@ public static class GraphWriter
 
         if (changes.Count == 0)
         {
-            return new UpdateResult(false, request.DryRun, request.Id, [],
-                [.. warnings, "no changes requested"], graph.Nodes.Count, null);
+            return (text, new UpdateResult(false, request.DryRun, request.Id, [],
+                [.. warnings, "no changes requested"], graph.Nodes.Count, null));
         }
 
         string newline = NodeText.NewlineOf(graph.Text);
@@ -276,7 +304,7 @@ public static class GraphWriter
 
         if (request.DryRun)
         {
-            return new UpdateResult(false, true, request.Id, changes, warnings, graph.Nodes.Count, nodeText);
+            return (text, new UpdateResult(false, true, request.Id, changes, warnings, graph.Nodes.Count, nodeText));
         }
 
         string updated = graph.Text[..start] + nodeText.TrimStart() + graph.Text[(end + 1)..];
@@ -288,9 +316,7 @@ public static class GraphWriter
                 $"Updated node '{request.Id}' not found after splice; {graphPath} left unchanged");
         }
 
-        NodeText.WriteUtf8NoBom(graphPath, updated);
-
-        return new UpdateResult(true, false, request.Id, changes, warnings, newCount, null);
+        return (updated, new UpdateResult(true, false, request.Id, changes, warnings, newCount, null));
     }
 
     /// <summary>Merges or replaces an array value, dropping repeats case-insensitively as Select-Object -Unique does.</summary>

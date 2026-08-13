@@ -29,7 +29,7 @@
       "section": "3",
       "summary": "A list of investigation topics with explicit focus. Debugging is depth-first search and working memory is not, so the descent gets written down. Replaced a push/pop stack on 2026-08-08 because the stack conflated recording work with descending into it, had no way to amend an item, and deleted items on completion.",
       "tags": ["debugging", "session", "thread-items", "highest-value"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue"]
     },
     {
       "id": "pattern.graph-first-analysis",
@@ -1054,7 +1054,7 @@
         "Historical, and the design lesson worth keeping: the port wrote only research.candidate.json while it was built, with research.candidate.base.json frozen beside it as the common ancestor. A seed HASH would have said only THAT the live graph moved, never WHICH nodes -- integrating them forward is a three-way comparison, and the first cut of the plan stored a hash and was not implementable. Both files are gone now; the swap consumed them."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue"]
     },
 
     {
@@ -1086,7 +1086,7 @@
         "Substring matching, deliberately not -like. The PowerShell used -like, so a query term containing * or ? behaved as a wildcard by accident; that edge is not reproduced."
       ],
       "tags": ["csharp", "retrieval", "research", "index"],
-      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common"]
+      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common", "note.graph-write-queue"]
     },
 
     {
@@ -1101,7 +1101,7 @@
         "The weights are invisible to these tests. A score never reaches the envelope, only the order it produces, so a weight change that preserves the ranking of all 27 recorded queries fails nothing -- measured: 40 to 41 on the tag-exact weight. ScoringTests pins the constants directly for exactly that gap.",
         "Tests read frozen fixtures, never the live research.json. They used to read the live graph, which meant their expectations changed whenever anyone added a node. Regenerating the fixtures (Build-Fixtures.ps1) invalidates every golden and needs the generator re-run."
       ],
-      "tags": ["testing", "csharp", "powershell", "failure-modes", "contract"],
+      "tags": ["testing", "csharp", "powershell", "failure-modes", "contract", "concurrency"],
       "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research"]
     },
 
@@ -1134,7 +1134,7 @@
         "Refuses rather than repairing: a dangling link, a missing path, a surviving sandbox.-prefixed node, or a lost node without -AllowRemovals all stop it before anything moves."
       ],
       "tags": ["research", "index", "migration", "powershell", "failure-modes"],
-      "links": ["file.research", "note.janet-mcp-port", "file.janet-core", "script.invoke-edit-guard"]
+      "links": ["file.research", "note.janet-mcp-port", "file.janet-core", "script.invoke-edit-guard", "note.graph-write-queue"]
     },
 
     {
@@ -1159,6 +1159,23 @@
       ],
       "tags": ["powershell", "tooling", "research", "retrieval"],
       "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "script.rename-research-node", "file.janet-core"]
+    },
+
+    {
+      "id": "note.graph-write-queue",
+      "kind": "note",
+      "path": "src\\Janet.Core\\GraphQueue.cs",
+      "summary": "Concurrent writes to the catalog are queued, merged, and written once. Before it, Add/Update/Rename each did their own read-splice-write with nothing in between, which lost updates outright: two writers read the same text, both splice, the second erases the first, silently. Work arriving together is now applied to one read of the text in arrival order and committed in a single atomic write, and no caller returns until that write lands -- so N writes to a 110KB file become one, and nobody is told about a state that was never on disk. Cross-process writers (every CLI, hook and shim invocation is a fresh process) are excluded by a sidecar lock file rather than merged: exclusion is what makes them correct, merging is only an optimisation.",
+      "caveats": [
+        "Merging is in-process only. Two writers in one server process coalesce into a single write; a CLI process contends for the lock and writes separately. That is correct either way -- no update is lost -- but only the in-process case gets the one-write property, and the practical assumption that all writes funnel through one resident HTTP server is not enforced by anything: stdio transport gives each session its own server, every shim invocation is a fresh CLI process, and a rotation briefly overlaps two servers.",
+        "Readers deliberately do NOT take the lock. A query is the most common thing the catalog does and making it wait behind a write would be a real cost; the atomic rename means a reader sees the whole old file or the whole new one, never the seam. The previous File.WriteAllText truncated first, so a reader could and did catch a half-file, which reads as 'the catalog is corrupt'.",
+        "The lock is bounded at 30 seconds and then throws, rather than waiting. A hook that waits forever is indistinguishable from an agent thinking. The lock is an open file handle, so the OS releases it when the process dies -- there is no stale lock to clean up, unlike a lock file holding a pid.",
+        "A batch is not a transaction. One caller's GraphException fails only that caller; its text change is discarded and the rest of the batch still commits. Someone else's duplicate id is not a reason to reject your valid update.",
+        "Results carry 'batched', the number of requests in the write they landed in, and their totalNodes is the count as of THAT write -- not as of the whole run. A write that finished first has no business claiming to know about writes that came after it.",
+        "An operation must not read the graph from disk itself: it is handed the text the queue already read, and reading again would see the pre-batch state. Add's reverse links are applied to that in-memory text for the same reason -- calling the public Update would re-enter the queue and deadlock, since the thread draining a batch cannot wait on it."
+      ],
+      "tags": ["concurrency", "failure-modes", "csharp", "research", "contract"],
+      "links": ["file.janet-core", "note.janet-mcp-port", "pattern.thread-items", "script.swap-research-graph"]
     }
   ]
 }

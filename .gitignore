@@ -23,6 +23,12 @@ obj/
 # output that the next `dotnet build` needs to write.
 .janet-bin/
 
+# The graph write lock, and the temp file an atomic write renames into place. Both sit
+# beside the graph and belong to whichever process is mid-write; neither is state, and
+# the lock is released by the OS when its process exits rather than needing cleanup.
+*.json.lock
+*.json.tmp-*
+
 # research.previous.json is deliberately NOT ignored: it is the rollback path the
 # cutover leaves behind, and its value is being visible and diffable in git. The
 # candidate is likewise tracked -- it becomes the catalog, so its history matters.

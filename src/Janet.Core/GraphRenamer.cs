@@ -21,7 +21,12 @@ public sealed record RenameResult(
     IReadOnlyList<string> Relinked,
     IReadOnlyList<string> BodyReferences,
     IReadOnlyList<string> Warnings,
-    int TotalNodes);
+    int TotalNodes,
+    int Batched = 1) : IGraphResult<RenameResult>
+{
+    public RenameResult WithBatch(int totalNodes, int batched) =>
+        this with { TotalNodes = totalNodes, Batched = batched };
+}
 
 /// <summary>
 /// Renames a node and moves every inbound link with it.
@@ -37,9 +42,14 @@ public sealed record RenameResult(
 /// </remarks>
 public static class GraphRenamer
 {
-    public static RenameResult Rename(string graphPath, RenameRequest request)
+    public static RenameResult Rename(string graphPath, RenameRequest request) =>
+        GraphQueue.Submit(graphPath, text => ApplyRename(text, graphPath, request));
+
+    /// <summary>The rename itself, against text the queue holds. Returns the new text rather than writing it.</summary>
+    internal static (string Text, RenameResult Result) ApplyRename(
+        string text, string graphPath, RenameRequest request)
     {
-        ResearchGraph graph = ResearchGraph.Load(graphPath);
+        ResearchGraph graph = ResearchGraph.Parse(text, graphPath);
 
         if (!graph.TryGet(request.Id, out ResearchNode node))
         {
@@ -109,17 +119,17 @@ public static class GraphRenamer
 
         if (request.DryRun)
         {
-            return new RenameResult(false, true, request.Id, request.NewId, relinked, bodyReferences,
-                warnings, graph.Nodes.Count);
+            return (text, new RenameResult(false, true, request.Id, request.NewId, relinked, bodyReferences,
+                warnings, graph.Nodes.Count));
         }
 
         // Applied back to front so each splice leaves every earlier offset valid. Doing it
         // forwards would shift every span after the first edit by the length delta, and the
         // second splice would land inside a neighbouring node.
         string updated = graph.Text;
-        foreach ((int editStart, int editEnd, string text) in edits.OrderByDescending(e => e.Start))
+        foreach ((int editStart, int editEnd, string replacement) in edits.OrderByDescending(e => e.Start))
         {
-            updated = updated[..editStart] + text + updated[(editEnd + 1)..];
+            updated = updated[..editStart] + replacement + updated[(editEnd + 1)..];
         }
 
         JsonNode? parsed;
@@ -163,10 +173,8 @@ public static class GraphRenamer
                 $"links to '{request.Id}' survive on: {stillLinking}; {graphPath} left unchanged");
         }
 
-        NodeText.WriteUtf8NoBom(graphPath, updated);
-
-        return new RenameResult(true, false, request.Id, request.NewId, relinked, bodyReferences,
-            warnings, nodes.Count);
+        return (updated, new RenameResult(true, false, request.Id, request.NewId, relinked, bodyReferences,
+            warnings, nodes.Count));
     }
 
     private static System.Collections.Generic.OrderedDictionary<string, JsonNode?> CloneFields(ResearchNode node)

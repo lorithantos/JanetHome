@@ -37,6 +37,7 @@ public static class ResultJson
         else
         {
             root["totalNodes"] = result.TotalNodes;
+            root["batched"] = result.Batched;
             root["warnings"] = Strings(result.Warnings);
             root["reverseLinks"] = Strings(result.ReverseLinks);
         }
@@ -65,6 +66,11 @@ public static class ResultJson
             ["changes"] = changes,
             ["warnings"] = Strings(result.Warnings),
             ["totalNodes"] = result.TotalNodes,
+
+            // How many requests landed in the write this result came from. Always present, and
+            // 1 for an uncontended write: a caller reading 3 knows its totalNodes counts other
+            // people's nodes too, which is true either way and only visible if it is reported.
+            ["batched"] = result.Batched,
         };
 
         if (result.NodeText is not null)
@@ -89,6 +95,11 @@ public static class ResultJson
             ["bodyReferences"] = Strings(result.BodyReferences),
             ["warnings"] = Strings(result.Warnings),
             ["totalNodes"] = result.TotalNodes,
+
+            // How many requests landed in the write this result came from. Always present, and
+            // 1 for an uncontended write: a caller reading 3 knows its totalNodes counts other
+            // people's nodes too, which is true either way and only visible if it is reported.
+            ["batched"] = result.Batched,
         };
 
         return root.ToJsonString(pretty ? Indented : Compact);
