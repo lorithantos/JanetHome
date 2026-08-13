@@ -11,7 +11,7 @@
       "section": "1",
       "summary": "Manifest-driven startup: an explicit checkable contract of files to read and commands to run, instead of a prose context file that drifts silently.",
       "tags": ["startup", "contract", "agent", "validation"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims", "note.design-notes-projection"]
     },
     {
       "id": "pattern.progressive-disclosure",
@@ -20,7 +20,7 @@
       "section": "2",
       "summary": "Capability lives in per-topic skill files loaded on match, not one monolithic prompt; context is the scarce resource and instructions interfere.",
       "tags": ["skills", "context", "agent", "retrieval"],
-      "links": ["script.get-research", "file.research", "note.janet-origin", "file.readme"]
+      "links": ["script.get-research", "file.research", "note.janet-origin", "file.readme", "note.design-notes-projection"]
     },
     {
       "id": "pattern.thread-items",
@@ -29,7 +29,7 @@
       "section": "3",
       "summary": "A list of investigation topics with explicit focus. Debugging is depth-first search and working memory is not, so the descent gets written down. Replaced a push/pop stack on 2026-08-08 because the stack conflated recording work with descending into it, had no way to amend an item, and deleted items on completion.",
       "tags": ["debugging", "session", "thread-items", "highest-value"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue", "note.thread-item-projection", "note.design-notes-projection"]
     },
     {
       "id": "pattern.graph-first-analysis",
@@ -171,7 +171,7 @@
         "-Text now goes to stdout rather than Write-Host, so it can be captured by a pipe, a redirect, or an assignment without 6>&1."
       ],
       "tags": ["thread-items", "session", "debugging"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests", "note.thread-item-projection"]
     },
     {
       "id": "script.new-text-file",
@@ -438,7 +438,7 @@
         "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
       ],
       "tags": ["startup", "contract", "config"],
-      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme"]
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection"]
     },
     {
       "id": "file.research",
@@ -465,10 +465,11 @@
       "path": "DESIGN-NOTES.md",
       "summary": "The transferable patterns from the 2024-2026 build, written from memory rather than copied from employer artifacts. One of only two files startup reads, so it carries the patterns that govern how a session WORKS -- manifest-driven startup, progressive disclosure, the thread stack, graph-first analysis, deterministic edits via JSON plan, two-question query routing, circuit-breakers, per-scope storage -- and no longer the material you consult once. Sections 6, 10, 11 and 12 are now one-paragraph pointers to note.build-retrospective and note.discriminator-front-end (2026-08-08); section numbering was deliberately kept stable because three other notes cite section 12 by number.",
       "caveats": [
-        "Section numbers are load-bearing: rules in startup-manifest.json and at least three notes cite DESIGN-NOTES sections by number. Renumbering breaks those references silently -- add or repoint, never renumber."
+        "Section numbers are load-bearing: rules in startup-manifest.json and at least three notes cite DESIGN-NOTES sections by number. Renumbering breaks those references silently -- add or repoint, never renumber.",
+        "The prose asserts mechanisms that nothing verifies, and it has been wrong: section 3 claimed writers serialise on a named mutex for several commits after the port moved them to Janet.Core's WriteQueue (corrected 2026-08-12 in 512e3d2). Startup guarantees this file is read, not that it is true, so check a mechanism claim against the catalog node or the code before repeating it. Plan to stop it recurring: note.design-notes-projection."
       ],
       "tags": ["patterns", "architecture", "agent"],
-      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-items", "note.build-retrospective", "note.discriminator-front-end"]
+      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-items", "note.build-retrospective", "note.discriminator-front-end", "note.design-notes-projection"]
     },
 
     {
@@ -643,7 +644,7 @@
         "The 54% reduction is measured against the 2026-08-01 manifest; re-measure after adding rules or retrieval fields. Trimming is done by the emitter, so growing manifest prose no longer costs the session but still costs -Full and -Text readers."
       ],
       "tags": ["startup", "brief", "progressive-disclosure", "powershell", "landmine", "measurement"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup", "note.janet-mcp-port"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup", "note.janet-mcp-port", "note.thread-item-projection", "note.design-notes-projection"]
     },
 
     {
@@ -885,7 +886,7 @@
         "Read-ThreadItems comma-wrapped its return. Assign it; never wrap the call in @(...) -- that yields one element holding the real array and the loop runs once (house rule 1). This trap bit during the 2026-08-08 migration and was caught only by running the script."
       ],
       "tags": ["thread-items", "session", "debugging", "powershell"],
-      "links": ["pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests"]
+      "links": ["pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests", "note.thread-item-projection"]
     },
 
     {
@@ -1178,8 +1179,8 @@
     {
       "id": "note.graph-write-queue",
       "kind": "note",
-      "path": "src\\Janet.Core\\GraphQueue.cs",
-      "summary": "Concurrent writes to the catalog are queued, merged, and written once. Before it, Add/Update/Rename each did their own read-splice-write with nothing in between, which lost updates outright: two writers read the same text, both splice, the second erases the first, silently. Work arriving together is now applied to one read of the text in arrival order and committed in a single atomic write, and no caller returns until that write lands -- so N writes to a 110KB file become one, and nobody is told about a state that was never on disk. Cross-process writers (every CLI, hook and shim invocation is a fresh process) are excluded by a sidecar lock file rather than merged: exclusion is what makes them correct, merging is only an optimisation.",
+      "path": "src\\Janet.Core\\WriteQueue.cs",
+      "summary": "Concurrent writes to the catalog and the thread-item list are queued, merged, and written once. Before it, Add/Update/Rename each did their own read-splice-write with nothing in between, which lost updates outright: two writers read the same text, both splice, the second erases the first, silently. Work arriving together is now applied to one read of the text in arrival order and committed in a single atomic write, and no caller returns until that write lands -- so N writes to a 110KB file become one, and nobody is told about a state that was never on disk. Cross-process writers (every CLI, hook and shim invocation is a fresh process) are excluded by a sidecar lock file rather than merged: exclusion is what makes them correct, merging is only an optimisation.",
       "caveats": [
         "MEASURED 2026-08-12, and it rules out the obvious alternative: you cannot both hold a lock on the data file and atomically replace it. With the file held open, File.Move(overwrite) is blocked under every share mode tried -- Read, None, and Read|Delete. File.Replace (the Windows ReplaceFile API) IS permitted under Read|Delete, and that is the trap: in the same trial, a second exclusive open of the same path then SUCCEEDED while the first handle was still held. The replace unlinks the file the lock holder is holding, so both processes believe they hold the lock and they are holding different files. Mutual exclusion stops meaning anything at the moment of the write it was protecting.",
         "The sidecar arrangement was measured against the same three properties and holds all of them at once: the rename succeeds while the lock is held, a second writer taking the lock is blocked, and a reader reads the data file unimpeded. That is why the lock is beside the file rather than on it -- not squeamishness about an extra file.",
@@ -1193,6 +1194,39 @@
       ],
       "tags": ["concurrency", "failure-modes", "csharp", "research", "contract"],
       "links": ["file.janet-core", "note.janet-mcp-port", "pattern.thread-items", "script.swap-research-graph"]
+    },
+
+    {
+      "id": "note.thread-item-projection",
+      "kind": "note",
+      "path": "notes\\thread-item-projection.md",
+      "summary": "Thread-item output has no projection contract, so the startup capture reached 127,155 characters -- 92% of it parked items' notes, 97% of the entire brief; the roster/summary/expand split, and the stored 'area' field that keys it.",
+      "caveats": [
+        "DESIGNED, NOT BUILT as of 2026-08-12 -- planned around the Janet.Core port rather than delivered by it. This node describes an intended contract, not shipped behaviour; verify against the tool before relying on any of it.",
+        "The durable claim is the ratio, not the number: ~90% of the brief is notes, the summary projection is a ~96% cut and the roster a ~99.9% one. The absolutes (127,155 captured, 4,444 summary, 162 roster) were measured against 23 live items on 2026-08-12 and grow with every item added -- re-measure rather than quoting them. The roster figure is low because every item is currently '(unfiled)'; real areas cost a few hundred more.",
+        "'area' must be a stored field, never derived from the topic string. Measured on the live list: 4 of 20 topics had no colon, and splitting on the first colon yielded 12 groups for the other 16 -- RazorGraph fragmented into 4, JanetHome into 3. Unassigned items group under a literal '(unfiled)' and are never guessed into a neighbour.",
+        "The invariant that prevents regression is structural, not editorial: notes are returned one item at a time, and -Expand errors without a single-item selector. A flag that expands notes across a set re-creates the original defect exactly.",
+        "The startup slot and a direct call are different consumers. Startup takes the roster as a tripwire; the summary is a direct call's default. Collapsing them into one default is the mistake the first cut of this design made.",
+        "The eager 'run' entry may not be needed at all once research.json carries a trigger/whenToUse field -- the catalog already handles discovery, and what is missing is the prompt to ask. Treat the manifest's 'useless if fetched late' justification as superseded on its 'small' half and conditional on its other half.",
+        "Subsumes the separately-filed -Index bug: Show-ThreadItems filters done before printing while Set-ActiveThread -Index counts into the unfiltered file, so -Index is live-wrong by the done count (3 today). Fix it in the same pass by emitting the true unfiltered index per row."
+      ],
+      "tags": ["thread-items", "progressive-disclosure", "context-budget", "measurement", "startup", "session"],
+      "links": ["note.startup-brief-budget", "pattern.thread-items", "script.show-thread-items", "script.thread-items-common", "file.startup-manifest", "note.design-notes-projection"]
+    },
+
+    {
+      "id": "note.design-notes-projection",
+      "kind": "note",
+      "path": "notes\\design-notes-projection.md",
+      "summary": "DESIGN-NOTES.md is read in full every session, has grown 39% since the 2026-08-08 trim, and was found asserting a mechanism retired several commits earlier; the fix for both is one split -- the file keeps the claim and the argument, the perishable mechanism detail moves to the catalog node that already indexes the section.",
+      "caveats": [
+        "DESIGNED, NOT BUILT as of 2026-08-12. Only the instance was fixed (section 3's named-mutex claim, in 512e3d2); the mechanism that would catch the next one does not exist.",
+        "Section numbers are load-bearing and this note's plan does not change them: startup-manifest.json rules cite sections 3, 4, 5, 7 and 8, and three notes cite section 12. A converted section keeps its identifier, as 6 and 10-12 did. Add or repoint, never renumber.",
+        "The proposed gate -- fail when a startup-read file names a RETIRED node's script or a dead path -- would NOT have caught the drift that prompted this. Section 3 named the five live shims, which is correct; the false sentence named a mechanism, and no gate reads English. Do not treat the gate as closing the class.",
+        "Measurements (10,219 DESIGN-NOTES, 6,901 README, 17,120 total) were taken 2026-08-12 and are the point of the note -- re-measure rather than citing them. The 2026-08-08 figure sat unchecked for eleven days while the file grew 39%."
+      ],
+      "tags": ["documentation", "progressive-disclosure", "context-budget", "measurement", "startup", "drift"],
+      "links": ["note.startup-brief-budget", "note.thread-item-projection", "file.design-notes", "pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-items"]
     }
   ]
 }
