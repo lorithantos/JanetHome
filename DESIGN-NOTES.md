@@ -61,9 +61,10 @@ additive rather than multiplicative.
 
 ## 3. Thread items
 
-**Pattern.** A list of investigation topics with explicit focus -- `Add-ThreadItem.ps1`,
-`Set-ActiveThread.ps1`, `Update-ThreadItem.ps1`, `Complete-ThreadItem.ps1` and
-`Show-ThreadItems.ps1`, in `scripts\`.
+**Pattern.** A list of investigation topics with explicit focus -- the `thread_*` MCP
+tools, `janet thread add|update|complete|active|show`, and the `*-ThreadItem.ps1` /
+`Show-ThreadItems.ps1` scripts in `scripts\`, all three over one implementation in
+`src\Janet.Core`.
 
 **Why it exists.** Debugging is a depth-first search and human working memory is not.
 You start on A, notice B, chase B into C, fix C -- and then have no idea whether you
@@ -85,8 +86,11 @@ failures, none of them bugs -- each was the data structure behaving exactly as d
 The list separates what the stack conflated: position carries order, `status` carries
 focus, and nothing is ever removed. Adding appends without displacing, `Set-ActiveThread`
 is the only thing that moves focus, and completing is a status change. Writers serialise
-on a named mutex -- it is shared mutable state with genuinely concurrent sessions, and the
-loss above happened inside an unlocked read-modify-write.
+through the batching write queue (`src\Janet.Core\WriteQueue.cs`) -- it is shared mutable
+state with genuinely concurrent sessions, and the loss above happened inside an unlocked
+read-modify-write. In-process writers coalesce into one read-apply-write; across processes
+a sidecar lock file excludes, and the file is replaced atomically rather than truncated
+in place.
 
 **The general lesson, which outlives this tool.** A structure chosen for the operation you
 first imagined -- descend, unwind -- will quietly forbid the operations you actually turn
