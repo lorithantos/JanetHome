@@ -204,6 +204,34 @@ if ($stagedAll.Count -eq 0) {
     $stepResults['File Encoding'] = $true
 }
 
+# ---------- 6. Output Contracts ----------
+# Only where a repo declares formats. Everything else here is repo-agnostic and this stays
+# so: no contracts directory means there is nothing to hold to a schema, which is a
+# different thing from a check that failed.
+$contracts = Join-Path $repoRoot 'contracts'
+$testContracts = Join-Path $scriptRoot 'Test-OutputContracts.ps1'
+
+if (Test-Path $contracts) {
+    Write-StepHeader 'Output Contracts'
+
+    if (Test-Path $testContracts) {
+        try {
+            $global:LASTEXITCODE = 0
+
+            # Against HEAD, matching what is about to be committed: the change rule asks
+            # whether the schema moved in THIS commit, not since some older point.
+            & $testContracts -Text -Against HEAD
+            Write-StepResult 'Output Contracts' ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)
+        } catch {
+            Write-Host "  Error: $_" -ForegroundColor Red
+            Write-StepResult 'Output Contracts' $false
+        }
+    } else {
+        Write-Host '  Test-OutputContracts.ps1 not found and contracts\ exists.' -ForegroundColor Red
+        Write-StepResult 'Output Contracts' $false
+    }
+}
+
 # ---------- Summary ----------
 Write-Host "`n=== Pre-Commit Summary ===" -ForegroundColor Cyan
 foreach ($kv in $stepResults.GetEnumerator()) {

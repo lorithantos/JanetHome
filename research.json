@@ -360,7 +360,7 @@
         "Module requirements are conditional and fail legibly when unmet: PSScriptAnalyzer only when .ps1 files are staged, Pester 5+ only when *.Tests.ps1 files exist. Both installed CurrentUser 2026-08-03 (PSScriptAnalyzer 1.25.0, Pester 6.0.1); full gate verified green end-to-end on a clean staged file the same day."
       ],
       "tags": ["pre-commit", "validation", "quality"],
-      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules", "script.test-deep-nesting"]
+      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules", "script.test-deep-nesting", "script.test-output-contracts"]
     },
     {
       "id": "script.get-script-catalog",
@@ -956,7 +956,7 @@
         "dotnet test runs with --no-build against the just-built output; a -TestFilter changes the counters to describe the filtered run, not the whole suite."
       ],
       "tags": ["dotnet", "build", "testing", "json", "contract", "quality"],
-      "links": ["note.powershell-house-rules", "script.search-json"]
+      "links": ["note.powershell-house-rules", "script.search-json", "script.test-output-contracts"]
     },
 
     {
@@ -1022,7 +1022,7 @@
         "NOT golden-tested, unlike the rest of the port, and the reason is structural: the envelope carries an absolute folder path and a count of the DLLs beside the assembly, so a recorded answer would be pinned to one machine's build output. Parity was checked live across the flag space on 2026-08-12 -- all types, type filter, member filter, static, inherited and truncation identical to the PowerShell -- and the behaviour is covered by unit tests over types this repo's test assembly declares."
       ],
       "tags": ["reflection", "api-discovery", "dotnet", "nuget", "powershell", "third-party"],
-      "links": ["script.get-api-doc", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common"]
+      "links": ["script.get-api-doc", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common", "script.test-output-contracts"]
     },
 
     {
@@ -1082,7 +1082,7 @@
         "Historical, and the design lesson worth keeping: the port wrote only research.candidate.json while it was built, with research.candidate.base.json frozen beside it as the common ancestor. A seed HASH would have said only THAT the live graph moved, never WHICH nodes -- integrating them forward is a three-way comparison, and the first cut of the plan stored a hash and was not implementable. Both files are gone now; the swap consumed them."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts"]
     },
 
     {
@@ -1269,7 +1269,24 @@
         "Not wired into Test-PreCommit.ps1. Pre-commit gates on staged files, and these are frozen files nothing stages -- run this after a history rewrite, a filter-branch, or any operation that could move the recorded commits."
       ],
       "tags": ["powershell", "gate", "provenance", "verification", "contract"],
-      "links": ["file.standalone", "script.git", "note.janet-mcp-port"]
+      "links": ["file.standalone", "script.git", "note.janet-mcp-port", "script.test-output-contracts"]
+    },
+
+    {
+      "id": "script.test-output-contracts",
+      "kind": "script",
+      "path": "scripts\\Test-OutputContracts.ps1",
+      "summary": "Holds a tool's output format to the schema checked in beside it under contracts\\, and holds a schema change to being a deliberate one. Two checks, because format drift travels in two directions: SHAPE validates each schema against live envelopes (additionalProperties:false, so a field added to the code turns it red), and CHANGE requires that a schema differing from the reference commit also bumped its contract number AND changed the script that exposes the format. Samples the repo build rather than the installed janet. JSON envelope by default, -Text to read, exit 1 on any finding. Step 6 of Test-PreCommit.ps1, and only where a contracts\\ directory exists.</summary>\n<parameter name=\"parameters\">[\"Path\", \"Against\", \"Text\"]",
+      "caveats": [
+        "The schemas are hand-written and MUST NOT be generated from the return type. A schema the implementation writes agrees with the implementation by construction, which is the same reason a golden the implementation writes is not a golden -- generating them would leave this script reporting a pass it never earned.",
+        "It samples the REPO BUILD (src\\Janet.Cli\\bin\\...\\janet.exe), falling back to the installed tool and reporting which one answered under 'sampledFrom'. Found by mutation: while it sampled the global janet every mutation passed, because that binary is whatever was last packed -- the staleness note.janet-mcp-port documents, arriving as a gate that could not fail.",
+        "A schema absent from the reference commit is exempt from the change rule: it is a NEW format, not a changed one. Demanding a bump from nothing, and a script edit the new format may not need, would make the gate fire on correct work -- and a gate that fires on correct work gets disabled.",
+        "Shape is only checked as far as the samples reach. One envelope does not exercise one schema: the samplers deliberately produce three, because a single unfiltered run never shows truncated:true and never reaches an enum. A schema branch no sample reaches is unverified, and the gate does not know that.",
+        "JSON Schema pins SHAPE, not MEANING. It cannot express that graph:null means 'not applicable' rather than 'missing', so the catalog caveats stay load-bearing and a passing gate is not a read contract.",
+        "Verified by mutation 2026-08-12, eight ways: a field added, removed and renamed; a kind spelled differently; the contract number moved in code only; the schema edited alone; the schema edited with a bump but no script change. All caught."
+      ],
+      "tags": ["gate", "contract", "schema", "powershell", "verification", "json"],
+      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts"]
     }
   ]
 }
