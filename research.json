@@ -1048,11 +1048,15 @@
       "id": "script.get-drive-survey",
       "kind": "script",
       "path": "scripts\\Get-DriveSurvey.ps1",
-      "summary": "Queries the DriveSurvey inventory (D:\\Repos\\DriveSurvey): volumes ever seen including offline and silently-unmounted clone disks, sized subtrees, blind spots, volume-vs-volume coverage compare, and the indexed-vs-used reconciliation check.",
-      "params": ["Command", "Volume", "Against", "Nickname", "Depth", "Text", "Pretty"],
+      "summary": "Runs the DriveSurvey CLI (D:\\Repos\\DriveSurvey): finds the freshest survey.exe build, runs it with every argument passed through verbatim, and reports what it said. Holds no command list of its own -- survey.exe owns the command surface, the validation and the help, so a command or flag the tool grows works here the day it ships.",
+      "params": ["Arguments"],
       "caveats": [
-        "Read-only against surveyed volumes and never deletes; scan refuses a docked drive that cannot prove which physical drive it is (the Sabrent bridge blanks hardware serials) -- answer with -Nickname.",
-        "compare matches by name + size until phase 2 adds content hashes; it finds missing coverage reliably but over-trusts renamed same-size files."
+        "Arguments pass through UNCHANGED, so this takes the CLI's syntax and not PowerShell's: pass --volume E: --set working, not -Volume E:. The wrapper used to model every command as typed parameters, and that second copy drifted six commands behind the tool while rejecting the exact flags a person who knows the tool types. Run it with no arguments for the CLI's own help.",
+        "Resolves the NEWEST of the Release and Debug builds rather than preferring Release. A stale Release once shadowed a Debug build made minutes earlier, and the skew surfaced three steps from its cause as the store refusing an older schema. -Verbose names the binary that answered.",
+        "Stream handling switches on [Console]::IsOutputRedirected, never on the command name -- which is what lets this file hold no list of commands. At a console both streams pass straight through so the scan and hash progress bars animate; when redirected, stderr is separated into warnings so stdout stays a clean JSON envelope.",
+        "The redirected path must relax ErrorActionPreference or Windows PowerShell 5.1 escalates the native command's captured stderr into a terminating NativeCommandError before it can be reported, delivering the tool's own clean refusal as a wall of PowerShell plumbing. PowerShell 7 does not escalate it, so this is invisible from a 7 session and must be checked under 5.1.",
+        "The tool is read-only against surveyed volumes and never deletes, but this wrapper no longer refuses anything: copy, the CLI's one command that writes to a drive, is reachable here like any other now that the wrapper does not know what the commands are. It only ever adds -- an occupied destination is reported, never overwritten.",
+        "scan refuses a docked drive that cannot prove which physical drive it is (the Sabrent bridge blanks hardware serials) -- answer with --nickname. It also refuses to guess a volume's role on a bus that could be a backup drive or a card, answered once with --role durable|working."
       ],
       "tags": ["drives", "inventory", "backup", "storage", "coverage"],
       "links": ["script.git", "script.invoke-dotnet-check", "note.tuples-do-not-cross-boundaries"]
