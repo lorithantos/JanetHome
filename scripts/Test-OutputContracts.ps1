@@ -93,6 +93,7 @@ $samplers = @{
 }
 
 $findings = @()
+$pendingContracts = @()
 $checked = 0
 $live = $true
 
@@ -173,6 +174,31 @@ foreach ($schemaFile in $schemas) {
 
     if (-not $live) { continue }
 
+    # A format may be agreed before the code that satisfies it -- writing the schema first
+    # is what stops it becoming a description of whatever got built. Such a schema is
+    # PENDING: reported every run, never counted as a pass, and self-clearing, because the
+    # moment its script becomes a shim the port has shipped and the flag is a lie.
+    $pending = ($meta.PSObject.Properties.Name -contains 'implemented') -and (-not $meta.implemented)
+
+    if ($pending) {
+        $scriptFile = Join-Path $repoRoot $meta.script
+        $shipped = (Test-Path $scriptFile) -and
+            ((Get-Content $scriptFile -TotalCount 1) -match 'JANET-SHIM')
+
+        if ($shipped) {
+            $findings += [pscustomobject]@{
+                contract = $name
+                issue    = 'pending-but-shipped'
+                detail   = "Declared implemented:false, but $($meta.script) is already a shim -- the port landed and the flag was left behind. Clear it and add a sampler."
+            }
+        }
+        else {
+            $pendingContracts += $name
+        }
+
+        continue
+    }
+
     if (-not $samplers.ContainsKey($name)) {
         $findings += [pscustomobject]@{ contract = $name; issue = 'no-sampler'; detail = "No sampler for '$name', so its shape was never checked. Add one rather than leaving the schema unverified." }
         continue
@@ -217,6 +243,11 @@ $result = [pscustomobject]@{
     # Which binary answered. A gate that sampled the installed tool instead of this build
     # would pass a change it never saw, so this is part of the verdict rather than trivia.
     sampledFrom = if ($live) { $source } else { 'nothing' }
+
+    # Named, not merely subtracted from the count. A pending format is one nobody has
+    # verified, and a run reporting "0 failed" over a directory of them would be telling
+    # the truth in the least useful way available.
+    pending  = @($pendingContracts)
     against  = $Against
     findings = @($findings)
 }
@@ -224,8 +255,9 @@ $result = [pscustomobject]@{
 if ($Text) {
     Write-Host "output contracts: $checked checked (sampled from the $($result.sampledFrom))" -ForegroundColor Cyan
     if (-not $live) { Write-Host '  janet is not on PATH -- SHAPE NOT CHECKED, only the change rule ran.' -ForegroundColor Yellow }
+    foreach ($name in $pendingContracts) { Write-Host "  [pending] ${name}: format agreed, code not written. Not verified by anything." -ForegroundColor Yellow }
     foreach ($finding in $findings) { Write-Host "  [$($finding.issue)] $($finding.contract): $($finding.detail)" -ForegroundColor Red }
-    if (@($findings).Count -eq 0) { Write-Host '  Every declared format matches what the code emits.' -ForegroundColor Green }
+    if (@($findings).Count -eq 0) { Write-Host "  $($checked - @($pendingContracts).Count) format(s) match what the code emits." -ForegroundColor Green }
 }
 else {
     $result | ConvertTo-Json -Depth 5 -Compress

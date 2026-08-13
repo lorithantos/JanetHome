@@ -1,0 +1,214 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/dotnet-check.schema.json",
+  "title": "dotnet_check envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
+    "contract": 4,
+    "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
+    "script": "scripts\\Invoke-DotnetCheck.ps1",
+    "node": "script.invoke-dotnet-check",
+    "implemented": false,
+    "pendingReason": "Format agreed 2026-08-12, ahead of the port. Contract 3 is what the PowerShell emits today: no status field and no running arm. This describes 4."
+  },
+
+  "description": "A tagged union. 'status' is the discriminator and the only field both arms share besides contract and target, because a caller that has not read the discriminator has no business reading anything else.",
+
+  "oneOf": [
+    {
+      "title": "complete",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
+      "properties": {
+        "status": { "const": "complete" },
+        "contract": { "const": 4 },
+        "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
+        "configuration": { "type": "string" },
+        "succeeded": {
+          "type": "boolean",
+          "description": "Exactly one thing: the build succeeded AND every test passed. Mirrors the exit code."
+        },
+
+        "build": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["succeeded", "durationSeconds", "errors", "warnings", "warningCount", "newWarnings", "resolvedWarningCount", "baseline"],
+          "properties": {
+            "succeeded": { "type": "boolean" },
+            "durationSeconds": { "type": "number", "minimum": 0 },
+            "warningCount": { "type": "integer", "minimum": 0, "description": "Deduplicated instances, not groups." },
+
+            "errors": {
+              "type": "array",
+              "description": "Every instance, verbatim and never truncated. An error is the payload.",
+              "items": { "$ref": "#/definitions/diagnostic" }
+            },
+
+            "warnings": {
+              "type": "array",
+              "description": "Grouped by code. Collapsed, never silently dropped.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code", "count", "instances", "omittedInstances"],
+                "properties": {
+                  "code": { "type": "string" },
+                  "count": { "type": "integer", "minimum": 0 },
+                  "instances": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["file", "line", "message"],
+                      "properties": {
+                        "file": { "type": "string" },
+                        "line": { "type": ["integer", "null"] },
+                        "message": { "type": "string" }
+                      }
+                    }
+                  },
+                  "omittedInstances": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The honest truncation marker. Positive means the instance list was capped."
+                  }
+                }
+              }
+            },
+
+            "newWarnings": {
+              "type": ["array", "null"],
+              "description": "NULL MEANS NO COMPARISON HAPPENED -- no -New, or no prior baseline -- not 'none were new'. Otherwise every warning absent from the baseline, verbatim and uncapped, because a new warning is error-like.",
+              "items": { "$ref": "#/definitions/diagnostic" }
+            },
+
+            "resolvedWarningCount": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Same nullability, same reading: null is 'not compared', not 'none resolved'."
+            },
+
+            "baseline": {
+              "type": ["object", "null"],
+              "description": "Null unless -New.",
+              "additionalProperties": false,
+              "required": ["path", "comparedTo", "saved"],
+              "properties": {
+                "path": { "type": "string" },
+                "comparedTo": {
+                  "type": ["string", "null"],
+                  "description": "The prior baseline's timestamp, or null on the first run for this target and configuration."
+                },
+                "saved": {
+                  "type": "boolean",
+                  "description": "Whether this run's census was written back. Only a successful build is: a failed build is a partial census."
+                }
+              }
+            }
+          }
+        },
+
+        "tests": {
+          "type": ["object", "null"],
+          "description": "NULL MEANS NOT RUN -- -NoTests, or the build failed. Which one is visible from build.succeeded. It does not mean a suite with no tests.",
+          "additionalProperties": false,
+          "required": ["succeeded", "total", "passed", "failed", "skipped", "failures", "assemblies"],
+          "properties": {
+            "succeeded": { "type": "boolean" },
+            "total": { "type": "integer", "minimum": 0 },
+            "passed": { "type": "integer", "minimum": 0 },
+            "failed": { "type": "integer", "minimum": 0 },
+            "skipped": { "type": "integer", "minimum": 0 },
+            "failures": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["test", "message", "stack"],
+                "properties": {
+                  "test": { "type": "string" },
+                  "message": {
+                    "type": ["string", "null"],
+                    "description": "Verbatim and whole. It is the payload, and read from the TRX rather than scraped from the console."
+                  },
+                  "stack": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "assemblies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "total", "passed", "failed", "skipped"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "total": { "type": "integer", "minimum": 0 },
+                  "passed": { "type": "integer", "minimum": 0 },
+                  "failed": { "type": "integer", "minimum": 0 },
+                  "skipped": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+
+        "graph": {
+          "type": ["object", "null"],
+          "description": "NULL MEANS NOT APPLICABLE -- this repository carries no graph convention, which most do not. It does not mean a graph is missing; that is status 'absent'.",
+          "additionalProperties": false,
+          "required": ["path", "builtAt", "newestSourceAt", "status", "refreshed", "canRefresh"],
+          "properties": {
+            "path": { "type": ["string", "null"] },
+            "builtAt": { "type": ["string", "null"] },
+            "newestSourceAt": { "type": ["string", "null"] },
+            "status": { "enum": ["current", "stale", "absent", "failed"] },
+            "refreshed": { "type": "boolean" },
+            "canRefresh": {
+              "type": "boolean",
+              "description": "False with status 'stale' means the repo has a graph and no way to rebuild it here. Staleness is reported even where it cannot be fixed."
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "title": "running",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
+      "properties": {
+        "status": { "const": "running" },
+        "contract": { "const": 4 },
+        "target": { "type": "string" },
+        "configuration": { "type": "string" },
+        "handle": {
+          "type": "string",
+          "description": "Pass this back to the same tool to poll. A full rebuild can outlast a client's call timeout, and a slow build presenting as a dead tool is the failure this arm exists to prevent."
+        },
+        "startedAt": { "type": "string" },
+        "elapsedSeconds": { "type": "number", "minimum": 0 }
+      }
+    }
+  ],
+
+  "definitions": {
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "code", "message"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": {
+          "type": ["integer", "null"],
+          "description": "Null for a diagnostic MSBuild reported against a file rather than a position."
+        },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}
