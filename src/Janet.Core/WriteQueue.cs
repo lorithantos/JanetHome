@@ -8,79 +8,96 @@ namespace Janet.Core;
 /// <remarks>
 /// An operation computes its result against the text as it stood partway through a batch, and
 /// that intermediate state is never what ends up on disk. Reporting it would mean returning a
-/// node count that was true in memory for a moment and never true in the file -- the quiet kind
-/// of wrong. Every result is restated with the final count before its caller sees it.
+/// count that was true in memory for a moment and never true in the file -- the quiet kind of
+/// wrong. Every result is restated with the batch's totals before its caller sees it.
 /// </remarks>
-public interface IGraphResult<out T>
+public interface IBatchedResult<out T>
 {
-    /// <summary>Returns this result with the batch's final totals substituted.</summary>
-    T WithBatch(int totalNodes, int batched);
+    /// <summary>Returns this result with the totals of the write it landed in.</summary>
+    T WithBatch(int total, int batched);
 }
 
 /// <summary>
-/// Serialises every write to a graph file, and merges the ones that arrive together.
+/// Serialises every write to a file, and merges the ones that arrive together.
 /// </summary>
 /// <remarks>
-/// Before this, each of Add, Update and Rename did its own read, splice and write with nothing
-/// in between. Three things follow from that, and all three are real:
+/// Both of Janet's mutable files are shared between concurrent writers, and both got this
+/// wrong in the same way. The thread-item list lost a session's notes irrecoverably on
+/// 2026-08-08 to an unlocked read-modify-write; the research catalog had the identical hole and
+/// had simply not been unlucky yet. Two concurrent agent sessions is the normal case here, which
+/// is why the list needed a mutex at all.
 ///
-///   1. Lost updates. Two writers read the same text, both splice their own node into it, and
-///      the second write erases the first. This is the 2026-08-08 thread-item incident with a
-///      different file underneath it, and two concurrent sessions is the normal case here.
-///   2. Torn reads. The write was File.WriteAllText, which truncates and then writes, so a
-///      reader arriving mid-write sees a half-file. A query that fails to parse the catalog
-///      reads as "the catalog is corrupt", which is a much more alarming thing than it was.
-///   3. A partially linked add. Add wrote the node, then wrote each reverse link as its own
-///      separate file write, so the node was visible without its back-links for as long as
-///      that took, and a crash in the middle left it that way permanently.
+/// Three failures follow from read-splice-write with nothing in between, and all three are real:
+///
+///   1. Lost updates. Two writers read the same text, both change it, and the second write
+///      erases the first -- silently, with no error anywhere.
+///   2. Torn reads. File.WriteAllText truncates and then writes, so a reader arriving mid-write
+///      sees a half-file. A consumer that cannot parse it reports corruption, which is a much
+///      more alarming thing than what happened.
+///   3. Multi-step writes that are visible half-done. An add and its reverse links, written
+///      separately, leave the file inconsistent for as long as that takes -- and permanently if
+///      anything fails partway.
 ///
 /// The queue answers all three. Work is batched: one read, every queued operation applied to
 /// that text in arrival order, one atomic write, and only then does any caller return. That is
 /// stronger than plain serialisation and cheaper -- N writes to a 110KB file become one -- and
-/// it means no caller is told about a state that was never on disk.
+/// no caller is told about a state that was never on disk.
 ///
 /// A failing operation fails only its own caller. A batch is not a transaction across unrelated
 /// requests: someone else's duplicate id is not a reason to reject your valid update, so the
 /// failed operation's text is discarded and the rest of the batch still commits.
 ///
-/// Cross-process exclusion is a lock file beside the graph, because the CLI runs as a separate
+/// Cross-process exclusion is a lock file beside the target, because the CLI runs as a separate
 /// process on every hook and shim invocation and cannot join an in-process queue. Merging is
 /// in-process only; exclusion is what makes the cross-process case correct.
 /// </remarks>
-public static class GraphQueue
+public static class WriteQueue
 {
     private static readonly ConcurrentDictionary<string, Lane> Lanes =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
     /// <summary>How long to wait for another process to finish its batch before giving up.</summary>
     /// <remarks>
-    /// Bounded rather than indefinite: a stale lock from a killed process would otherwise hang
-    /// a hook forever, and a hook that hangs is indistinguishable from an agent thinking.
+    /// Bounded rather than indefinite: a lock held by a wedged process would otherwise hang a
+    /// hook forever, and a hook that hangs is indistinguishable from an agent thinking.
     /// </remarks>
     public static TimeSpan LockTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Queues one edit and returns its result once the batch containing it has been written.
     /// </summary>
-    /// <param name="graphPath">The graph to edit.</param>
+    /// <param name="path">The file to edit.</param>
     /// <param name="operation">
-    /// Applied to the graph's current text; returns the new text and the result. Must be pure
-    /// with respect to disk -- the queue owns reading and writing, and an operation that reads
+    /// Applied to the file's current text; returns the new text and the result. Must be pure
+    /// with respect to disk -- the queue owns reading and writing, and an operation that read
     /// the file itself would see the pre-batch state.
     /// </param>
-    public static T Submit<T>(string graphPath, Func<string, (string Text, T Result)> operation)
-        where T : IGraphResult<T> =>
-        Lanes.GetOrAdd(Path.GetFullPath(graphPath), path => new Lane(path)).Submit(operation);
+    /// <param name="totalOf">
+    /// How many things the file holds, for restating results. Called once per batch.
+    /// </param>
+    /// <param name="whenMissing">
+    /// The text to start from when the file does not exist yet. Null means a missing file is an
+    /// error -- the catalog must exist, while the thread-item list is legitimately absent until
+    /// something is written to it.
+    /// </param>
+    public static T Submit<T>(
+        string path,
+        Func<string, (string Text, T Result)> operation,
+        Func<string, int> totalOf,
+        string? whenMissing = null)
+        where T : IBatchedResult<T> =>
+        Lanes.GetOrAdd(Path.GetFullPath(path), full => new Lane(full, totalOf, whenMissing))
+             .Submit(operation);
 
-    /// <summary>One graph file's queue. One lane per path, so unrelated graphs never block each other.</summary>
-    private sealed class Lane(string path)
+    /// <summary>One file's queue. One lane per path, so unrelated files never block each other.</summary>
+    private sealed class Lane(string path, Func<string, int> totalOf, string? whenMissing)
     {
         private readonly Queue<IWorkItem> _pending = new();
         private readonly Lock _gate = new();
         private bool _draining;
 
         public T Submit<T>(Func<string, (string Text, T Result)> operation)
-            where T : IGraphResult<T>
+            where T : IBatchedResult<T>
         {
             WorkItem<T> item = new(operation);
             bool mine;
@@ -134,10 +151,7 @@ public static class GraphQueue
             {
                 using FileLock fileLock = FileLock.Take(path, LockTimeout);
 
-                string text = File.Exists(path)
-                    ? File.ReadAllText(path)
-                    : throw new GraphException($"Research graph not found: {path}");
-
+                string text = Read();
                 string original = text;
 
                 foreach (IWorkItem item in batch)
@@ -152,12 +166,12 @@ public static class GraphQueue
                     AtomicWrite(path, text);
                 }
 
-                int totalNodes = CountNodes(text, path);
+                int total = totalOf(text);
                 int written = batch.Count(i => i.Succeeded);
 
                 foreach (IWorkItem item in batch)
                 {
-                    item.Complete(totalNodes, written);
+                    item.Complete(total, written);
                 }
             }
             catch (Exception ex)
@@ -172,7 +186,15 @@ public static class GraphQueue
             }
         }
 
-        private static int CountNodes(string text, string path) => ResearchGraph.Parse(text, path).Nodes.Count;
+        private string Read()
+        {
+            if (File.Exists(path))
+            {
+                return File.ReadAllText(path);
+            }
+
+            return whenMissing ?? throw new GraphException($"File not found: {path}");
+        }
 
         /// <summary>
         /// Writes to a sibling temp file and renames it over the target.
@@ -180,15 +202,21 @@ public static class GraphQueue
         /// <remarks>
         /// A rename is atomic on both platforms and File.WriteAllText is not, so a reader sees
         /// either the whole old file or the whole new one and never the seam between them.
-        /// Readers are deliberately not made to take the lock: a query is the most common thing
-        /// this catalog does, and making it wait behind a write would be a real cost paid for a
-        /// problem the rename already solves.
+        /// Readers are deliberately not made to take the lock: reading is the most common thing
+        /// done to these files, and making it wait behind a write would be a real cost paid for
+        /// a problem the rename already solves.
         ///
         /// The temp file is a sibling so the rename stays within one volume; across volumes it
         /// degrades to a copy, which is exactly the non-atomic write being avoided.
         /// </remarks>
         private static void AtomicWrite(string path, string text)
         {
+            string? directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
             string temp = path + ".tmp-" + Guid.NewGuid().ToString("n")[..8];
 
             try
@@ -216,13 +244,13 @@ public static class GraphQueue
         /// <summary>Applies the operation, returning the text unchanged if it threw.</summary>
         string Run(string text);
 
-        void Complete(int totalNodes, int batched);
+        void Complete(int total, int batched);
 
         void Fail(Exception error);
     }
 
     private sealed class WorkItem<T>(Func<string, (string Text, T Result)> operation) : IWorkItem
-        where T : IGraphResult<T>
+        where T : IBatchedResult<T>
     {
         private readonly TaskCompletionSource<T> _completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -247,7 +275,7 @@ public static class GraphQueue
             }
         }
 
-        public void Complete(int totalNodes, int batched)
+        public void Complete(int total, int batched)
         {
             if (_error is not null)
             {
@@ -255,7 +283,7 @@ public static class GraphQueue
                 return;
             }
 
-            _completion.TrySetResult(_result.WithBatch(totalNodes, batched));
+            _completion.TrySetResult(_result.WithBatch(total, batched));
         }
 
         public void Fail(Exception error) => _completion.TrySetException(error);
@@ -266,16 +294,22 @@ public static class GraphQueue
 }
 
 /// <summary>
-/// An exclusive lock on a graph, held across processes.
+/// An exclusive lock on a file, held across processes.
 /// </summary>
 /// <remarks>
-/// A sidecar file rather than a named mutex: named mutexes behave differently across platforms
-/// and containers, while an exclusive file handle is the same mechanism everywhere. It is also
-/// the same mechanism a second PROCESS contends on -- the OS enforces share mode per handle and
-/// does not care which process opened it -- so a test with two handles proves the cross-process
-/// case as well as it can be proved without spawning one.
+/// A sidecar file rather than a named mutex. The thread-item list used a named mutex, which
+/// works but carries two problems this does not: a mutex abandoned by a dying process raises
+/// AbandonedMutexException at whoever takes it next, leaving that caller to decide whether the
+/// file is torn; and named mutexes behave differently across platforms and containers, which
+/// matters for a tool whose reason to exist is running somewhere other than Windows. An
+/// exclusive file handle is the same mechanism everywhere and is released by the OS on process
+/// death with nothing to reason about.
 ///
-/// The lock is beside the graph rather than on it, so an exclusive open never collides with an
+/// It is also the same mechanism a second PROCESS contends on -- the OS enforces share mode per
+/// handle and does not care which process opened it -- so a test with two handles proves the
+/// cross-process case as well as it can be proved without spawning one.
+///
+/// The lock is beside the file rather than on it, so an exclusive open never collides with an
 /// ordinary reader.
 /// </remarks>
 internal sealed class FileLock : IDisposable
@@ -284,9 +318,16 @@ internal sealed class FileLock : IDisposable
 
     private FileLock(FileStream stream) => _stream = stream;
 
-    public static FileLock Take(string graphPath, TimeSpan timeout)
+    public static FileLock Take(string path, TimeSpan timeout)
     {
-        string lockPath = graphPath + ".lock";
+        string lockPath = path + ".lock";
+        string? directory = Path.GetDirectoryName(lockPath);
+
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
         DateTime deadline = DateTime.UtcNow + timeout;
         int wait = 5;
 
@@ -305,7 +346,7 @@ internal sealed class FileLock : IDisposable
             catch (IOException ex)
             {
                 throw new GraphException(
-                    $"Could not take the write lock on {graphPath} within {timeout.TotalSeconds:0}s. " +
+                    $"Could not take the write lock on {path} within {timeout.TotalSeconds:0}s. " +
                     $"Another janet process is writing to it, or {lockPath} was left locked by one " +
                     "that died. Nothing was written.", ex);
             }

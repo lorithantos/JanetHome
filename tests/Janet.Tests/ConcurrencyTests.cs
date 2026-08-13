@@ -230,7 +230,7 @@ public class ConcurrencyTests : IDisposable
 
         using (FileStream held = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
         {
-            GraphQueue.LockTimeout = TimeSpan.FromMilliseconds(200);
+            WriteQueue.LockTimeout =TimeSpan.FromMilliseconds(200);
 
             try
             {
@@ -249,7 +249,7 @@ public class ConcurrencyTests : IDisposable
             }
             finally
             {
-                GraphQueue.LockTimeout = TimeSpan.FromSeconds(30);
+                WriteQueue.LockTimeout =TimeSpan.FromSeconds(30);
             }
         }
 

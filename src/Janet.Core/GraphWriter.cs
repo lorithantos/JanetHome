@@ -42,7 +42,7 @@ public sealed record AddResult(
     IReadOnlyList<string> Warnings,
     IReadOnlyList<string> ReverseLinks,
     string? NodeText,
-    int Batched = 1) : IGraphResult<AddResult>
+    int Batched = 1) : IBatchedResult<AddResult>
 {
     public AddResult WithBatch(int totalNodes, int batched) =>
         this with { TotalNodes = totalNodes, Batched = batched };
@@ -56,7 +56,7 @@ public sealed record UpdateResult(
     IReadOnlyList<string> Warnings,
     int TotalNodes,
     string? NodeText,
-    int Batched = 1) : IGraphResult<UpdateResult>
+    int Batched = 1) : IBatchedResult<UpdateResult>
 {
     public UpdateResult WithBatch(int totalNodes, int batched) =>
         this with { TotalNodes = totalNodes, Batched = batched };
@@ -76,7 +76,13 @@ public static class GraphWriter
         new("^[a-z]+\\.[a-z0-9-]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static AddResult Add(string graphPath, AddRequest request) =>
-        GraphQueue.Submit(graphPath, text => ApplyAdd(text, graphPath, request));
+        WriteQueue.Submit(graphPath, text => ApplyAdd(text, graphPath, request), NodeCount);
+
+    /// <summary>
+    /// How many nodes the graph text holds. The queue calls this once per batch, to restate
+    /// every result in it with a total that was actually on disk.
+    /// </summary>
+    internal static int NodeCount(string text) => ResearchGraph.Parse(text, "(in memory)").Nodes.Count;
 
     /// <summary>
     /// The add itself, against text the queue holds. Returns the new text rather than writing it.
@@ -202,7 +208,7 @@ public static class GraphWriter
     }
 
     public static UpdateResult Update(string graphPath, UpdateRequest request) =>
-        GraphQueue.Submit(graphPath, text => ApplyUpdate(text, graphPath, request));
+        WriteQueue.Submit(graphPath, text => ApplyUpdate(text, graphPath, request), NodeCount);
 
     /// <summary>The update itself, against text the queue holds. Returns the new text rather than writing it.</summary>
     internal static (string Text, UpdateResult Result) ApplyUpdate(

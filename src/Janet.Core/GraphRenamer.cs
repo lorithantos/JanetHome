@@ -22,7 +22,7 @@ public sealed record RenameResult(
     IReadOnlyList<string> BodyReferences,
     IReadOnlyList<string> Warnings,
     int TotalNodes,
-    int Batched = 1) : IGraphResult<RenameResult>
+    int Batched = 1) : IBatchedResult<RenameResult>
 {
     public RenameResult WithBatch(int totalNodes, int batched) =>
         this with { TotalNodes = totalNodes, Batched = batched };
@@ -43,7 +43,7 @@ public sealed record RenameResult(
 public static class GraphRenamer
 {
     public static RenameResult Rename(string graphPath, RenameRequest request) =>
-        GraphQueue.Submit(graphPath, text => ApplyRename(text, graphPath, request));
+        WriteQueue.Submit(graphPath, text => ApplyRename(text, graphPath, request), GraphWriter.NodeCount);
 
     /// <summary>The rename itself, against text the queue holds. Returns the new text rather than writing it.</summary>
     internal static (string Text, RenameResult Result) ApplyRename(
