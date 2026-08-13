@@ -834,13 +834,17 @@
       "kind": "script",
       "path": "scripts\\Get-ApiDoc.ps1",
       "summary": "Queries a .NET XML documentation file the way Get-Research queries research.json: ranked free-text search returning parsed members (kind, declaring type, readable signature, summary, per-parameter docs) instead of grep hits. Exists because researching a library from raw doc XML is expensive and bad at the job -- the file is one stream of hard-wrapped indented <member> elements, so a match costs dozens of context lines and the answer arrives split across them. Flattens doc markup (see cref, paramref, c) into prose, shortens fully-qualified argument lists, and follows <inheritdoc/> chains transitively (BarSeries -> Series -> ISeries is the ordinary shape, and one hop makes results depend on document order). Resolves the .xml from the NuGet cache by package id, newest version and newest TFM, so callers never hunt for the path. JSON by default with the standard envelope; -Text to read at a terminal; -Package alone gives cheap orientation (counts by kind, largest types).",
+      "params": ["Package", "Path", "Version", "Tfm", "Query", "Id", "Kind", "Type", "First", "All", "Full", "Text", "Pretty"],
       "caveats": [
         "A bare <inheritdoc/> with no cref is NOT resolved -- implicit inheritance needs the type hierarchy, which an XML doc file does not carry. Those members read as undocumented even though the base or interface documents them; check the base type by name when a result looks empty.",
         "Only reads XML that ships inside the package under lib\\<tfm>\\. Packages built without GenerateDocumentationFile throw a clear error rather than returning nothing, and a package documenting only some members will honestly report the rest as undocumented.",
-        "Generic arity survives in names as it does in the file (Series`3, CoreAxis`2), so query by simple name rather than pasting a C# generic."
+        "Generic arity survives in names as it does in the file (Series`3, CoreAxis`2), so query by simple name rather than pasting a C# generic.",
+        "A shim since the cutover: it forwards to the janet CLI. A missing or stale global tool fails or answers with old behaviour, and the tool is NOT rotated with the MCP server -- Update-McpServer.ps1 -ToolProject reinstalls it.",
+        "-Text is now CAPTURABLE, which it was not. The original wrote it with Write-Host, so $x = ... -Text yielded nothing and the text only appeared on the console; the shim's output is a child process's stdout and assigns like anything else. A caller that worked around this with 6>&1 still works.",
+        "The largest-types map now breaks ties by name. The original sorted by count with PowerShell's Sort-Object, which is unstable unless -Stable is passed, so equal counts came back in whatever order Array.Sort left them -- reproducible for one file and arbitrary across any change to it."
       ],
       "tags": ["api", "research", "dotnet", "powershell", "retrieval", "context-budget"],
-      "links": ["script.get-research"]
+      "links": ["script.get-research", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common", "script.get-assembly-api"]
     },
 
     {
@@ -1006,15 +1010,19 @@
     {
       "id": "script.get-assembly-api",
       "kind": "script",
-      "path": "scripts/Get-AssemblyApi.ps1",
-      "summary": "Report a compiled assembly's real API -- types, their declared members, and their base types -- by reflection. REACH FOR script.get-api-doc FIRST: most packages ship an XML doc file and that answers the same question with prose summaries and per-parameter docs, cheaply. Use THIS when the XML is absent, when a member is undocumented (XML carries only what was documented), or when the inheritance chain itself is the question -- reflection reports what the compiler emitted rather than what someone wrote down. Handles the two things that make the naive attempt fail: it resolves DEPENDENCIES from the folder the assembly sits in (loading straight out of ~/.nuget/packages/<pkg>/lib/<tfm>/ throws ReflectionTypeLoadException because that folder holds one DLL alone -- measured: 251 loader errors), and on a partial load it uses the types that did load while reporting how many did not. Filters before printing, because GetTypes() on a compiler library returns hundreds of types. Declared members only by default, compiler-generated accessors (get_X/set_X) suppressed. Written 2026-08-11 while hand-reflecting Loretta's Lua syntax types -- a job Get-ApiDoc could have done, and the reason the first line of this summary exists. The run did earn its keep: it showed obj:m() is a DIFFERENT node type (MethodCallExpressionSyntax) from f() (FunctionCallExpressionSyntax), which a guess would have missed silently and a switch statement would have dropped on the floor.",
+      "path": "scripts\\Get-AssemblyApi.ps1",
+      "summary": "Report a compiled assembly's real API -- types, their declared members, and their base types -- by reflection. Now a shim over 'janet assembly' -- same code as the assembly_api MCP tool. REACH FOR script.get-api-doc FIRST: most packages ship an XML doc file and that answers the same question with prose summaries and per-parameter docs, cheaply. Use THIS when the XML is absent, when a member is undocumented (XML carries only what was documented), or when the inheritance chain itself is the question -- reflection reports what the compiler emitted rather than what someone wrote down. Handles the two things that make the naive attempt fail: it resolves DEPENDENCIES from the folder the assembly sits in (loading straight out of ~/.nuget/packages/<pkg>/lib/<tfm>/ throws ReflectionTypeLoadException because that folder holds one DLL alone -- measured: 251 loader errors), and on a partial load it uses the types that did load while reporting how many did not. Filters before printing, because GetTypes() on a compiler library returns hundreds of types. Declared members only by default, compiler-generated accessors (get_X/set_X) suppressed. Written 2026-08-11 while hand-reflecting Loretta's Lua syntax types -- a job Get-ApiDoc could have done, and the reason the first line of this summary exists. The run did earn its keep: it showed obj:m() is a DIFFERENT node type (MethodCallExpressionSyntax) from f() (FunctionCallExpressionSyntax), which a guess would have missed silently and a switch statement would have dropped on the floor.",
+      "params": ["Assembly", "SearchRoot", "Type", "Member", "Inherited", "Static", "MaxTypes", "Text"],
       "caveats": [
-        "Point -SearchRoot at a build or publish output, not a nuget lib folder: dependencies must be side by side. The script prefers the candidate with the most sibling DLLs and warns when a load fails in a folder holding only one.",
-        "LoadFrom pins assemblies for the life of the PROCESS, and an agent shell reuses one process across commands. A sibling-resolution failure therefore reproduces only in a fresh process (pwsh -NoProfile -Command); once a dependency is loaded from anywhere, a later load from a folder missing it silently succeeds.",
-        "Public types only, and -MaxTypes caps the listing at 40 (truncated is reported, never silent)."
+        "Point -SearchRoot at a build or publish output, not a nuget lib folder: dependencies must be side by side. The candidate with the most sibling DLLs wins, and a folder holding one assembly is reported as 'siblingWarning' IN THE ENVELOPE -- it used to be a Write-Warning, which an MCP client never saw and a redirected caller dropped.",
+        "The process-lifetime trap is fixed, with a limit worth knowing. Each request loads into its own collectible AssemblyLoadContext, so the assembly under inspection is read from disk every call -- a rebuilt target now shows its new surface, and a missing sibling reproduces every time instead of only in a fresh process. But a DEPENDENCY already loaded by the host still resolves through the default context, so isolation is total for the CLI (fresh process) and partial inside a long-lived server.",
+        "Public types only, and -MaxTypes caps the listing at 40 (truncated is reported, never silent).",
+        "The partial answer now actually holds. The original recovered from a failed GetTypes and then threw reading a property's type on a type that HAD loaded: against a bare nuget lib folder in a fresh process it printed its warning and died with \"The property 'Name' cannot be found on this object\". Members whose signature cannot be resolved are dropped and counted in 'membersDropped'; the same folder now returns 74 types loaded, 11 unloadable, 1 member dropped.",
+        "A shim since the cutover: it forwards to the janet CLI. A missing or stale global tool fails or answers with old behaviour, and the tool is NOT rotated with the MCP server -- Update-McpServer.ps1 -ToolProject reinstalls it.",
+        "NOT golden-tested, unlike the rest of the port, and the reason is structural: the envelope carries an absolute folder path and a count of the DLLs beside the assembly, so a recorded answer would be pinned to one machine's build output. Parity was checked live across the flag space on 2026-08-12 -- all types, type filter, member filter, static, inherited and truncation identical to the PowerShell -- and the behaviour is covered by unit tests over types this repo's test assembly declares."
       ],
       "tags": ["reflection", "api-discovery", "dotnet", "nuget", "powershell", "third-party"],
-      "links": ["script.get-api-doc"]
+      "links": ["script.get-api-doc", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common"]
     },
 
     {
@@ -1074,7 +1082,7 @@
         "Historical, and the design lesson worth keeping: the port wrote only research.candidate.json while it was built, with research.candidate.base.json frozen beside it as the common ancestor. A seed HASH would have said only THAT the live graph moved, never WHICH nodes -- integrating them forward is a three-way comparison, and the first cut of the plan stored a hash and was not implementable. Both files are gone now; the swap consumed them."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api"]
     },
 
     {
@@ -1106,7 +1114,7 @@
         "Substring matching, deliberately not -like. The PowerShell used -like, so a query term containing * or ? behaved as a wildcard by accident; that edge is not reproduced."
       ],
       "tags": ["csharp", "retrieval", "research", "index"],
-      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common", "note.graph-write-queue"]
+      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common", "note.graph-write-queue", "script.get-api-doc", "script.get-assembly-api"]
     },
 
     {
@@ -1178,7 +1186,7 @@
         "Deliberately sets no StrictMode. A dot-sourced file runs in the CALLER's scope, so Set-StrictMode here would silently arm it for whatever script sourced this one -- a setting the caller never asked for and would debug as its own bug."
       ],
       "tags": ["powershell", "tooling", "research", "retrieval"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "script.rename-research-node", "file.janet-core"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "script.rename-research-node", "file.janet-core", "script.get-api-doc", "script.get-assembly-api"]
     },
 
     {

@@ -83,6 +83,75 @@ public static class Cases
     ];
 
     /// <summary>
+    /// The fixture path exactly as it is handed to the script, and exactly as the envelope
+    /// reports it back under 'source'.
+    /// </summary>
+    /// <remarks>
+    /// Relative on purpose. Get-ApiDoc echoes -Path verbatim rather than resolving it, so an
+    /// absolute path would bake one machine's directory layout into every golden.
+    /// </remarks>
+    public const string ApiDocSource = @"tests\Janet.Tests\Fixtures\apidoc.xml";
+
+    /// <summary>
+    /// API-doc queries against Fixtures/apidoc.xml. The generator adds -Path.
+    /// </summary>
+    /// <remarks>
+    /// A hand-authored fixture rather than a real package's XML, for two reasons: a cached
+    /// package pins the golden to one machine's NuGet folder and one version, and the shapes
+    /// worth testing (a chain of inheritdoc, a bare one, a circular pair, a conversion operator,
+    /// a generic argument carrying its own comma) are rare enough in any single real package that
+    /// picking one would be picking which bugs to leave uncovered.
+    /// </remarks>
+    public static readonly Read[] ApiDocs =
+    [
+        new("orientation", []),
+
+        new("free text: draw series", ["-Query", "draw series"]),
+        new("free text: tooltip formatter", ["-Query", "tooltip formatter"]),
+        new("free text: coordinate", ["-Query", "coordinate"]),
+        new("free text: no matches", ["-Query", "zzzzznotathing"]),
+        new("free text uncapped", ["-Query", "draw", "-All"]),
+        new("free text, wider cap", ["-Query", "draw", "-First", "12"]),
+
+        // The undocumented member matches on name alone and must lose to the documented ones.
+        new("free text: undocumented loses ties", ["-Query", "undocumented"]),
+
+        new("free text, full", ["-Query", "project", "-Full"]),
+
+        new("id", ["-Id", "M:Sample.Charting.ISeries.Measure"]),
+        new("id without the prefix", ["-Id", "Sample.Charting.ISeries.Measure"]),
+        new("id, several", ["-Id", "T:Sample.Charting.Tooltip", "-Id", "P:Sample.Charting.Tooltip.Formatter"]),
+        new("id, member with no declaring type", ["-Id", "M:Bare"]),
+
+        new("kind: Type", ["-Kind", "Type"]),
+        new("kind: Property", ["-Kind", "Property"]),
+        new("kind: Event", ["-Kind", "Event"]),
+
+        new("type filter", ["-Type", "BarSeries"]),
+        new("type filter narrowed by kind", ["-Type", "Tooltip", "-Kind", "Method"]),
+        new("query narrowed by type", ["-Query", "draw", "-Type", "BarSeries"]),
+        new("query narrowed by kind", ["-Query", "draw", "-Kind", "Type"]),
+
+        // Tooltip carries all three inheritdoc shapes: resolvable, unresolvable cref, and a bare
+        // one with no cref at all -- which is NOT resolved, and must report as undocumented
+        // rather than borrow from somewhere plausible.
+        new("every inheritdoc shape", ["-Type", "Tooltip"]),
+        new("circular inheritdoc", ["-Type", "Loop"]),
+        new("conversion operator and generics", ["-Type", "Coordinate", "-Full"]),
+    ];
+
+    /// <summary>The same fixture through the formatted view. The generator adds -Text.</summary>
+    public static readonly Read[] ApiDocTextViews =
+    [
+        new("orientation", []),
+        new("ranked free text", ["-Query", "draw series", "-First", "3"]),
+        new("no matches", ["-Query", "zzzzznotathing"]),
+        new("type listing", ["-Type", "BarSeries"]),
+        new("full", ["-Query", "project", "-Full"]),
+        new("id lookup", ["-Id", "T:Sample.Charting.Coordinate"]),
+    ];
+
+    /// <summary>
     /// Writes, compared byte for byte against the layout fixture after the operation.
     /// </summary>
     /// <remarks>

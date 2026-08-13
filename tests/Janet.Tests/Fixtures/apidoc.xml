@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <assembly>
+        <name>Sample.Charting</name>
+    </assembly>
+    <members>
+        <member name="T:Sample.Charting.ISeries">
+            <summary>
+            A drawable data series. Implementations decide how a
+            <see cref="T:Sample.Charting.Coordinate"/> becomes pixels.
+            </summary>
+        </member>
+        <member name="M:Sample.Charting.ISeries.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})">
+            <summary>Draws the series onto a canvas.</summary>
+            <param name="canvas">Where to draw. Must not be <see langword="null"/>.</param>
+            <param name="points">The coordinates, in order.</param>
+        </member>
+        <member name="M:Sample.Charting.ISeries.Measure">
+            <summary>Measures the series without drawing it.</summary>
+            <returns>The bounding size, in device units.</returns>
+        </member>
+        <member name="T:Sample.Charting.SeriesBase">
+            <summary>Shared plumbing for every series.</summary>
+        </member>
+        <member name="T:Sample.Charting.BarSeries">
+            <summary>A series drawn as vertical bars.</summary>
+        </member>
+        <!--
+            BarSeries.Draw is deliberately ABOVE the base it inherits from. Resolving one hop
+            would leave it undocumented, because SeriesBase.Draw is itself an inheritdoc and has
+            no summary of its own yet at this point in the file. That is the whole reason the
+            chain is followed rather than hopped once, and with both in the other order the
+            fixture could not tell the two apart.
+        -->
+        <member name="M:Sample.Charting.BarSeries.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})">
+            <inheritdoc cref="M:Sample.Charting.SeriesBase.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})"/>
+        </member>
+        <member name="M:Sample.Charting.SeriesBase.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})">
+            <inheritdoc cref="M:Sample.Charting.ISeries.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})"/>
+        </member>
+        <member name="P:Sample.Charting.BarSeries.Fill">
+            <summary>The bar fill. Setting this to <c>null</c> restores the theme default.</summary>
+            <value>A brush, or <see langword="null"/> for the theme default.</value>
+        </member>
+        <member name="P:Sample.Charting.BarSeries.Item(System.Int32)">
+            <summary>Gets the bar at an index.</summary>
+            <param name="index">Zero-based position.</param>
+            <value>The bar.</value>
+        </member>
+        <member name="F:Sample.Charting.BarSeries.DefaultWidth">
+            <summary>The width used when none is set: 0.75 &amp; unitless.</summary>
+        </member>
+        <member name="E:Sample.Charting.BarSeries.Redrawn">
+            <summary>Raised after a draw pass completes.</summary>
+        </member>
+        <member name="M:Sample.Charting.BarSeries.Undocumented">
+            <returns>Something. The summary was never written.</returns>
+        </member>
+        <member name="T:Sample.Charting.Coordinate">
+            <summary>
+            <para>A point in data space.</para>
+            <para>Comparisons use <paramref name="tolerance"/> where one is supplied.</para>
+            </summary>
+            <remarks>
+            Stored as <c>double</c> so that a chart spanning
+            <see cref="F:System.Double.MaxValue">the whole range</see> still plots.
+            </remarks>
+            <typeparam name="TUnit">The unit of measure the coordinate is expressed in.</typeparam>
+        </member>
+        <member name="M:Sample.Charting.Coordinate.op_Implicit(Sample.Charting.Coordinate)~System.String">
+            <summary>Formats a coordinate as "x, y".</summary>
+        </member>
+        <member name="M:Sample.Charting.Coordinate.Project``1(System.Func{System.Int32,System.String},System.Boolean)">
+            <summary>Projects the coordinate through a formatter.</summary>
+            <param name="formatter">Turns the ordinal into a label.</param>
+            <param name="tolerance">Whether to snap to the nearest device pixel.</param>
+            <typeparam name="TResult">What the projection yields.</typeparam>
+            <exception cref="T:System.ArgumentNullException">
+            <paramref name="formatter"/> is <see langword="null"/>.
+            </exception>
+            <exception cref="T:System.InvalidOperationException">The coordinate is detached.</exception>
+            <returns>The projected value.</returns>
+        </member>
+        <member name="M:Sample.Charting.Coordinate.Equals(System.Object)">
+            <summary>Compares two coordinates. Returns true when both are within 1e&lt;-9&gt; of each other &amp;amp; the same unit.</summary>
+        </member>
+        <member name="T:Sample.Charting.Tooltip">
+            <summary>The floating panel shown next to the cursor.</summary>
+        </member>
+        <member name="P:Sample.Charting.Tooltip.Formatter">
+            <summary>Formats the tooltip text for a hovered point.</summary>
+        </member>
+        <member name="M:Sample.Charting.Tooltip.Show(Sample.Charting.Coordinate)">
+            <inheritdoc/>
+        </member>
+        <member name="M:Sample.Charting.Tooltip.Hide">
+            <inheritdoc cref="M:Sample.Charting.NoSuchType.Hide"/>
+        </member>
+        <member name="M:Sample.Charting.Tooltip.Toggle">
+            <summary>Shows the tooltip if hidden, hides it if shown.</summary>
+            <inheritdoc cref="M:Sample.Charting.ISeries.Measure"/>
+        </member>
+        <member name="M:Sample.Charting.Loop.First">
+            <inheritdoc cref="M:Sample.Charting.Loop.Second"/>
+        </member>
+        <member name="M:Sample.Charting.Loop.Second">
+            <inheritdoc cref="M:Sample.Charting.Loop.First"/>
+        </member>
+        <member name="M:Bare">
+            <summary>A member whose name carries no declaring type at all.</summary>
+        </member>
+        <member name="X:Sample.Charting.NotAKnownPrefix">
+            <summary>Skipped: the prefix is not one of T M P F E.</summary>
+        </member>
+    </members>
+</doc>

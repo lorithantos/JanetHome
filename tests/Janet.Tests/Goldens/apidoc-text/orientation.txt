@@ -1,0 +1,18 @@
+
+tests\Janet.Tests\Fixtures\apidoc.xml -- 24 documented members
+  Event     1
+  Field     1
+  Method    14
+  Property  3
+  Type      5
+
+LARGEST TYPES
+  7     Sample.Charting.BarSeries
+  5     Sample.Charting.Tooltip
+  4     Sample.Charting.Coordinate
+  3     Sample.Charting.ISeries
+  2     Sample.Charting.Loop
+  2     Sample.Charting.SeriesBase
+
+Query with -Query <text>, -Type <type>, -Id <member>, or -Kind <kind>.
+

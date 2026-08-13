@@ -34,6 +34,16 @@ static int Run(Args args)
         return Thread(args);
     }
 
+    if (command == "api")
+    {
+        return ApiDocQuery(args);
+    }
+
+    if (command == "assembly")
+    {
+        return Assembly(args);
+    }
+
     if (command != "research")
     {
         Console.Error.WriteLine($"Unknown command '{args.Positional[0]}'.");
@@ -129,6 +139,96 @@ static int Thread(Args args)
             Console.Error.WriteLine($"Unknown thread verb '{verb}'.");
             return Usage();
     }
+}
+
+/// <summary>
+/// A library's XML documentation, queried the way the catalog is: ranked, flattened to prose, and
+/// honest about truncation.
+/// </summary>
+static int ApiDocQuery(Args args)
+{
+    // --path wins over --package, matching the script: an explicit file bypasses cache resolution
+    // entirely rather than being reconciled with it.
+    string source = args.Value("--path")
+        ?? ApiDoc.ResolvePath(
+            args.Value("--package") ?? throw new ArgumentException("Pass --package or --path."),
+            args.Value("--version"),
+            args.Value("--tfm"));
+
+    if (!File.Exists(source))
+    {
+        throw new GraphException($"Documentation file not found: {source}");
+    }
+
+    ApiDocRequest request = new()
+    {
+        Query = args.Value("--query"),
+        Ids = args.Values("--id"),
+        Kind = args.Value("--kind"),
+        Type = args.Value("--type"),
+        First = args.Int("--first", 5),
+        All = args.Flag("--all"),
+        Full = args.Flag("--full"),
+    };
+
+    IReadOnlyList<ApiMember> members = ApiDoc.Parse(File.ReadAllText(source), source, request.Full);
+    bool pretty = args.Flag("--pretty");
+
+    // No filter at all is the cheap orientation view rather than the whole surface: counts by
+    // kind and the largest types, which is the shape of the API for a fraction of the cost.
+    bool noFilter = request.Ids.Count == 0
+        && string.IsNullOrEmpty(request.Query)
+        && string.IsNullOrEmpty(request.Kind)
+        && string.IsNullOrEmpty(request.Type);
+
+    if (noFilter)
+    {
+        ApiDocOrientation orientation = ApiDoc.Orient(members, source);
+
+        Console.Out.Write(args.Flag("--text")
+            ? ApiDocJson.Render(orientation)
+            : ApiDocJson.Serialize(orientation, pretty) + Environment.NewLine);
+
+        return 0;
+    }
+
+    ApiDocResult result = ApiDoc.Query(members, source, request);
+
+    Console.Out.Write(args.Flag("--text")
+        ? ApiDocJson.Render(result, request.Full)
+        : ApiDocJson.Serialize(result, pretty) + Environment.NewLine);
+
+    return 0;
+}
+
+/// <summary>
+/// A compiled assembly's real API surface, so "what is this actually called" costs one call
+/// rather than a build per wrong guess.
+/// </summary>
+static int Assembly(Args args)
+{
+    string assembly = args.Value("--assembly")
+        ?? (args.Positional.Count > 1 ? args.Positional[1] : null)
+        ?? throw new ArgumentException("--assembly is required: a path, or a name to find under --search-root.");
+
+    AssemblyApiRequest request = new()
+    {
+        Type = args.Value("--type"),
+        Member = args.Value("--member"),
+        Inherited = args.Flag("--inherited"),
+        Static = args.Flag("--static"),
+        MaxTypes = args.Int("--max-types", 40),
+    };
+
+    AssemblyApiResult result = AssemblyApi.Describe(assembly, args.Value("--search-root") ?? ".", request);
+
+    Console.Out.Write(args.Flag("--text")
+        ? AssemblyApiJson.Render(result)
+
+        // Indented by default, which is what the script did. --compact is the opt-out.
+        : AssemblyApiJson.Serialize(result, pretty: !args.Flag("--compact")) + Environment.NewLine);
+
+    return 0;
 }
 
 static int Query(Args args, string graphPath, bool pretty)
@@ -404,6 +504,21 @@ static int Usage()
                               [--append-notes] [--append-refs]
         janet thread complete [--topic TEXT | --index N]
         janet thread active   (--topic TEXT | --index N | --none)
+
+        janet api             (--package ID | --path FILE) [--version V] [--tfm TFM]
+                              [--query TEXT] [--id MEMBER]... [--kind Type|Method|Property|Field|Event]
+                              [--type SUBSTRING] [--first N] [--all] [--full]
+                              [--text] [--pretty]
+        janet assembly        --assembly NAME|PATH [--search-root DIR] [--type REGEX]
+                              [--member REGEX] [--inherited] [--static] [--max-types N]
+                              [--text] [--compact]
+
+        api with no filter gives the orientation view: counts by kind and the largest types.
+        Free-text results are ranked and capped -- check 'truncated'. A selector (--type, --kind,
+        --id) is never capped, because it is a request for a known set.
+        assembly reports what a DLL actually declares. Point --search-root at a build or publish
+        output, not a nuget lib folder: a folder holding one assembly cannot resolve its
+        dependencies, and the answer comes back partial with 'siblingWarning' saying so.
 
         Thread commands: [--path FILE]   (defaults to Janet\thread-stack.json under %TEMP%)
         No selector means whatever is active. An ambiguous topic is refused, not guessed at.

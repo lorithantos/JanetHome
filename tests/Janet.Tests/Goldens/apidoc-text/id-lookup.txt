@@ -1,0 +1,6 @@
+
+Sample.Charting.Coordinate
+  [Type] A point in data space. Comparisons use tolerance where one is supplied.
+
+1 member
+

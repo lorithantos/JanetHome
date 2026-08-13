@@ -31,6 +31,7 @@ public static class Program
         "Add-ResearchNode.ps1",
         "Update-ResearchNode.ps1",
         "Rename-ResearchNode.ps1",
+        "Get-ApiDoc.ps1",
 
         // The thread-item entry points dot-source their shared helpers from $PSScriptRoot, so
         // the extract has to carry that file too or none of them run.
@@ -81,8 +82,9 @@ public static class Program
         string corpus = Path.Combine(fixtures, "research.json");
         string layout = Path.Combine(fixtures, "layout.json");
         string threadSeed = Path.Combine(fixtures, "threads.json");
+        string apiDocFixture = Path.Combine(fixtures, "apidoc.xml");
 
-        foreach (string required in (string[])[corpus, layout, threadSeed])
+        foreach (string required in (string[])[corpus, layout, threadSeed, apiDocFixture])
         {
             if (!File.Exists(required))
             {
@@ -110,12 +112,14 @@ public static class Program
             int texts = WriteTextViews(scripts, corpus, goldens, repoRoot);
             int writes = WriteWrites(scripts, layout, goldens, work, repoRoot);
             int threads = WriteThreads(scripts, threadSeed, goldens, work, repoRoot);
+            int apiDocs = WriteApiDocs(scripts, goldens, repoRoot);
 
-            WriteMeta(goldens, gitRef, commit, scripts, corpus, layout);
+            WriteMeta(goldens, gitRef, commit, scripts, corpus, layout, apiDocFixture);
 
             Console.WriteLine();
             Console.WriteLine(
-                $"{queries} query, {texts} text, {writes} write, {threads} thread goldens -> {goldens}");
+                $"{queries} query, {texts} text, {writes} write, {threads} thread, "
+              + $"{apiDocs} api-doc goldens -> {goldens}");
             return 0;
         }
         catch (Exception ex)
@@ -163,6 +167,40 @@ public static class Program
         }
 
         return Cases.TextViews.Length;
+    }
+
+    /// <summary>
+    /// Runs the API-doc cases against the checked-in XML fixture, in both views.
+    /// </summary>
+    /// <remarks>
+    /// The fixture is passed as a RELATIVE path, and the working directory is the repo root. The
+    /// script echoes -Path straight back under 'source', so an absolute path would put one
+    /// machine's directory layout in every golden and fail everywhere else.
+    /// </remarks>
+    private static int WriteApiDocs(string scripts, string goldens, string repoRoot)
+    {
+        string getApiDoc = Path.Combine(scripts, "Get-ApiDoc.ps1");
+
+        string jsonDirectory = Path.Combine(goldens, "apidoc");
+        string textDirectory = Path.Combine(goldens, "apidoc-text");
+        Directory.CreateDirectory(jsonDirectory);
+        Directory.CreateDirectory(textDirectory);
+
+        foreach (Cases.Read query in Cases.ApiDocs)
+        {
+            string output = Ps.Run(getApiDoc, [.. query.Args, "-Path", Cases.ApiDocSource], repoRoot);
+            Save(Path.Combine(jsonDirectory, Cases.Slug(query.Label) + ".json"), output);
+            Console.WriteLine($"  api    {query.Label}");
+        }
+
+        foreach (Cases.Read view in Cases.ApiDocTextViews)
+        {
+            string output = Ps.Run(getApiDoc, [.. view.Args, "-Text", "-Path", Cases.ApiDocSource], repoRoot);
+            Save(Path.Combine(textDirectory, Cases.Slug(view.Label) + ".txt"), output);
+            Console.WriteLine($"  api-t  {view.Label}");
+        }
+
+        return Cases.ApiDocs.Length + Cases.ApiDocTextViews.Length;
     }
 
     /// <summary>
@@ -278,7 +316,7 @@ public static class Program
     }
 
     private static void WriteMeta(
-        string goldens, string gitRef, string commit, string scripts, string corpus, string layout)
+        string goldens, string gitRef, string commit, string scripts, string corpus, string layout, string apiDocFixture)
     {
         Dictionary<string, string> hashes = [];
 
@@ -298,6 +336,7 @@ public static class Program
             {
                 ["research.json"] = Hash(corpus),
                 ["layout.json"] = Hash(layout),
+                ["apidoc.xml"] = Hash(apiDocFixture),
             },
             corrections = Corrections.ToDictionary(c => c.Key, c => c.Value.Reason),
         };

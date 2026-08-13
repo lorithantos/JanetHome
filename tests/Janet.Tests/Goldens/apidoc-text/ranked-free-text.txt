@@ -1,0 +1,16 @@
+
+Sample.Charting.BarSeries.Draw(Canvas, IEnumerable{Coordinate})
+  [Method] Draws the series onto a canvas.
+  inherited from M:Sample.Charting.ISeries.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})
+
+Sample.Charting.ISeries.Draw(Canvas, IEnumerable{Coordinate})
+  [Method] Draws the series onto a canvas.
+  canvas: Where to draw. Must not be null.
+  points: The coordinates, in order.
+
+Sample.Charting.SeriesBase.Draw(Canvas, IEnumerable{Coordinate})
+  [Method] Draws the series onto a canvas.
+  inherited from M:Sample.Charting.ISeries.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})
+
+top 3 of 12 matches. -First N for more, -All for every match.
+

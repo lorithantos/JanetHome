@@ -1,0 +1,12 @@
+
+Sample.Charting.Coordinate.Project``1(Func{Int32,String}, Boolean)
+  [Method] Projects the coordinate through a formatter.
+  formatter: Turns the ordinal into a label.
+  tolerance: Whether to snap to the nearest device pixel.
+  returns: The projected value.
+  throws System.ArgumentNullException: formatter is null.
+  throws System.InvalidOperationException: The coordinate is detached.
+  <TResult>: What the projection yields.
+
+1 member
+

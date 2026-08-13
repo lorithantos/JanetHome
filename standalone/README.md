@@ -3,11 +3,11 @@
 **The catalog and the thread-item list, in PowerShell 7 alone.** No .NET SDK, no build,
 no MCP server, no global tool. Clone the repo and run them.
 
-Nine of the scripts in `scripts\` are now shims: they forward to the `janet` CLI, where
+Eleven of the scripts in `scripts\` are now shims: they forward to the `janet` CLI, where
 the implementation lives in `src\Janet.Core` so the three front ends cannot disagree.
 That is the right trade for maintaining the tools, and a bad trade for someone who wants
 to read a script, understand it, and use it. These are the last self-contained versions
-of those nine, kept so that path stays open.
+of those eleven, kept so that path stays open.
 
 ## Use
 
@@ -27,6 +27,11 @@ of those nine, kept so that path stays open.
 .\Set-ActiveThread.ps1 -Topic 'the thing'
 .\Update-ThreadItem.ps1 -Topic 'the thing' -Notes '...' -AppendNotes
 .\Complete-ThreadItem.ps1 -Topic 'the thing'
+
+# Library research. Neither of these needs anything else in the repo.
+.\Get-ApiDoc.ps1 -Package LiveChartsCore                       # what is in this API
+.\Get-ApiDoc.ps1 -Package LiveChartsCore -Query 'tooltip formatter'
+.\Get-AssemblyApi.ps1 -Assembly MyLib -SearchRoot .\bin\Release -Type 'Options$'
 ```
 
 Every one takes `-?` for its own help, and the readers take `-Text` for a terminal view.
@@ -47,8 +52,13 @@ too.
 ## What these are not
 
 **They are not maintained.** They are frozen at the commit before each was shimmed --
-`51c7930` for the research four, `4d83dbf` for the thread five. Fixes and new behaviour
-land in `src\Janet.Core`, and nothing propagates back. Expect them to diverge.
+`51c7930` for the research four, `4d83dbf` for the thread five, `fa7ae39` for the two
+library-research scripts. Fixes and new behaviour land in `src\Janet.Core`, and nothing
+propagates back. Expect them to diverge. Two divergences already exist, both fixed in the
+port and not here: `Get-ApiDoc.ps1 -Text` writes with `Write-Host`, so `$x = ... -Text`
+yields nothing without `6>&1`; and `Get-AssemblyApi.ps1` pins every assembly it loads for
+the life of the process, so re-running after a rebuild answers from the first load, and
+it throws rather than returning a partial answer when a member's type cannot be resolved.
 
 **They do not have the write queue.** This is the one difference worth knowing before you
 use them on anything you care about, and it is not cosmetic:

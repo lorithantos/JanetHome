@@ -1,0 +1,29 @@
+
+Sample.Charting.BarSeries.Redrawn
+  [Event] Raised after a draw pass completes.
+
+Sample.Charting.BarSeries.DefaultWidth
+  [Field] The width used when none is set: 0.75 & unitless.
+
+Sample.Charting.BarSeries.Draw(Canvas, IEnumerable{Coordinate})
+  [Method] Draws the series onto a canvas.
+  inherited from M:Sample.Charting.ISeries.Draw(Sample.Charting.Canvas,System.Collections.Generic.IEnumerable{Sample.Charting.Coordinate})
+
+Sample.Charting.BarSeries.Undocumented()
+  [Method] (undocumented)
+  returns: Something. The summary was never written.
+
+Sample.Charting.BarSeries.Fill
+  [Property] The bar fill. Setting this to null restores the theme default.
+  value:   A brush, or null for the theme default.
+
+Sample.Charting.BarSeries.Item(Int32)
+  [Property] Gets the bar at an index.
+  index: Zero-based position.
+  value:   The bar.
+
+Sample.Charting.BarSeries
+  [Type] A series drawn as vertical bars.
+
+7 members
+

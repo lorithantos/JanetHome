@@ -26,6 +26,11 @@ public sealed class Args
 
         // Thread items.
         "--active", "--none", "--append-notes", "--append-refs",
+
+        // API and assembly introspection. --compact is the opposite of --pretty and exists
+        // because the two scripts disagreed: Get-ApiDoc printed compressed JSON and
+        // Get-AssemblyApi printed indented, and both defaults are kept rather than unified.
+        "--inherited", "--static", "--compact",
     };
 
     public static Args Parse(IReadOnlyList<string> argv)
