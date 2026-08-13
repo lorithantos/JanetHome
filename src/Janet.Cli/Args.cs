@@ -23,6 +23,9 @@ public sealed class Args
     {
         "--all", "--expand", "--full", "--text", "--pretty", "--append", "--dry-run", "--http",
         "--help", "--no-trace",
+
+        // Thread items.
+        "--active", "--none", "--append-notes", "--append-refs",
     };
 
     public static Args Parse(IReadOnlyList<string> argv)

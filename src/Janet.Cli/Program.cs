@@ -27,7 +27,14 @@ static int Run(Args args)
         return Usage();
     }
 
-    if (!string.Equals(args.Positional[0], "research", StringComparison.OrdinalIgnoreCase))
+    string command = args.Positional[0].ToLowerInvariant();
+
+    if (command == "thread")
+    {
+        return Thread(args);
+    }
+
+    if (command != "research")
     {
         Console.Error.WriteLine($"Unknown command '{args.Positional[0]}'.");
         return Usage();
@@ -45,6 +52,81 @@ static int Run(Args args)
         case "rename": return Rename(args, graphPath, pretty);
         default:
             Console.Error.WriteLine($"Unknown research verb '{verb}'.");
+            return Usage();
+    }
+}
+
+/// <summary>
+/// The thread-item list: what you were doing, and what to do first on return.
+/// </summary>
+/// <remarks>
+/// --path rather than --graph: this list is session-scale working memory in %TEMP%, not a repo
+/// artifact, so it does not resolve against JanetBase the way the catalog does.
+/// </remarks>
+static int Thread(Args args)
+{
+    string verb = args.Positional.Count > 1 ? args.Positional[1] : "show";
+    string? path = args.Value("--path");
+    bool pretty = args.Flag("--pretty");
+
+    // A selector is a topic, an index, or nothing -- and nothing means whatever is active.
+    ThreadSelector selector = new()
+    {
+        Topic = args.Value("--topic") ?? string.Empty,
+        Index = int.TryParse(args.Value("--index"), out int index) ? index : -1,
+    };
+
+    switch (verb.ToLowerInvariant())
+    {
+        case "show":
+            ThreadShowResult shown = ThreadItems.Show(path, args.Flag("--all"));
+
+            Console.Out.WriteLine(args.Flag("--text")
+                ? ThreadJson.Render(shown)
+                : ThreadJson.Serialize(shown, pretty));
+
+            return 0;
+
+        case "add":
+            Console.Out.WriteLine(ThreadJson.Serialize(ThreadItems.Add(
+                path,
+                args.Value("--topic") ?? throw new ArgumentException("--topic is required"),
+                notes: args.Value("--notes") ?? string.Empty,
+                next: args.Value("--next") ?? string.Empty,
+                refs: args.Values("--ref"),
+                active: args.Flag("--active")), pretty));
+
+            return 0;
+
+        case "update":
+            Console.Out.WriteLine(ThreadJson.Serialize(ThreadItems.Update(
+                path,
+                selector,
+
+                // Null means untouched and empty means clear, so these read the raw presence of
+                // the flag rather than defaulting. Clearing the resume cursor is a real request.
+                notes: args.Value("--notes"),
+                next: args.Value("--next"),
+                refs: args.Has("--ref") ? args.Values("--ref") : null,
+                status: args.Value("--status"),
+                appendNotes: args.Flag("--append-notes"),
+                appendRefs: args.Flag("--append-refs")), pretty));
+
+            return 0;
+
+        case "complete":
+            Console.Out.WriteLine(ThreadJson.Serialize(ThreadItems.Complete(path, selector), pretty));
+            return 0;
+
+        case "active":
+            // --none clears focus; anything else moves it.
+            Console.Out.WriteLine(ThreadJson.Serialize(
+                ThreadItems.SetActive(path, args.Flag("--none") ? null : selector), pretty));
+
+            return 0;
+
+        default:
+            Console.Error.WriteLine($"Unknown thread verb '{verb}'.");
             return Usage();
     }
 }
@@ -315,7 +397,20 @@ static int Usage()
                               (moves every inbound link with the node; prose mentions are
                               reported on stderr, never rewritten)
 
-        Every command: [--base DIR] [--graph PATH]   (graph defaults to research.json in JanetBase)
+        janet thread show     [--all] [--text] [--pretty]
+        janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]... [--active]
+        janet thread update   [--topic TEXT | --index N] [--notes TEXT] [--next TEXT]
+                              [--ref ID]... [--status active|parked|done]
+                              [--append-notes] [--append-refs]
+        janet thread complete [--topic TEXT | --index N]
+        janet thread active   (--topic TEXT | --index N | --none)
+
+        Thread commands: [--path FILE]   (defaults to Janet\thread-stack.json under %TEMP%)
+        No selector means whatever is active. An ambiguous topic is refused, not guessed at.
+        On update, an omitted --notes/--next/--ref leaves the field alone; --next '' clears it.
+
+        Every research command: [--base DIR] [--graph PATH]
+        (graph defaults to research.json in JanetBase)
         add/update also accept --json '<object>' or --json-path FILE, which is the form to use
         for anything prose-shaped: a shell's quoting rules are how prose gets corrupted.
 
