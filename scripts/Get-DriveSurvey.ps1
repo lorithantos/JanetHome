@@ -28,6 +28,14 @@
     blind-spots  what the last scan did not look inside (requires -Volume)
     check        reconciliation: indexed + blind-spot bytes vs the volume's own
                  used figure (requires -Volume, volume must be mounted)
+    unprotected  folders on working drives with no durable copy
+    removable    folders where EVERY file is proven redundant (requires -Volume)
+    duplicates   byte-identical groups, with a ruling on each
+    role         classify a volume durable|working (requires -Volume and -Role)
+
+    NOT wrapped, deliberately rather than by omission: 'copy' writes to a drive
+    and this wrapper is read-only by contract, and 'declare' is bookkeeping with
+    three different argument shapes. Call survey.exe directly for those.
 
 .PARAMETER Volume
     Drive letter ("F:"), NTFS serial ("6A5D-761C"), or nickname. For scan, only
@@ -40,6 +48,16 @@
 .PARAMETER Nickname
     Operator identity assertion for scan, answering the clone gate: "this drive
     in the dock is photo-backup-b". Only needed when the hardware cannot say.
+
+.PARAMETER Role
+    durable or working. For 'role' it is the classification being set and is
+    required; for 'scan' it answers the refusal a volume raises the first time
+    it is seen on a bus that could be either a backup drive or a card. Copies on
+    a 'working' volume are never counted as redundancy.
+
+.PARAMETER Manifest
+    For removable and duplicates: write the proposal to strict JSON with the
+    reasoning attached to every entry. An existing path is refused.
 
 .PARAMETER Depth
     Subtree depth for tree (1 or 2; default 1).
@@ -63,12 +81,16 @@
 param(
     [Parameter(Mandatory, Position = 0)]
     [ValidateSet('volumes', 'scan', 'tree', 'compare', 'blind-spots', 'check',
-                 'hash', 'hash-plan', 'status', 'adopt')]
+                 'hash', 'hash-plan', 'status', 'adopt', 'role', 'removable',
+                 'duplicates', 'unprotected')]
     [string]$Command,
 
     [string]$Volume,
     [string]$Against,
     [string]$Nickname,
+    [ValidateSet('durable', 'working')]
+    [string]$Role,
+    [string]$Manifest,
     [ValidateSet('quick', 'full')]
     [string]$Tier = 'quick',
     [int]$Depth = 1,
@@ -113,7 +135,19 @@ switch ($Command) {
         $surveyArgs.Add($Volume)
         $surveyArgs.Add($Against)
     }
-    { $_ -in 'volumes', 'status', 'hash-plan' } { }
+    'role' {
+        # Without -Role this is the LISTING form -- every volume and how it is
+        # classified -- and it takes no volume at all. Only setting one has to
+        # say which.
+        if ($Role) {
+            if (-not $Volume) { throw 'role -Role needs -Volume: which volume is being classified' }
+            $surveyArgs.Add('--volume')
+            $surveyArgs.Add($Volume)
+            $surveyArgs.Add('--set')
+            $surveyArgs.Add($Role)
+        }
+    }
+    { $_ -in 'volumes', 'status', 'hash-plan', 'duplicates', 'unprotected' } { }
     default {
         if (-not $Volume) { throw "$Command needs -Volume" }
         $surveyArgs.Add('--volume')
@@ -124,6 +158,12 @@ switch ($Command) {
 if ($Nickname) { $surveyArgs.Add('--nickname'); $surveyArgs.Add($Nickname) }
 if ($Command -eq 'tree') { $surveyArgs.Add('--depth'); $surveyArgs.Add([string]$Depth) }
 if ($Command -eq 'hash') { $surveyArgs.Add('--tier'); $surveyArgs.Add($Tier) }
+
+# 'role' SETS a classification (handled above, with its volume); 'scan' ASSERTS
+# one for a volume being recorded for the first time. Same value, different flag,
+# so one parameter serves both commands.
+if ($Command -eq 'scan' -and $Role) { $surveyArgs.Add('--role'); $surveyArgs.Add($Role) }
+if ($Manifest) { $surveyArgs.Add('--manifest'); $surveyArgs.Add($Manifest) }
 if ($Text) { $surveyArgs.Add('--text') }
 if ($Pretty) { $surveyArgs.Add('--pretty') }
 
