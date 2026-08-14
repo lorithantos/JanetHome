@@ -32,3 +32,13 @@ obj/
 # research.previous.json is deliberately NOT ignored: it is the rollback path the
 # cutover leaves behind, and its value is being visible and diffable in git. The
 # candidate is likewise tracked -- it becomes the catalog, so its history matters.
+
+# RazorGraph code graphs. Volatile derived data: a graph is a representation of source
+# that this repository already contains, it is wrong the moment anything is edited, and
+# git would keep every stale copy forever. Regenerate instead of committing.
+# solution-graph.json is named explicitly because it is RazorGraph.Cli build-solution's
+# default output, so it lands in whatever directory you happened to run from.
+*.graph.json
+solution-graph.json
+graphs/
+.graph/
