@@ -1,0 +1,11 @@
+#!/bin/sh
+# Janet pre-commit gate -- scripts/Test-PreCommit.ps1 (script.test-pre-commit).
+#
+# Tracked here rather than in .git/hooks, which git does not version: a hook
+# installed there is armed on one machine and invisible everywhere else. That is
+# the same shape as the 2026-08-01 unwired-hook incident and the janet-mcp server
+# nothing started until 2026-08-14.
+#
+# A fresh clone must opt in once:  git config core.hooksPath .githooks
+root=$(git rev-parse --show-toplevel) || exit 1
+exec pwsh -NoProfile -NonInteractive -File "$root/scripts/Test-PreCommit.ps1"

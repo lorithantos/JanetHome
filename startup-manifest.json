@@ -18,7 +18,14 @@
     }
   ],
 
+  "$comment.run": "Ensure-McpServer runs FIRST: it is the only entry whose failure silently removes capability rather than producing a wrong answer. A session whose server is down does not fail -- .mcp.json names a URL, so the tools are simply absent and the session falls back to the CLI, which works. That is the quiet degradation this contract exists to catch, one layer below where the contract used to look. It reports SERVED vs DECLARED tool counts because a server being up is not the same as a server being current: on 2026-08-14 the installed server answered with three tools while source declared twelve, and both global tools have reported 0.1.0 since the port, so the version could not tell them apart. Its failure is captured as a run 'error', never fatal -- the CLI fallback is real, and refusing to launch over a missing convenience would be worse than the fault.",
+
   "run": [
+    {
+      "cmd": "scripts\\Ensure-McpServer.ps1",
+      "captureAs": "mcpServer",
+      "why": "Nothing else starts the janet-mcp HTTP server -- the transport is a separate process the client dials, which is what lets it be rebuilt mid-session and also what means no component owns starting it. Check 'ok' and 'stale' in the captured result before trusting that the research_* and thread_* tools are present"
+    },
     {
       "cmd": "scripts\\Show-ThreadItems.ps1",
       "captureAs": "threadStack",
@@ -52,7 +59,7 @@
 
   "$comment.rules": "ENFORCED rules are backed by a mechanism that fails: startup validation, a hook that denies the tool call, or a linter that exits 1. ADVISORY rules hold only as long as the agent chooses to honour them -- they are marked so, because a rule claiming enforcement it does not have is worse than an honest suggestion. Do not rationalise past an advisory rule on the grounds that this particular case is small; that is the exact failure these were written after.",
 
-  "$comment.rules.enforcedBy": "A rule claiming ENFORCED may carry 'enforcedBy': the hook script that backs it, as the hook itself resolves it -- Join-Path <project dir> <enforcedBy>. Startup tests that path against the CURRENT project dir (CLAUDE_PROJECT_DIR, else cwd), because that is the only place the hook will look. If it does not resolve the hook is not wired, the rule is emitted as ADVISORY with a note, and the mismatch is listed under 'problems'. It does not fail startup: working in JanetHome from another repo's project dir is legitimate, and a brief that tells the truth is worth more than one that refuses to start. Discovered 2026-08-01, when both hook-backed rules read ENFORCED in a session where neither hook was loaded.",
+  "$comment.rules.enforcedBy": "A rule claiming ENFORCED may carry 'enforcedBy': the hook script that backs it, as the hook itself resolves it -- Join-Path <project dir> <enforcedBy>. Startup tests that path against the CURRENT project dir (CLAUDE_PROJECT_DIR, else cwd), because that is the only place the hook will look. If it does not resolve the hook is not wired, the rule is emitted as ADVISORY with a note, and the mismatch is listed under 'enforcement'. It does not fail startup: working in JanetHome from another repo's project dir is legitimate, and a brief that tells the truth is worth more than one that refuses to start. Discovered 2026-08-01, when both hook-backed rules read ENFORCED in a session where neither hook was loaded. This comment said 'problems' until 2026-08-14 and was describing the opposite of what the code does: onMissing governs 'problems' and Start-Janet.ps1 treats it as fatal, so routing an unwired hook there is precisely the hard stop the next sentence promises it is not. The separate 'enforcement' field exists for that reason.",
 
   "$comment.rules.shape": "Each rule is { text, why }. 'text' is the imperative and is always emitted; 'why' is the justification and appears only under -Full or -Text. The split keeps the reasoning on disk and reviewable without billing it to every session -- a bare imperative is easier to argue past, which is what the comment above warns against. Plain strings still parse, for anything that does not decompose. Keep 'text' to one line; put the argument in 'why'.",
 

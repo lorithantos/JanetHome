@@ -11,7 +11,7 @@
       "section": "1",
       "summary": "Manifest-driven startup: an explicit checkable contract of files to read and commands to run, instead of a prose context file that drifts silently.",
       "tags": ["startup", "contract", "agent", "validation"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims", "note.design-notes-projection"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims", "note.design-notes-projection", "script.ensure-mcp-server"]
     },
     {
       "id": "pattern.progressive-disclosure",
@@ -120,7 +120,7 @@
         "Trims by default (-Full restores): strips $-prefixed manifest keys, reduces retrieval to graph/via/hint, emits rule text without why, omits run output already in captured. enforcedBy verification recognizes TWO wirings: project-level (Join-Path <project dir> <enforcedBy>) and user-level (~\\.claude\\settings.json names the script AND it exists at repo root) -- so ENFORCED labels survive foreign-dir sessions on this machine. An unwired hook NEVER fails startup: the rule is relabelled ADVISORY (claims ENFORCED; hook not wired here) and the note goes to the brief's own enforcement field plus the warning stream, NOT to problems (Start-Janet gates launch on problems). Only unresolved manifest entries are fatal, governed by onMissing. Runs from any working directory: everything resolves from $PSScriptRoot. Writes .janet\\last-brief.json every run INCLUDING -Text; -OutFile moves it, an empty -OutFile skips writing. Adding a parameter renames every same-named local: $full/$text collided with -Full/-Text. See note.startup-brief-budget."
       ],
       "tags": ["startup", "session", "validation", "entrypoint"],
-      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget"]
+      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget", "script.ensure-mcp-server"]
     },
     {
       "id": "script.get-research",
@@ -443,7 +443,7 @@
         "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
       ],
       "tags": ["startup", "contract", "config"],
-      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection"]
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection", "script.ensure-mcp-server"]
     },
     {
       "id": "file.research",
@@ -681,7 +681,7 @@
         "The prompt is ALWAYS staged through a file; only a quote-free pointer goes on the command line. Passing the brief inline shredded under Windows PowerShell 5.1 native-argument passing (embedded JSON quotes are not escaped), and claude read brief fragments as options: error unknown option -Query, 2026-08-01."
       ],
       "tags": ["startup", "session", "entrypoint", "agent"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "script.ensure-mcp-server"]
     },
 
     {
@@ -1100,10 +1100,11 @@
         "Still unresolved from that measurement: tool DESCRIPTIONS looked stale even after a reconnect, so names and descriptions may refresh on different schedules, or asynchronously. tools/list_changed did nothing in either direction -- tried from inside a tool call, and pushed out of band via RunSessionHandler. Practical rule: rotate, MAKE A CALL, then look; and do not trust description freshness in either direction without re-testing. Over stdio none of this applies: nothing swaps, and killing the server just removes the tools.",
         "Historical, and the design lesson worth keeping: the port wrote only research.candidate.json while it was built, with research.candidate.base.json frozen beside it as the common ancestor. A seed HASH would have said only THAT the live graph moved, never WHICH nodes -- integrating them forward is a three-way comparison, and the first cut of the plan stored a hash and was not implementable. Both files are gone now; the swap consumed them.",
         "MEASURED 2026-08-12: an exception thrown out of a tool body reaches an MCP client as \"An error occurred invoking 'research_add'.\" and NOTHING ELSE. The SDK hides exception detail by default, so none of this codebase's careful messages arrived -- not 'id already exists', not the candidate list an ambiguous topic prints instead of guessing, not 'point the search root at a build output'. Fixed by one AddCallToolFilter registered on both transports that rethrows GraphException as McpException, whose message the SDK does surface; anything else stays generic, because an unexpected exception is a bug report rather than a message to a caller. Registered on the server rather than wrapped around each tool, so a tool added later cannot forget it.",
-        "The port is COMPLETE as of 2026-08-12: catalog, thread items, API and assembly introspection, and the build check all live in Janet.Core behind eleven MCP tools, the janet CLI, and twelve shims. The last self-contained copy of every shimmed script is in standalone\\, and contracts\\ declares the formats that carry a contract number."
+        "The port is COMPLETE as of 2026-08-12: catalog, thread items, API and assembly introspection, and the build check all live in Janet.Core behind eleven MCP tools, the janet CLI, and twelve shims. The last self-contained copy of every shimmed script is in standalone\\, and contracts\\ declares the formats that carry a contract number.",
+        "NOTHING STARTED THE HTTP SERVER UNTIL 2026-08-14, and that is the cost of the transport this node recommends. An HTTP server surviving rebuild is the same fact as no component owning its lifetime: .mcp.json names a URL, Start-Janet.ps1 never mentioned mcp/7717/http, so a session came up with zero catalog tools and fell back to the CLI without anything failing. Now a startup run entry (script.ensure-mcp-server) starts it and reports served-vs-declared tool counts into the brief. The staleness half was found the same day: the installed server answered with 3 tools while source declared 12. THE VERSION FIELD IS DECORATIVE -- janet.cli and janet.mcp have both reported 0.1.0 since the port, so the documented advice to bump rather than update is not something the file can confirm; only a count read off the running process distinguishes a fresh install from an old one. Note also the skew ran OPPOSITE to the direction script.update-mcp-server warns about: the CLI had every verb and the SERVER was stale. The hazard is symmetric; the caveat names one side."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server"]
     },
 
     {
@@ -1121,7 +1122,7 @@
         "-ToolProject packs and reinstalls global tools in the same pass. The CLI is NOT rotated -- a global tool is a separate copy on PATH -- so rebuilding the server leaves it stale, and a stale CLI reports a new verb as unknown while the server serves it fine. That was written down in a caveat and still caught us three times; the parameter is the structural fix a note could not be. Uninstalls then installs, because dotnet tool update no-ops on an identical version."
       ],
       "tags": ["agent", "deployment", "tooling", "csharp", "powershell", "failure-modes"],
-      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port"]
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server"]
     },
 
     {
@@ -1327,6 +1328,23 @@
       ],
       "tags": ["testing", "verification", "gate", "powershell", "quality", "failure-modes"],
       "links": ["script.invoke-dotnet-check", "script.test-output-contracts", "script.test-standalone-scripts", "pattern.reviewer-principles", "note.golden-tests"]
+    },
+
+    {
+      "id": "script.ensure-mcp-server",
+      "kind": "script",
+      "path": "scripts\\Ensure-McpServer.ps1",
+      "summary": "Startup run entry that makes sure the janet-mcp HTTP server is up, and reports what it is actually SERVING. The HTTP transport is a separate process the client dials -- which is what lets the server be rebuilt mid-session, and also what means no component owns starting it. A session whose server is down does not fail: .mcp.json names a URL, so every research_*, thread_*, api_* and dotnet_check tool is simply absent and the session falls back to the CLI, which works well enough that nobody notices. Emits compressed JSON: ok, state (already-running|started|not-running|not-answering|start-failed|no-server-binary|error), port, pid, serverPath, base, toolsServed, toolsDeclared, stale, note, error. Starts from the .janet-bin\\current junction Update-McpServer.ps1 maintains, falling back to janet-mcp on PATH. -NoStart to probe only, -Pretty to indent.",
+      "caveats": [
+        "NEVER THROWS, BY DESIGN -- it runs in the startup path, and a startup script that can take the session down is worse than the problem it solves (house rule 6). Read ok, not the exit code. Its failure reaches the brief as a captured run result, never as a problems entry, so it cannot block a launch: the CLI fallback is real, and refusing to start over a missing convenience would be worse than the fault.",
+        "The staleness check counts [McpServerTool( in src\\Janet.Mcp and compares it to what tools/list returns. THE PAREN IS LOAD-BEARING: matching the bare prefix also matches the four [McpServerToolType] container classes, which inflates declared from 12 to 16 and reports a stale server that is perfectly current. That bug was written and caught during authoring, 2026-08-14.",
+        "toolsDeclared is null where src\\Janet.Mcp is absent, and no comparison is made -- a deployment without source reports no verdict rather than a false one.",
+        "A live pid with toolsServed 0 is state not-answering, NOT already-running: something holds the port that does not speak MCP. Verified against a raw TcpListener. A plain TCP check cannot tell these apart, which is why the probe does the MCP handshake rather than testing the socket.",
+        "THE STALE BRANCH IS NOT EXERCISED END-TO-END. It has no test against a genuinely old build -- only its inputs are verified (declared 12 = served 12 on a current server). It is the branch that matters most and the one with the least evidence behind it.",
+        "Windows-only: Get-NetTCPConnection has no cross-platform equivalent here. Wrapped so a failure reports not-running rather than throwing, which on another OS would mean it starts a second server rather than finding the first."
+      ],
+      "tags": ["agent", "startup", "session", "contract", "powershell", "failure-modes", "verification"],
+      "links": ["note.janet-mcp-port", "script.update-mcp-server", "script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup", "script.start-janet"]
     }
   ]
 }
