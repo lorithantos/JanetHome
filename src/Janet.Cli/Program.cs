@@ -108,6 +108,17 @@ static int Thread(Args args)
 
             return 0;
 
+        // The map, not the contents. Separate verb rather than a flag on show, because show's
+        // envelope is asserted byte-for-byte against recorded output and has a live consumer.
+        case "report":
+            ThreadReportResult reported = ThreadItems.Report(path, args.Flag("--all"));
+
+            Console.Out.WriteLine(args.Flag("--text")
+                ? ThreadJson.Render(reported)
+                : ThreadJson.Serialize(reported, pretty));
+
+            return 0;
+
         case "add":
             Console.Out.WriteLine(ThreadJson.Serialize(ThreadItems.Add(
                 path,
@@ -542,6 +553,8 @@ static int Usage()
                               reported on stderr, never rewritten)
 
         janet thread show     [--all] [--text] [--pretty]
+        janet thread report   [--all] [--text] [--pretty]
+                              (topics, focus and note SIZES -- the map, not the bodies)
         janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]... [--active]
         janet thread update   [--topic TEXT] [--notes TEXT] [--next TEXT]
                               [--ref ID]... [--status active|parked|done]

@@ -18,6 +18,8 @@
     }
   ],
 
+  "$comment.run.threadReport": "The key is 'threadReport', NOT the 'threadStack' it was until 2026-08-14, and the rename is deliberate: the envelope changed shape, so a consumer reading items[].notes would find the field simply absent and could reasonably conclude the item has no notes. A renamed key fails to resolve, which is loud; a same-named key holding a different shape is the quiet degradation this file exists to prevent. Show returned 174,129 characters on this machine's list -- past what an MCP tool result will even carry -- against 26,613 for the report, and three items held a third of it. The report answers 'where was I'; the notes are fetched per item once you know which one. 'threadStack' was already a misnomer besides: it stopped being a stack on 2026-08-08.",
+
   "$comment.run": "Ensure-McpServer runs FIRST: it is the only entry whose failure silently removes capability rather than producing a wrong answer. A session whose server is down does not fail -- .mcp.json names a URL, so the tools are simply absent and the session falls back to the CLI, which works. That is the quiet degradation this contract exists to catch, one layer below where the contract used to look. It reports SERVED vs DECLARED tool counts because a server being up is not the same as a server being current: on 2026-08-14 the installed server answered with three tools while source declared twelve, and both global tools have reported 0.1.0 since the port, so the version could not tell them apart. Its failure is captured as a run 'error', never fatal -- the CLI fallback is real, and refusing to launch over a missing convenience would be worse than the fault.",
 
   "run": [
@@ -27,9 +29,9 @@
       "why": "Nothing else starts the janet-mcp HTTP server -- the transport is a separate process the client dials, which is what lets it be rebuilt mid-session and also what means no component owns starting it. Check 'ok' and 'stale' in the captured result before trusting that the research_* and thread_* tools are present"
     },
     {
-      "cmd": "scripts\\Show-ThreadItems.ps1",
-      "captureAs": "threadStack",
-      "why": "Unfinished investigations from the last session. Small, stateful, and useless if fetched late -- so it runs at startup rather than on demand"
+      "cmd": "scripts\\Get-ThreadReport.ps1",
+      "captureAs": "threadReport",
+      "why": "Unfinished investigations from the last session: topics, focus, and note SIZES. Small, stateful, and useless if fetched late -- so it runs at startup rather than on demand. Read a specific item's notes with Show-ThreadItems.ps1 -Path, or thread_show, once you know which one you want"
     }
   ],
 

@@ -27,6 +27,19 @@ public static class ThreadTools
         [Description("Include completed items as well as open ones.")] bool all = false) =>
         ThreadJson.Serialize(ThreadItems.Show(null, all));
 
+    [McpServerTool(Name = "thread_report")]
+    [Description(
+        "START HERE when resuming: the topics, which one is in focus, and how large each item's " +
+        "notes are -- WITHOUT the note bodies. Answers 'where was I' for a fraction of the cost; " +
+        "thread_show on the same list returns every note in full and can exceed a tool result " +
+        "limit outright. Each item carries notesLead (the first non-empty line) and notesLength " +
+        "(the full size in characters), and the envelope totals what was withheld, so nothing is " +
+        "omitted silently. Read one item in full with thread_show once you know which one you " +
+        "want. Completed items are excluded unless all=true.")]
+    public static string Report(
+        [Description("Include completed items as well as open ones.")] bool all = false) =>
+        ThreadJson.Serialize(ThreadItems.Report(null, all));
+
     [McpServerTool(Name = "thread_add")]
     [Description(
         "Record an investigation topic. Use this the moment you notice work you are not doing " +

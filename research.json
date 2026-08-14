@@ -32,7 +32,7 @@
         "Selection is by topic only. Position was removed on 2026-08-14 across Janet.Core, the CLI, the MCP tools and the shims: the displayed list hides completed items while a raw index counted into the unfiltered file, so a number read off the screen silently selected -- and then rewrote -- a different item. The general form is the same one this pattern already teaches: a structure addressed by position forbids the operation you actually need, which is to name a thing and have it stay named."
       ],
       "tags": ["debugging", "session", "thread-items", "highest-value"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue", "note.thread-item-projection", "note.design-notes-projection", "file.standalone"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue", "note.thread-item-projection", "note.design-notes-projection", "file.standalone", "script.get-thread-report"]
     },
     {
       "id": "pattern.graph-first-analysis",
@@ -175,7 +175,7 @@
         "-Text now goes to stdout rather than Write-Host, so it can be captured by a pipe, a redirect, or an assignment without 6>&1."
       ],
       "tags": ["thread-items", "session", "debugging"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests", "note.thread-item-projection", "file.standalone"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "note.golden-tests", "note.thread-item-projection", "file.standalone", "script.get-thread-report"]
     },
     {
       "id": "script.new-text-file",
@@ -443,7 +443,7 @@
         "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
       ],
       "tags": ["startup", "contract", "config"],
-      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection", "script.ensure-mcp-server"]
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection", "script.ensure-mcp-server", "script.get-thread-report"]
     },
     {
       "id": "file.research",
@@ -1136,7 +1136,7 @@
         "Substring matching, deliberately not -like. The PowerShell used -like, so a query term containing * or ? behaved as a wildcard by accident; that edge is not reproduced."
       ],
       "tags": ["csharp", "retrieval", "research", "index"],
-      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common", "note.graph-write-queue", "script.get-api-doc", "script.get-assembly-api", "script.invoke-dotnet-check"]
+      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common", "note.graph-write-queue", "script.get-api-doc", "script.get-assembly-api", "script.invoke-dotnet-check", "script.get-thread-report"]
     },
 
     {
@@ -1152,7 +1152,7 @@
         "Tests read frozen fixtures, never the live research.json. They used to read the live graph, which meant their expectations changed whenever anyone added a node. Regenerating the fixtures (Build-Fixtures.ps1) invalidates every golden and needs the generator re-run."
       ],
       "tags": ["testing", "csharp", "powershell", "failure-modes", "contract", "concurrency"],
-      "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research", "script.test-mutation-catches"]
+      "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research", "script.test-mutation-catches", "script.get-thread-report"]
     },
 
     {
@@ -1246,7 +1246,7 @@
         "RESOLVED 2026-08-14, and not the way this node proposed. The -Index bug it subsumed (Show-ThreadItems filters done before printing, while the selector counted into the unfiltered file, so -Index was live-wrong by the done count) was fixed by REMOVING selection by position everywhere -- Janet.Core, the CLI, the MCP tools, and the three shims -- rather than by emitting a true unfiltered index per row. The list is addressed as a dictionary keyed by topic. Ignore any suggestion here to surface a row index; a correct index is still a position, and position is not identity."
       ],
       "tags": ["thread-items", "progressive-disclosure", "context-budget", "measurement", "startup", "session"],
-      "links": ["note.startup-brief-budget", "pattern.thread-items", "script.show-thread-items", "script.thread-items-common", "file.startup-manifest", "note.design-notes-projection"]
+      "links": ["note.startup-brief-budget", "pattern.thread-items", "script.show-thread-items", "script.thread-items-common", "file.startup-manifest", "note.design-notes-projection", "script.get-thread-report"]
     },
 
     {
@@ -1308,7 +1308,7 @@
         "Verified by mutation 2026-08-12, eight ways: a field added, removed and renamed; a kind spelled differently; the contract number moved in code only; the schema edited alone; the schema edited with a bump but no script change. All caught."
       ],
       "tags": ["gate", "contract", "schema", "powershell", "verification", "json"],
-      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts", "script.test-mutation-catches"]
+      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts", "script.test-mutation-catches", "script.get-thread-report"]
     },
 
     {
@@ -1340,11 +1340,28 @@
         "The staleness check counts [McpServerTool( in src\\Janet.Mcp and compares it to what tools/list returns. THE PAREN IS LOAD-BEARING: matching the bare prefix also matches the four [McpServerToolType] container classes, which inflates declared from 12 to 16 and reports a stale server that is perfectly current. That bug was written and caught during authoring, 2026-08-14.",
         "toolsDeclared is null where src\\Janet.Mcp is absent, and no comparison is made -- a deployment without source reports no verdict rather than a false one.",
         "A live pid with toolsServed 0 is state not-answering, NOT already-running: something holds the port that does not speak MCP. Verified against a raw TcpListener. A plain TCP check cannot tell these apart, which is why the probe does the MCP handshake rather than testing the socket.",
-        "THE STALE BRANCH IS NOT EXERCISED END-TO-END. It has no test against a genuinely old build -- only its inputs are verified (declared 12 = served 12 on a current server). It is the branch that matters most and the one with the least evidence behind it.",
-        "Windows-only: Get-NetTCPConnection has no cross-platform equivalent here. Wrapped so a failure reports not-running rather than throwing, which on another OS would mean it starts a second server rather than finding the first."
+        "THE STALE BRANCH IS NOW VERIFIED END-TO-END, 2026-08-14, and by accident rather than by a contrived fixture: adding the thread_report tool took declared to 13 against a server still serving 12, the detector fired with stale:true, the remediation command it prints was run verbatim, and the next probe read 13/13. Recorded here because the caveat previously said this branch was the least-evidenced path in the script; it is now the best-evidenced one.",
+        "Windows-only: Get-NetTCPConnection has no cross-platform equivalent here. Wrapped so a failure reports not-running rather than throwing, which on another OS would mean it starts a second server rather than finding the first.",
+        "The tool-count comparison catches a stale SERVER, not a stale CLI. The global janet is a separate copy on PATH and goes stale independently -- and it is what every PowerShell shim calls, so the startup brief can carry an older envelope than the repo build emits, with every gate green. See script.get-thread-report, where that was measured."
       ],
       "tags": ["agent", "startup", "session", "contract", "powershell", "failure-modes", "verification"],
-      "links": ["note.janet-mcp-port", "script.update-mcp-server", "script.invoke-janet-startup", "file.startup-manifest", "pattern.manifest-startup", "script.start-janet"]
+      "links": ["script.get-thread-report"]
+    },
+
+    {
+      "id": "script.get-thread-report",
+      "kind": "script",
+      "path": "scripts\\Get-ThreadReport.ps1",
+      "summary": "The thread-item list as a MAP rather than as its contents: topics, focus, refs, next, and the SIZE of each item's notes -- without the note bodies. Answers \"where was I\", which is the question asked on resuming. Envelope is CONTRACT 1, declared in contracts\\thread-report.schema.json and checked on every commit. Each item carries notesLead (first non-empty line, capped at 200 chars) and notesLength (full size); the envelope totals what was withheld, so the omission is stated rather than implied. Three front ends over one implementation, as ever: thread_report, janet thread report, scripts\\Get-ThreadReport.ps1. Read one item in full with thread_show once you know which one you want. Startup runs this instead of Show since 2026-08-14, captured as threadReport.",
+      "caveats": [
+        "A SEPARATE VERB, NOT A FLAG ON SHOW, and the reason is mechanical rather than aesthetic. Show's envelope is asserted byte for byte against output recorded from the pre-shim PowerShell, which tests\\Janet.Goldens extracts out of git at a277625 and RE-RUNS -- so that envelope can never grow a field by regeneration, only by a declared correction to a contract with a live consumer. A new format beside it needed no correction at all, and all 216 existing tests stayed green. Test-OutputContracts exempts a schema absent from the reference commit from its change rule for the same reason.",
+        "THE SHIM CALLS THE GLOBAL TOOL, so the startup brief's shape depends on the INSTALLED janet, not the repo build. Measured 2026-08-14: the repo build stamped contract 1 while the global tool, packed minutes earlier from source that predated the field, emitted the envelope without it -- and Test-OutputContracts stayed green throughout, because it deliberately samples the repo build. The gate and the brief can therefore disagree. Reinstall with Update-McpServer.ps1 -ToolProject after any format change.",
+        "notesLead is the first NON-EMPTY line, not the first: notes built by appending begin with a blank line, so \"first line\" is empty for most items that have anything worth reading. Capped at 200 characters plus a trailing ellipsis.",
+        "Report reads THROUGH Show rather than beside it, so the two cannot disagree about which items are live, which is active, or how a corrupt list is reported. A test pins that agreement: if the cheap view and the expensive one ever diverge on membership, the cheap one stops being a safe substitute, which is the whole premise.",
+        "Measured on the 2026-08-14 list: 174,129 characters through Show against 26,613 here, and the startup brief 181,303 -> 30,457 bytes. thread_show on that same list EXCEEDED the MCP tool result limit and returned nothing usable, which is what prompted this. The saving is not uniform -- three items held a third of the total."
+      ],
+      "tags": ["agent", "thread-items", "retrieval", "contract", "session", "startup", "context-budget", "powershell"],
+      "links": ["pattern.thread-items", "script.show-thread-items", "script.test-output-contracts", "file.startup-manifest", "note.golden-tests", "note.thread-item-projection", "file.janet-core"]
     }
   ]
 }

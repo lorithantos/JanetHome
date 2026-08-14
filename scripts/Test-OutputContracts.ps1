@@ -91,6 +91,49 @@ $samplers = @{
         }
     }
 
+    'thread-report' = {
+        param([string]$Janet, [string]$Root)
+
+        # Seeded from a fixture rather than the machine's real list: the live list is session
+        # state, so sampling it would make this gate's result depend on what the last session
+        # happened to be doing.
+        $seed = Join-Path ([System.IO.Path]::GetTempPath()) ("janet-contract-thread-" + [guid]::NewGuid().ToString('N') + '.json')
+        $empty = Join-Path ([System.IO.Path]::GetTempPath()) ("janet-contract-thread-empty-" + [guid]::NewGuid().ToString('N') + '.json')
+
+        # One item with notes and refs, one bare, one completed: notesLead is exercised both
+        # non-empty and empty, notesLength both above and at zero, and the done status is only
+        # reachable through --all.
+        $items = @'
+[
+  { "topic": "cache eviction", "status": "active", "refs": ["note.cache"], "next": "query the telemetry table", "notes": "\n\nRuled out the obvious: it isn't the TTL.\nSecond line, not carried." },
+  { "topic": "cache warming", "status": "parked", "refs": [], "next": "", "notes": "" },
+  { "topic": "finished thing", "status": "done", "refs": [], "next": "", "notes": "closed out" }
+]
+'@
+        [System.IO.File]::WriteAllText($seed, $items, (New-Object System.Text.UTF8Encoding $false))
+        [System.IO.File]::WriteAllText($empty, '[]', (New-Object System.Text.UTF8Encoding $false))
+
+        try {
+            $live = @(& $Janet thread report --path $seed) -join "`n"
+            $all = @(& $Janet thread report --path $seed --all) -join "`n"
+            $none = @(& $Janet thread report --path $empty) -join "`n"
+        }
+        finally {
+            # A sampler that leaves temp files behind runs on every commit.
+            foreach ($p in @($seed, $empty)) {
+                if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        return [pscustomobject]@{
+            samples = @(
+                [pscustomobject]@{ label = 'live items'; json = $live }
+                [pscustomobject]@{ label = 'including completed'; json = $all }
+                [pscustomobject]@{ label = 'empty list'; json = $none }
+            )
+        }
+    }
+
     'dotnet-check' = {
         param([string]$Janet, [string]$Root)
 

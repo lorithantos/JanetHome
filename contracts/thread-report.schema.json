@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/thread-report.schema.json",
+  "title": "thread_report envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "thread_report / janet thread report / scripts\\Get-ThreadReport.ps1",
+    "script": "scripts\\Get-ThreadReport.ps1",
+    "node": "script.get-thread-report",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction. The older thread envelopes carry no such field -- they are pinned by recorded goldens instead -- which is why this one differs from its own family.",
+    "$comment.notShow": "Deliberately NOT the thread_show envelope. Show carries items[].notes in full and is asserted byte for byte against output recorded from the pre-shim PowerShell, which the golden generator extracts out of git and re-runs -- so it cannot grow a field without a declared correction. This is a separate format beside it, which is why it needed no correction at all."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "count", "active", "items", "notesLength", "error"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Items in this answer. Excludes completed items unless all=true was passed."
+    },
+    "active": {
+      "type": ["string", "null"],
+      "description": "Topic in focus, or null. Nothing active is an ordinary state, not a fault -- do not read null as an error."
+    },
+    "notesLength": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total characters of note body NOT carried by this envelope, summed across items. Present so the omission is stated rather than implied: an envelope that silently dropped the notes would look complete."
+    },
+    "error": {
+      "type": ["string", "null"],
+      "description": "A list that could not be read, reported in-band because this runs in the startup path. It is a fact about the list, not a failure of the call: a reader that ignores it sees an empty list, which is the honest degraded answer rather than a wrong one."
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["topic", "status", "refs", "next", "notesLead", "notesLength"],
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "Identity. Items are addressed by topic, as a dictionary -- position was removed on 2026-08-14 because the display hides completed items while an index counted into the unfiltered file."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "parked", "done"],
+            "description": "Focus is single: at most one item is active."
+          },
+          "refs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "research.json node ids. Context that earned a node, as opposed to notes, which is detail too small or too fresh to be worth one."
+          },
+          "next": {
+            "type": "string",
+            "description": "The resume cursor: the one thing to do first on return. Carried in FULL, never truncated -- it is the field the report exists to deliver, and abbreviating it would defeat the purpose."
+          },
+          "notesLead": {
+            "type": "string",
+            "description": "First NON-EMPTY line of the notes, trimmed, capped at 200 characters with a trailing ellipsis when cut. First non-empty rather than first, because notes built by appending begin with a blank line."
+          },
+          "notesLength": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Full size of this item's notes in characters, whether or not any of it is shown. This is how a one-line note is told from a five-day log without carrying either."
+          }
+        }
+      }
+    }
+  }
+}

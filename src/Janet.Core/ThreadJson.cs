@@ -36,6 +36,18 @@ public static class ThreadJson
     /// </remarks>
     private const string Batched = "batched";
 
+    /// <summary>
+    /// Format number of the reporter's envelope, stamped into every response.
+    /// </summary>
+    /// <remarks>
+    /// Bumped by a format change and by nothing else. Test-OutputContracts reads it from the
+    /// envelope and cross-checks it against contracts\thread-report.schema.json, so code and
+    /// schema cannot drift apart silently -- a field added here without a bump there is caught,
+    /// and so is the reverse. The older thread envelopes carry no such number; they are pinned
+    /// by recorded goldens instead, which is why only this one stamps itself.
+    /// </remarks>
+    private const int ReportContract = 1;
+
     public static string Serialize(ThreadAddResult result, bool pretty = false) => Render(new JsonObject
     {
         ["added"] = result.Added,
@@ -94,11 +106,86 @@ public static class ThreadJson
         ["notes"] = item.Notes,
     };
 
+    /// <summary>
+    /// The reporter's envelope: the list as a map, with the note bodies left on disk.
+    /// </summary>
+    /// <remarks>
+    /// 'notesLength' appears twice by design -- per item, and totalled at the envelope. The total
+    /// is what makes the omission legible: a reader sees at once how much was not sent, which is
+    /// the catalog's rule that a response reports its own truncation rather than looking complete.
+    ///
+    /// Deliberately NOT the same shape as Show's envelope. A reader must not be able to mistake
+    /// one for the other and conclude from an absent 'notes' field that an item has no notes.
+    /// </remarks>
+    public static string Serialize(ThreadReportResult result, bool pretty = false) => Render(new JsonObject
+    {
+        ["contract"] = ReportContract,
+        ["count"] = result.Count,
+        ["active"] = result.Active,
+        ["items"] = new JsonArray([.. result.Items.Select(ReportItem)]),
+        ["notesLength"] = result.NotesLength,
+        ["error"] = result.Error,
+    }, pretty);
+
+    private static JsonNode ReportItem(ThreadReportItem item) => new JsonObject
+    {
+        ["topic"] = item.Topic,
+        ["status"] = item.Status,
+        ["refs"] = Strings(item.Refs),
+        ["next"] = item.Next,
+        ["notesLead"] = item.NotesLead,
+        ["notesLength"] = item.NotesLength,
+    };
+
     private static JsonArray Strings(IReadOnlyList<string> values) =>
         new([.. values.Select(v => (JsonNode)JsonValue.Create(v)!)]);
 
     private static string Render(JsonObject root, bool pretty) =>
         root.ToJsonString(pretty ? Indented : Compact);
+
+    /// <summary>The reporter's formatted view. Same information, read by a person.</summary>
+    public static string Render(ThreadReportResult result)
+    {
+        if (result.Error is not null)
+        {
+            return $"List unreadable: {result.Error}";
+        }
+
+        if (result.Items.Count == 0)
+        {
+            return "No thread items.";
+        }
+
+        List<string> lines = [];
+
+        foreach (ThreadReportItem item in result.Items)
+        {
+            string icon = string.Equals(item.Status, ThreadItems.Active, StringComparison.OrdinalIgnoreCase)
+                ? ">>>"
+                : string.Equals(item.Status, ThreadItems.Done, StringComparison.OrdinalIgnoreCase)
+                    ? " x "
+                    : "   ";
+
+            string size = item.NotesLength > 0 ? $" ({item.NotesLength:N0} chars of notes)" : string.Empty;
+
+            lines.Add($"{icon} {item.Status.PadRight(7)} {item.Topic}{size}");
+
+            if (item.Next.Length > 0)
+            {
+                lines.Add($"            next: {item.Next}");
+            }
+
+            if (item.NotesLead.Length > 0)
+            {
+                lines.Add($"            {item.NotesLead}");
+            }
+        }
+
+        lines.Add(string.Empty);
+        lines.Add($"{result.Items.Count} items; {result.NotesLength:N0} characters of notes not shown.");
+
+        return string.Join(Environment.NewLine, lines);
+    }
 
     /// <summary>
     /// The formatted view, for a terminal.

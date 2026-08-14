@@ -81,6 +81,33 @@ public sealed record ThreadActiveResult(
 public sealed record ThreadShowResult(
     int Count, string? Active, IReadOnlyList<ThreadItem> Items, string? Error);
 
+/// <summary>One item as the reporter sees it: everything except the note body.</summary>
+/// <remarks>
+/// NotesLead is the first non-empty line, trimmed and capped; NotesLength is the full size in
+/// characters, so the reader can tell a one-line note from a five-day log without carrying it.
+/// Reporting the length rather than a bare truncation flag is the catalog's convention -- a
+/// response that truncates says so, and says by how much.
+/// </remarks>
+public sealed record ThreadReportItem(
+    string Topic, string Status, IReadOnlyList<string> Refs, string Next,
+    string NotesLead, int NotesLength);
+
+/// <summary>
+/// The list as a map rather than as its contents.
+/// </summary>
+/// <remarks>
+/// A separate result from <see cref="ThreadShowResult"/>, deliberately, rather than a projection
+/// flag on it. Show's envelope is captured by startup and asserted byte-for-byte against recorded
+/// output, so growing it costs a declared correction to a contract that has a live consumer --
+/// and every reader of the old shape has to be checked. This is a new format instead: nothing
+/// that exists changes, and the reporter is free to answer a different question.
+///
+/// The question it answers is "where was I", which is what the text view has always answered
+/// (see ThreadJson.Render, first line only). This is that view for a machine reader.
+/// </remarks>
+public sealed record ThreadReportResult(
+    int Count, string? Active, IReadOnlyList<ThreadReportItem> Items, int NotesLength, string? Error);
+
 /// <summary>
 /// The thread-item list: investigation topics with explicit focus.
 /// </summary>
@@ -496,5 +523,57 @@ public static class ThreadItems
         }
 
         return new ThreadShowResult(items.Count, ActiveTopic(items), items, error);
+    }
+
+    /// <summary>How much of a note the reporter carries before it is doing the list's job for it.</summary>
+    private const int LeadLength = 200;
+
+    /// <summary>
+    /// The first non-empty line of a note, trimmed and capped.
+    /// </summary>
+    /// <remarks>
+    /// First NON-EMPTY, not first: notes accumulated by appending start with a blank line, so the
+    /// literal first line is empty for most items that have anything worth reading.
+    /// </remarks>
+    public static string Lead(string notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return string.Empty;
+        }
+
+        string? line = notes
+            .Replace("\r\n", "\n")
+            .Split('\n')
+            .FirstOrDefault(l => l.Trim().Length > 0);
+
+        if (line is null)
+        {
+            return string.Empty;
+        }
+
+        string trimmed = line.Trim();
+
+        return trimmed.Length > LeadLength ? trimmed[..LeadLength] + "..." : trimmed;
+    }
+
+    /// <summary>
+    /// The list without the note bodies. Never throws, for the same reason Show does not.
+    /// </summary>
+    /// <remarks>
+    /// Reads through Show so the two cannot disagree about what "live" means or about how a
+    /// corrupt file is reported. The only difference is what is carried back.
+    /// </remarks>
+    public static ThreadReportResult Report(string? path, bool all = false)
+    {
+        ThreadShowResult shown = Show(path, all);
+
+        return new ThreadReportResult(
+            shown.Count,
+            shown.Active,
+            [.. shown.Items.Select(i => new ThreadReportItem(
+                i.Topic, i.Status, i.Refs, i.Next, Lead(i.Notes), i.Notes.Length))],
+            shown.Items.Sum(i => i.Notes.Length),
+            shown.Error);
     }
 }
