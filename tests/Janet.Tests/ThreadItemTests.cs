@@ -184,13 +184,44 @@ public class ThreadItemTests : IDisposable
         Assert.Contains("No item is active", refused.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Topic selection does not care where an item sits, which is why selection by position was
+    /// removed on 2026-08-14 rather than corrected.
+    /// </summary>
+    /// <remarks>
+    /// The seed puts a completed item ABOVE two live ones, so the displayed list and the stored
+    /// list disagree: Show hides 'done first', which put 'beta' first on screen while it stays
+    /// second in the file. A position taken off the screen therefore addressed 'gamma'. The
+    /// assertions below are the property that survives that skew -- the topic reaches its own
+    /// item, and the one next to it is untouched.
+    /// </remarks>
     [Fact]
-    public void AnOutOfRangeIndexRefuses() =>
-        Assert.Contains(
-            "out of range",
-            Assert.Throws<GraphException>(
-                () => ThreadItems.Complete(Seeded(), new ThreadSelector { Index = 99 })).Message,
-            StringComparison.Ordinal);
+    public void ATopicSelectsTheSameItemWhateverPositionItIsDisplayedAt()
+    {
+        string path = Empty();
+
+        ThreadItems.Add(path, "done first");
+        ThreadItems.Add(path, "beta");
+        ThreadItems.Add(path, "gamma");
+        ThreadItems.Complete(path, new ThreadSelector { Topic = "done first" });
+
+        Assert.Equal("beta", ThreadItems.Show(path).Items[0].Topic);
+        Assert.Equal(1, IndexInFile(path, "beta"));
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "beta" }, next: "amended by topic");
+
+        IReadOnlyList<ThreadItem> stored = ThreadItems.Parse(File.ReadAllText(path));
+
+        Assert.Equal("amended by topic", stored.Single(i => i.Topic == "beta").Next);
+        Assert.Equal(string.Empty, stored.Single(i => i.Topic == "gamma").Next);
+    }
+
+    private static int IndexInFile(string path, string topic)
+    {
+        IReadOnlyList<ThreadItem> stored = ThreadItems.Parse(File.ReadAllText(path));
+
+        return Enumerable.Range(0, stored.Count).Single(i => stored[i].Topic == topic);
+    }
 
     // ---- updating ----------------------------------------------------------------------
 

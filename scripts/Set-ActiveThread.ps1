@@ -12,12 +12,16 @@
     until it is reopened -- Update-ThreadItem.ps1 -Status parked.
 
 .PARAMETER None
-    Clear focus entirely rather than moving it. Cannot be combined with -Topic or -Index.
+    Clear focus entirely rather than moving it. Cannot be combined with -Topic.
+
+.NOTES
+    -Index was removed on 2026-08-14. The list is keyed by topic: Show-ThreadItems filters
+    completed items before printing while an index counted into the unfiltered file, so a
+    displayed number was wrong by the done count and moved focus to a different item.
 #>
 [CmdletBinding()]
 param(
     [string]$Topic = '',
-    [int]$Index = -1,
     [switch]$None,
     [string]$Path = '',
     [switch]$Text
@@ -28,11 +32,11 @@ $ErrorActionPreference = 'Stop'
 
 # Checked here rather than forwarded: -None with a selector is a contradiction, and the CLI
 # would silently honour one of them.
-if ($None -and ($Topic -ne '' -or $Index -ge 0)) {
-    throw '-None cannot be combined with -Topic or -Index.'
+if ($None -and $Topic -ne '') {
+    throw '-None cannot be combined with -Topic.'
 }
-if (-not $None -and $Topic -eq '' -and $Index -lt 0) {
-    throw 'Pass -Topic, -Index, or -None.'
+if (-not $None -and $Topic -eq '') {
+    throw 'Pass -Topic or -None.'
 }
 
 . (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
@@ -42,7 +46,6 @@ $janet = Get-JanetCommand
 $arguments = @('thread', 'active')
 if ($None) { $arguments += '--none' }
 if ($Topic) { $arguments += @('--topic', $Topic) }
-if ($Index -ge 0) { $arguments += @('--index', $Index) }
 if ($Path) { $arguments += @('--path', $Path) }
 
 & $janet @arguments

@@ -92,10 +92,19 @@ read-modify-write. In-process writers coalesce into one read-apply-write; across
 a sidecar lock file excludes, and the file is replaced atomically rather than truncated
 in place.
 
+**The same mistake, one layer down.** The list kept a positional selector after it stopped
+being a stack, and on 2026-08-14 that was removed rather than corrected: items are addressed
+by topic, as a dictionary. Position had gone quietly wrong -- the display hides completed
+items while the selector counted into the unfiltered file, so a number read off the screen
+was off by the done count and rewrote a different item. The available fix was to print the
+true index instead, which makes the number right without making it identity, and leaves the
+next change to ordering free to break it again.
+
 **The general lesson, which outlives this tool.** A structure chosen for the operation you
 first imagined -- descend, unwind -- will quietly forbid the operations you actually turn
 out to need: note, amend, finish. The tell is callers reaching for a destructive operation
-to accomplish a harmless one. That is not user error; it is a missing verb.
+to accomplish a harmless one. That is not user error; it is a missing verb. Its companion:
+when a selector is right only as long as nothing above it moves, the selector is the bug.
 
 Still the highest value-to-complexity ratio in the toolkit, which is the more durable
 observation: the most-used thing here is list manipulation and a lock.

@@ -113,10 +113,6 @@ public class ThreadGoldenTests : IDisposable
             ThreadJson.Serialize(ThreadItems.Update(
                 list, Topic("cache eviction"), status: ThreadItems.Active)),
 
-        "thread update by index" =>
-            ThreadJson.Serialize(ThreadItems.Update(
-                list, new ThreadSelector { Index = 1 }, next: "reached by position")),
-
         "thread complete by topic" =>
             ThreadJson.Serialize(ThreadItems.Complete(list, Topic("cache eviction"))),
 

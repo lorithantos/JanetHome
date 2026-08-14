@@ -28,6 +28,9 @@
       "path": "DESIGN-NOTES.md",
       "section": "3",
       "summary": "A list of investigation topics with explicit focus. Debugging is depth-first search and working memory is not, so the descent gets written down. Replaced a push/pop stack on 2026-08-08 because the stack conflated recording work with descending into it, had no way to amend an item, and deleted items on completion.",
+      "caveats": [
+        "Selection is by topic only. Position was removed on 2026-08-14 across Janet.Core, the CLI, the MCP tools and the shims: the displayed list hides completed items while a raw index counted into the unfiltered file, so a number read off the screen silently selected -- and then rewrote -- a different item. The general form is the same one this pattern already teaches: a structure addressed by position forbids the operation you actually need, which is to name a thing and have it stay named."
+      ],
       "tags": ["debugging", "session", "thread-items", "highest-value"],
       "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue", "note.thread-item-projection", "note.design-notes-projection", "file.standalone"]
     },
@@ -151,10 +154,11 @@
       "kind": "script",
       "path": "scripts\\Complete-ThreadItem.ps1",
       "summary": "Mark a thread item done. Retains it: Show-ThreadItems.ps1 -All prints completed items, so the list records what was finished and not only what is outstanding. Now a shim over 'janet thread complete' / the thread_complete MCP tool.",
-      "params": ["Topic", "Index", "Path", "Text"],
+      "params": ["Topic", "Path", "Text"],
       "caveats": [
         "Does not auto-activate anything. Pop-ThreadStack promoted the next parked item automatically, which quietly decided what you worked on next; choose with Set-ActiveThread.ps1 instead.",
-        "A status change, never a removal -- nothing is ever deleted from this list. Completing an already-done item is refused rather than being a no-op, so a mis-aimed selector is visible."
+        "A status change, never a removal -- nothing is ever deleted from this list. Completing an already-done item is refused rather than being a no-op, so a mis-aimed selector is visible.",
+        "-Index was removed on 2026-08-14. Select by -Topic; the list is keyed by topic, and a displayed position is wrong by the number of completed items above it. See script.set-active-thread for the full reasoning."
       ],
       "tags": ["thread-items", "session", "debugging"],
       "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.show-thread-items", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "file.standalone"]
@@ -902,12 +906,13 @@
       "id": "script.set-active-thread",
       "kind": "script",
       "path": "scripts\\Set-ActiveThread.ps1",
-      "summary": "Set which thread item is active, by -Topic substring, -Index, or -None to clear. Focus is explicit rather than positional -- the stack made the top of the stack active by definition, so changing attention meant mutating the list. Now a shim over 'janet thread active' / the thread_set_active MCP tool.",
-      "params": ["Topic", "Index", "None", "Path", "Text"],
+      "summary": "Set which thread item is active, by -Topic substring or -None to clear. Focus is explicit rather than positional -- the stack made the top of the stack active by definition, so changing attention meant mutating the list. Selection by -Index was removed on 2026-08-14. Now a shim over 'janet thread active' / the thread_set_active MCP tool.",
+      "params": ["Topic", "None", "Path", "Text"],
       "caveats": [
         "An ambiguous -Topic is an error, never a first-match guess: the operation rewrites the file, and silently amending the wrong item is how notes get lost. Every candidate is named, so you can disambiguate without going and reading the list.",
-        "The shim keeps its own argument check rather than forwarding it: -None with -Topic or -Index is a contradiction, and the CLI would silently honour one of them.",
-        "A completed item cannot take focus until it is reopened with Update-ThreadItem.ps1 -Status parked. Focus on finished work is almost always a mis-aimed selector."
+        "The shim keeps its own argument check rather than forwarding it: -None with -Topic is a contradiction, and the CLI would silently honour one of them.",
+        "A completed item cannot take focus until it is reopened with Update-ThreadItem.ps1 -Status parked. Focus on finished work is almost always a mis-aimed selector.",
+        "-Index was REMOVED on 2026-08-14, not fixed: the list is keyed by topic. Show-ThreadItems filters completed items before printing while an index counted into the unfiltered file, so a displayed number was wrong by the done count and moved focus to a different item. The shim has no -Index parameter, so PowerShell refuses the binding; the CLI refuses --index explicitly because its parser ignores options nobody reads, and dropping it silently would have meant acting on whatever was in focus."
       ],
       "tags": ["thread-items", "session", "debugging"],
       "links": ["script.add-thread-item", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "file.standalone"]
@@ -918,11 +923,12 @@
       "kind": "script",
       "path": "scripts\\Update-ThreadItem.ps1",
       "summary": "Amend an existing thread item in place -- notes, resume cursor, refs, or status -- preserving every field not named; -AppendNotes and -AppendRefs accumulate rather than replace. Now a shim over 'janet thread update' / the thread_update MCP tool.",
-      "params": ["Topic", "Index", "Notes", "Next", "Refs", "Status", "AppendNotes", "AppendRefs", "Path", "Text"],
+      "params": ["Topic", "Notes", "Next", "Refs", "Status", "AppendNotes", "AppendRefs", "Path", "Text"],
       "caveats": [
         "The operation the push/pop stack never had, and the reason it lost data: on 2026-08-08 a session wanting to update its own entry had only push and pop, popped to reach it, and destroyed a concurrent session notes irrecoverably. A missing operation does not leave callers stuck -- it makes them improvise with a destructive one.",
         "Not supplied and supplied-as-empty are different requests. An omitted -Next leaves the resume cursor alone; -Next '' clears it. The shim forwards on $PSBoundParameters presence rather than truthiness, and the port carries the same distinction as nullability -- testing the value would drop a clear silently.",
-        "-AppendRefs concatenates and does NOT deduplicate, deliberately unlike catalog tags: a repeated ref is the caller's to decide about, and dropping one they meant twice is a silent edit to their notes."
+        "-AppendRefs concatenates and does NOT deduplicate, deliberately unlike catalog tags: a repeated ref is the caller's to decide about, and dropping one they meant twice is a silent edit to their notes.",
+        "-Index was removed on 2026-08-14. Select by -Topic; the list is keyed by topic, and a displayed position is wrong by the number of completed items above it. See script.set-active-thread for the full reasoning."
       ],
       "tags": ["thread-items", "session", "debugging"],
       "links": ["script.add-thread-item", "script.set-active-thread", "script.complete-thread-item", "script.show-thread-items", "pattern.thread-items", "file.janet-core", "note.graph-write-queue", "file.standalone"]
@@ -1230,7 +1236,7 @@
         "The invariant that prevents regression is structural, not editorial: notes are returned one item at a time, and -Expand errors without a single-item selector. A flag that expands notes across a set re-creates the original defect exactly.",
         "The startup slot and a direct call are different consumers. Startup takes the roster as a tripwire; the summary is a direct call's default. Collapsing them into one default is the mistake the first cut of this design made.",
         "The eager 'run' entry may not be needed at all once research.json carries a trigger/whenToUse field -- the catalog already handles discovery, and what is missing is the prompt to ask. Treat the manifest's 'useless if fetched late' justification as superseded on its 'small' half and conditional on its other half.",
-        "Subsumes the separately-filed -Index bug: Show-ThreadItems filters done before printing while Set-ActiveThread -Index counts into the unfiltered file, so -Index is live-wrong by the done count (3 today). Fix it in the same pass by emitting the true unfiltered index per row."
+        "RESOLVED 2026-08-14, and not the way this node proposed. The -Index bug it subsumed (Show-ThreadItems filters done before printing, while the selector counted into the unfiltered file, so -Index was live-wrong by the done count) was fixed by REMOVING selection by position everywhere -- Janet.Core, the CLI, the MCP tools, and the three shims -- rather than by emitting a true unfiltered index per row. The list is addressed as a dictionary keyed by topic. Ignore any suggestion here to surface a row index; a correct index is still a position, and position is not identity."
       ],
       "tags": ["thread-items", "progressive-disclosure", "context-budget", "measurement", "startup", "session"],
       "links": ["note.startup-brief-budget", "pattern.thread-items", "script.show-thread-items", "script.thread-items-common", "file.startup-manifest", "note.design-notes-projection"]

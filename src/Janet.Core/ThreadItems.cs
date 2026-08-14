@@ -28,11 +28,16 @@ public sealed record ThreadItem
     public bool IsDone => string.Equals(Status, ThreadItems.Done, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>Which item an operation acts on: an index, a topic, or whatever is active.</summary>
+/// <summary>Which item an operation acts on: a topic, or whatever is active.</summary>
+/// <remarks>
+/// Selection by position was removed on 2026-08-14. The list is addressed as a dictionary
+/// keyed by topic, because position is not identity: Show filters completed items before
+/// printing while a raw index counted into the unfiltered file, so a displayed number was
+/// wrong by the done count and silently selected -- then rewrote -- a different item.
+/// </remarks>
 public sealed record ThreadSelector
 {
     public string Topic { get; init; } = string.Empty;
-    public int Index { get; init; } = -1;
 }
 
 public sealed record ThreadAddResult(
@@ -214,20 +219,12 @@ public static class ThreadItems
     /// Topic matching is case-insensitive substring, as -like "*topic*" was. The PowerShell
     /// implemented it with -like, so a topic containing * or ? behaved as a wildcard by
     /// accident; that edge is not reproduced, matching the same decision made for the catalog.
+    ///
+    /// Topic is the only selector: see <see cref="ThreadSelector"/> for why position was
+    /// removed rather than corrected.
     /// </remarks>
     public static int Find(IReadOnlyList<ThreadItem> items, ThreadSelector selector)
     {
-        if (selector.Index >= 0)
-        {
-            if (selector.Index >= items.Count)
-            {
-                throw new GraphException(
-                    $"Index {selector.Index} is out of range; the list holds {items.Count} item(s).");
-            }
-
-            return selector.Index;
-        }
-
         if (string.IsNullOrEmpty(selector.Topic))
         {
             int active = IndexOfActive(items);
@@ -235,7 +232,7 @@ public static class ThreadItems
             return active >= 0
                 ? active
                 : throw new GraphException(
-                    "No item is active, so there is nothing to act on. Pass a topic or an index.");
+                    "No item is active, so there is nothing to act on. Pass a topic.");
         }
 
         List<int> matched =

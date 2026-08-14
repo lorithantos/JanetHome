@@ -11,10 +11,11 @@
     resume cursor alone, while -Next '' clears it. Dropping a cursor that no longer applies is
     a real thing to want, so the two cannot mean the same.
 
-    Select with -Topic (case-insensitive substring) or -Index; with neither, this acts on
-    whatever is in focus. An ambiguous topic is refused and every candidate named, rather than
-    resolved to a first match -- the operation rewrites the file, and amending the wrong item
-    is how notes get lost.
+    Select with -Topic (case-insensitive substring); with none, this acts on whatever is in
+    focus. An ambiguous topic is refused and every candidate named, rather than resolved to a
+    first match -- the operation rewrites the file, and amending the wrong item is how notes
+    get lost. -Index was removed on 2026-08-14 for the same reason: the list is keyed by topic,
+    and a displayed position is wrong by the number of completed items above it.
 
 .PARAMETER AppendNotes
     Add to the existing notes rather than replacing them, separated by a blank line.
@@ -26,7 +27,6 @@
 [CmdletBinding()]
 param(
     [string]$Topic = '',
-    [int]$Index = -1,
     [string]$Notes = $null,
     [string]$Next = $null,
     [string[]]$Refs = $null,
@@ -55,7 +55,6 @@ if ($PSBoundParameters.ContainsKey('Refs')) {
 }
 
 if ($Topic) { $arguments += @('--topic', $Topic) }
-if ($Index -ge 0) { $arguments += @('--index', $Index) }
 if ($Status) { $arguments += @('--status', $Status) }
 if ($Path) { $arguments += @('--path', $Path) }
 if ($AppendNotes) { $arguments += '--append-notes' }

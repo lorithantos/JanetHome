@@ -16,13 +16,14 @@
 .PARAMETER Topic
     Substring of the topic to complete. Ambiguity is refused, not guessed at.
 
-.PARAMETER Index
-    Position in the list, as an alternative to -Topic.
+.NOTES
+    -Index was removed on 2026-08-14. The list is keyed by topic: Show-ThreadItems filters
+    completed items before printing while an index counted into the unfiltered file, so a
+    displayed number was wrong by the done count and completed a different item.
 #>
 [CmdletBinding()]
 param(
     [string]$Topic = '',
-    [int]$Index = -1,
     [string]$Path = '',
     [switch]$Text
 )
@@ -36,7 +37,6 @@ $janet = Get-JanetCommand
 
 $arguments = @('thread', 'complete')
 if ($Topic) { $arguments += @('--topic', $Topic) }
-if ($Index -ge 0) { $arguments += @('--index', $Index) }
 if ($Path) { $arguments += @('--path', $Path) }
 
 & $janet @arguments

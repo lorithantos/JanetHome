@@ -287,8 +287,9 @@ public static class Cases
         new("thread update status parks the other", "Update-ThreadItem.ps1",
             ["-Topic", "cache eviction", "-Status", "active"]),
 
-        new("thread update by index", "Update-ThreadItem.ps1",
-            ["-Index", "1", "-Next", "reached by position"]),
+        // No "by index" case. Selection by position was removed on 2026-08-14, so there is no
+        // longer a Janet.Core behaviour for the pre-shim PowerShell's -Index to be compared
+        // against. Parity with a retired feature is not a claim worth keeping green.
 
         new("thread complete by topic", "Complete-ThreadItem.ps1",
             ["-Topic", "cache eviction"]),

@@ -84,12 +84,18 @@ static int Thread(Args args)
     string? path = args.Value("--path");
     bool pretty = args.Flag("--pretty");
 
-    // A selector is a topic, an index, or nothing -- and nothing means whatever is active.
-    ThreadSelector selector = new()
+    // Retired 2026-08-14. Args ignores options nobody reads, so dropping --index silently
+    // would have turned 'complete --index 3' into 'complete whatever is active' -- the same
+    // wrong-item write the removal exists to prevent, minus the error message.
+    if (args.Has("--index"))
     {
-        Topic = args.Value("--topic") ?? string.Empty,
-        Index = int.TryParse(args.Value("--index"), out int index) ? index : -1,
-    };
+        throw new ArgumentException(
+            "--index was removed: the list is keyed by topic, and a displayed position is " +
+            "wrong by the number of completed items above it. Select with --topic.");
+    }
+
+    // A selector is a topic, or nothing -- and nothing means whatever is active.
+    ThreadSelector selector = new() { Topic = args.Value("--topic") ?? string.Empty };
 
     switch (verb.ToLowerInvariant())
     {
@@ -537,11 +543,13 @@ static int Usage()
 
         janet thread show     [--all] [--text] [--pretty]
         janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]... [--active]
-        janet thread update   [--topic TEXT | --index N] [--notes TEXT] [--next TEXT]
+        janet thread update   [--topic TEXT] [--notes TEXT] [--next TEXT]
                               [--ref ID]... [--status active|parked|done]
                               [--append-notes] [--append-refs]
-        janet thread complete [--topic TEXT | --index N]
-        janet thread active   (--topic TEXT | --index N | --none)
+        janet thread complete [--topic TEXT]
+        janet thread active   (--topic TEXT | --none)
+                              (topic is the only selector; with none, update and
+                              complete act on whatever is in focus)
 
         janet api             (--package ID | --path FILE) [--version V] [--tfm TFM]
                               [--query TEXT] [--id MEMBER]... [--kind Type|Method|Property|Field|Event]

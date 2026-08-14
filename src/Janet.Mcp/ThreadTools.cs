@@ -52,14 +52,13 @@ public static class ThreadTools
     [Description(
         "Amend an item in place. Omitted fields are left alone; an empty string clears one, " +
         "which is how you drop a resume cursor that no longer applies. Select by topic " +
-        "(case-insensitive substring) or index; with neither, this acts on whatever is in focus. " +
+        "(case-insensitive substring); with none, this acts on whatever is in focus. " +
         "An ambiguous topic is refused and both candidates named, rather than resolved to a " +
         "first match -- amending the wrong item is how notes get lost.")]
     public static string Update(
         [Description("Substring of the topic to act on. Omit to act on the item in focus.")]
         string? topic = null,
-        [Description("Position in the list, as an alternative to topic.")]
-        int? index = null,
+        [Description(RetiredIndex)] int? index = null,
         [Description("Replacement notes, or empty to clear. Omit to leave alone.")]
         string? notes = null,
         [Description("Replacement resume cursor, or empty to clear. Omit to leave alone.")]
@@ -83,8 +82,7 @@ public static class ThreadTools
     public static string Complete(
         [Description("Substring of the topic to complete. Omit to complete the item in focus.")]
         string? topic = null,
-        [Description("Position in the list, as an alternative to topic.")]
-        int? index = null) =>
+        [Description(RetiredIndex)] int? index = null) =>
         ThreadJson.Serialize(ThreadItems.Complete(null, Selector(topic, index)));
 
     [McpServerTool(Name = "thread_set_active")]
@@ -94,13 +92,24 @@ public static class ThreadTools
         "A completed item cannot take focus until it is reopened by setting its status to parked.")]
     public static string SetActive(
         [Description("Substring of the topic to focus on.")] string? topic = null,
-        [Description("Position in the list, as an alternative to topic.")] int? index = null,
+        [Description(RetiredIndex)] int? index = null,
         [Description("Clear focus entirely rather than moving it.")] bool none = false) =>
         ThreadJson.Serialize(ThreadItems.SetActive(null, none ? null : Selector(topic, index)));
 
-    private static ThreadSelector Selector(string? topic, int? index) => new()
-    {
-        Topic = topic ?? string.Empty,
-        Index = index ?? -1,
-    };
+    private const string RetiredIndex =
+        "RETIRED -- do not pass. Supplying it is an error. Select by topic instead.";
+
+    /// <summary>Builds a topic selector, refusing a retired positional one.</summary>
+    /// <remarks>
+    /// The parameter outlives the feature on purpose. Deleting it would leave an unknown
+    /// property that the argument binder drops in silence, so a caller still passing index
+    /// would act on whatever happened to be in focus -- the wrong-item write this removal
+    /// exists to prevent. Kept, so the mistake is a refusal instead.
+    /// </remarks>
+    private static ThreadSelector Selector(string? topic, int? index) =>
+        index is not null
+            ? throw new GraphException(
+                "index was removed: the list is keyed by topic, and a displayed position is " +
+                "wrong by the number of completed items above it. Select with topic.")
+            : new ThreadSelector { Topic = topic ?? string.Empty };
 }

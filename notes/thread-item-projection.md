@@ -82,8 +82,8 @@ Measured against the current list: the roster is a **99.9% cut**, the summary **
 
 ### 3. The invariant is structural, not editorial
 
-**Notes are returned one item at a time.** `-Expand` requires `-Topic` or `-Index` and
-errors without one; `-Area X -Expand` is refused.
+**Notes are returned one item at a time.** `-Expand` requires `-Topic` and errors without
+it; `-Area X -Expand` is refused.
 
 Written as a rule ("don't expand across a set") it would be re-broken by the next flag
 someone adds, which is exactly how the current state arose. Written as a signature that
@@ -99,15 +99,25 @@ That is the same absence-reads-as-real trap as RazorGraph's missing Property nod
 empty field means "not extracted" but reads as "nothing there". A projection that does
 not name itself is a truncation that does not report itself.
 
-## It subsumes the `-Index` bug
+## It subsumed the `-Index` bug -- RESOLVED 2026-08-14, by removal
 
-`Show-ThreadItems` filters `done` before printing; `Set-ActiveThread -Index` counts into
-the unfiltered file. There are 3 done items right now, so **`-Index` is live-wrong by up
-to 3** -- it silently selects a different item than the one displayed.
+`Show-ThreadItems` filtered `done` before printing; `Set-ActiveThread -Index` counted into
+the unfiltered file. With 3 done items, `-Index` was live-wrong by up to 3 -- it silently
+selected, and then rewrote, a different item than the one displayed.
 
-The display carries no index at all today, which is why this survived. The fix is to
-emit the true unfiltered index on every row, which the projection work has to touch
-anyway. `Find-ThreadItemIndex` needs no change.
+**This section's proposed fix was not taken.** It was to emit the true unfiltered index on
+every row, which the projection work had to touch anyway. That makes the number correct
+without making it identity: the next change to ordering or filtering re-opens the same bug,
+and the failure stays silent because a plausible number is indistinguishable from a right
+one.
+
+Selection by position was removed instead, across `Janet.Core`, the CLI, the MCP tools and
+the three shims. Items are addressed by topic, as a dictionary. **Do not add a row index to
+the projection** -- there is nothing left that consumes one, and printing a position next to
+an item invites exactly the call this removed.
+
+The projection design is otherwise untouched by that change, since it selects by `-Topic`
+throughout.
 
 ## The dependency, and why it is not optional
 
