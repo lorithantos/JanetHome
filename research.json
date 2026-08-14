@@ -62,7 +62,7 @@
       "section": "Reviewer personas",
       "summary": "Depersonalized review principles: capture why in comments, tests must be able to fail, move/rename PRs owe evidence, warning fixes must not change runtime defaults, runbooks never route to a named person.",
       "tags": ["review", "testing", "ethics", "process"],
-      "links": ["script.test-pre-commit", "pattern.handoff-corpus", "note.linq-deferred-side-effects"]
+      "links": ["script.test-pre-commit", "pattern.handoff-corpus", "note.linq-deferred-side-effects", "script.test-mutation-catches"]
     },
     {
       "id": "pattern.two-question-routing",
@@ -821,7 +821,9 @@
       "summary": "Resolves git.exe and forwards all arguments to it. git is not on PATH in every shell this repo is used from -- an agent session does not load the user profile that adds it -- and Visual Studio bundles a copy, so this finds it once rather than each caller rediscovering the path. Run with no arguments to get the resolved path on the SUCCESS stream, so \"$g = & .\\git.ps1\" actually captures it; the RetirementCore counterpart uses Write-Host, which goes to the information stream and silently yields nothing. Git's own \"-C <path>\" forwards correctly (verified), which is how to operate on another repo without changing directory. Targets 5.1 as well as 7, since a shim that resolves a tool is exactly what gets run from whatever shell is open.",
       "params": ["GitArgs"],
       "caveats": [
-        "The candidate list leads with this machine's VS 18 Enterprise path. On another machine that misses and the fallback is a recursive Get-ChildItem over the Visual Studio install root, which is slow but only reached once per invocation."
+        "The candidate list leads with this machine's VS 18 Enterprise path. On another machine that misses and the fallback is a recursive Get-ChildItem over the Visual Studio install root, which is slow but only reached once per invocation.",
+        "On THIS machine since 2026-08-14 the VS git directory is also in the persistent User PATH, so git resolves in agent sessions without this shim. That is a machine setting, not a repo one: the shim stays the portable answer, and it stays correct on any checkout elsewhere. The profile (profile.ps1, CurrentUserAllHosts) already added the same directory, but a session launched without loading a profile -- which is how an agent shell and a bare \"claude -c\" both arrive -- never ran it, which is why the fix moved to the environment.",
+        "The path added is Visual Studio's bundled copy, under the VS install root. A VS upgrade or uninstall can move or remove it, at which point the User PATH entry silently points at nothing and this shim -- which rescans candidates -- is the thing that still works. A standalone Git for Windows would be the durable answer; none is installed."
       ],
       "tags": ["git", "powershell", "entrypoint"],
       "links": ["script.get-drive-survey", "script.test-standalone-scripts"]
@@ -970,7 +972,7 @@
         "Parity is proven on the parts that are a function of text -- parsing, grouping, the census diff, TRX reading -- by goldens recorded from the original's OWN functions, lifted out by AST because the script cannot be dot-sourced whole. The orchestration is not golden-tested: an envelope carries a build duration, an absolute target path and the graph state of whatever repo it ran in."
       ],
       "tags": ["dotnet", "build", "testing", "json", "contract", "quality"],
-      "links": ["note.powershell-house-rules", "script.search-json", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common", "script.test-output-contracts", "file.standalone"]
+      "links": ["note.powershell-house-rules", "script.search-json", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common", "script.test-output-contracts", "file.standalone", "script.test-mutation-catches"]
     },
 
     {
@@ -1149,7 +1151,7 @@
         "Tests read frozen fixtures, never the live research.json. They used to read the live graph, which meant their expectations changed whenever anyone added a node. Regenerating the fixtures (Build-Fixtures.ps1) invalidates every golden and needs the generator re-run."
       ],
       "tags": ["testing", "csharp", "powershell", "failure-modes", "contract", "concurrency"],
-      "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research"]
+      "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research", "script.test-mutation-catches"]
     },
 
     {
@@ -1288,7 +1290,7 @@
         "Not wired into Test-PreCommit.ps1. Pre-commit gates on staged files, and these are frozen files nothing stages -- run this after a history rewrite, a filter-branch, or any operation that could move the recorded commits."
       ],
       "tags": ["powershell", "gate", "provenance", "verification", "contract"],
-      "links": ["file.standalone", "script.git", "note.janet-mcp-port", "script.test-output-contracts"]
+      "links": ["file.standalone", "script.git", "note.janet-mcp-port", "script.test-output-contracts", "script.test-mutation-catches"]
     },
 
     {
@@ -1305,7 +1307,26 @@
         "Verified by mutation 2026-08-12, eight ways: a field added, removed and renamed; a kind spelled differently; the contract number moved in code only; the schema edited alone; the schema edited with a bump but no script change. All caught."
       ],
       "tags": ["gate", "contract", "schema", "powershell", "verification", "json"],
-      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts"]
+      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts", "script.test-mutation-catches"]
+    },
+
+    {
+      "id": "script.test-mutation-catches",
+      "kind": "script",
+      "path": "scripts\\Test-MutationCatches.ps1",
+      "summary": "Proves a test suite would actually catch the defects it claims to, by breaking the code on purpose and requiring the suite to go red. Takes a JSON plan of mutations (file, find, replace, optional test filter); per mutation it applies the edit, REFUSES ONE THAT CHANGES NOTHING, runs the suite through Invoke-DotnetCheck, requires failure and records WHICH tests failed, then restores from the bytes read before the edit and verifies the restore by SHA-256. A green baseline is required first (failures cannot be attributed in a suite that was already red) and a green final run is required last (which is what proves every restore landed). Exists because this repo already believes the principle -- pattern.reviewer-principles says tests must be able to fail, note.golden-tests records forty green results standing for no verification -- while every actual mutation check (Test-OutputContracts eight ways, Test-StandaloneScripts three) was done by hand once and survives only as a claim in a caveat. JSON envelope by default, -Text to read; exit 1 on any not-caught, no-op, unapplied or unrestored mutation.",
+      "caveats": [
+        "IT EDITS SOURCE FILES IN PLACE. Restore is from an in-memory byte copy in a finally block and is verified by hash; a failed restore writes the original to <file>.mutation-original, stops the run, and says not to trust anything after it. Run on a clean working tree so git is a second way back.",
+        "A green result means the mutations you WROTE were caught. It says nothing about the ones you did not think of, and it is not a coverage tool -- an uncaught behaviour with no mutation aimed at it looks identical to a well-tested one.",
+        "The no-op guard is the load-bearing part and was written from a real mistake: a do { X } while (false) wrapper around an awaited call, authored as a mutation on 2026-08-14, is semantically identical to X. It passed, and the pass was briefly mistaken for evidence. A find/replace whose result is byte-identical now reports no-op instead of running.",
+        "A 'find' matching more than once is refused as ambiguous rather than guessed at -- measured on Controls.xaml, where the obvious setter text matched four times and a hand mutation would have silently broken a different style. Set occurrences to 'all' to mean every match.",
+        "Multi-line finds are literal, so line endings matter. These working trees are LF while git reports CRLF on checkout; a find written with CRLF reports not-found against an LF file, which reads like a wrong path rather than a wrong newline.",
+        "Relative paths in a plan resolve against the TARGET solution/project directory, not the plan file. Found by dogfooding: a plan written into a scratch directory resolved every path against the scratch directory and reported file-missing for all of them. Set \"root\" to override.",
+        "Runs the suite through Invoke-DotnetCheck, which shims to the janet CLI, so a missing or stale global tool makes every run unavailable rather than failing. That is reported as suite-unavailable and exits 1 -- read the finding kind, because a check that could not run is not a check that passed.",
+        "Dogfooded against Janet.Shared 2026-08-14: three real mutations caught with the exact test names (key filter -> 2 tests, coalescing window -> 3, cell alignment -> 1) and one deliberate no-op refused. The Janet.Shared working tree was byte-clean afterwards."
+      ],
+      "tags": ["testing", "verification", "gate", "powershell", "quality", "failure-modes"],
+      "links": ["script.invoke-dotnet-check", "script.test-output-contracts", "script.test-standalone-scripts", "pattern.reviewer-principles", "note.golden-tests"]
     }
   ]
 }
