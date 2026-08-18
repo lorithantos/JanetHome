@@ -44,7 +44,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -337,7 +337,7 @@
       "summary": "Read cached JSON files as PSCustomObjects, with optional schema discovery.",
       "params": ["Path", "Schema"],
       "tags": ["json", "cache", "data"],
-      "links": []
+      "links": ["file.lightroom-api-index"]
     },
     {
       "id": "script.open-in-visual-studio",
@@ -572,7 +572,7 @@
         "build_graph and build_solution are slow (full Roslyn compile); build_solution compiles every project in the solution. Solution graphs scope Razor and client-asset ids by project name (page:<Project>/<relPath>, js:<Project>/<relPath>), so ids differ from single-project graphs of the same code.",
         ".mcp.json launches a PUBLISHED copy -- D:/Repos/RazorGraphTool/.mcp-bin/RazorGraph.Mcp.exe, absolute path, gitignored -- refreshed with: dotnet publish src\\RazorGraph.Mcp -c Release -o .mcp-bin. It used to launch the live bin/Debug output, which a running server locks, so any rebuild of that configuration failed with MSB3021 while a Claude session was up. Verified 2026-08-01 that Debug and Release solution builds both succeed with the server live. Residual: .mcp-bin itself is locked while a session runs, so re-publishing needs those sessions closed, and code changes reach the MCP tools only after re-publish AND a session restart.",
         "Covers edges are call-graph reachability to the FULL call closure (since 73ddf10, 2026-08-02; was depth 3), not runtime coverage - a covered method is one some test can reach, not one a test asserted on. Each edge carries the depth it was reached at; filter on depth for direct exercise. Traversal seeds from the test and from its class lifecycle hooks and constructor. uncovered_methods excludes bodiless interface/abstract declarations. Since 20ff394 coverage queries HARD-ERROR on a graph containing zero test methods (single-project builds, excludeTests builds) instead of returning empty - everything-uncovered was the absence-as-finding trap.",
-        "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion. Still present as of 2026-08-08; the planned attribute-driven DI detection would fix it as a side effect.",
+        "Roslyn injection heuristic misclassifies positional-record constructor parameters as injectedServices (ConversionQueueStatus in ImageSelectorV2 lists int/long/List<string> as \"services\"). Needs a record/primitive exclusion. MECHANISM CORRECTED 2026-08-17 (Lori): the earlier claim that attribute-driven DI detection would fix this as a side effect is wrong -- constructor parameters are essentially never attributed (measured over five corpora: 2 primary-ctor attribute usages in one, 0 in the other four), so nothing useful arrives via attributed parameters. The actual fix is registration knowledge, in two steps. (1) Registration declarations make 'what is registered, and how' a LOOKUP rather than an inference: [RegisterDependency<T>]-style class attributes name the service type and lifetime -- and that attribute is Lori's own vocabulary, so it belongs in per-codebase policy data, never hardcoded -- and registration call sites (services.AddScoped<IFoo,Foo>()) carry the same facts for codebases without such attributes. (2) Once a type is KNOWN to be container-constructed, the container's documented constructor-selection rules say which ctor candidates are eligible and in what order one is chosen -- which is exactly what rules out the positional-record ctor the heuristic currently misreads as taking int/long/List<string> 'services'. DecoratedBy edges (shipped de88691, 2026-08-17) supply the raw material for step 1's attribute half.",
         "Type-usage edges are PARTIAL: since cd12114 (2026-08-08) property/field declared types emit References edges (unwrapping List<>/array wrappers), so \"who uses this type\" IS answerable for member-typed usage. Return types and parameter types still carry no edges - a type used only in method signatures still shows nothing.",
         "Saved-graph JSON field names differ from the in-memory model: edges serialize as from/to (not fromId/toId), node ids carry kind prefixes (type:, svc:, ctrl:, m:, prop:, field:, page:, js:). Hand-written blob queries against the wrong names return empty and look like \"no edges\" - verify against the orientation view (Search-Json.ps1) first.",
         "The published .mcp-bin predates ALL 2026-08-08 work until re-published: exception_escapes (2026-08-07), member extraction (cd12114), --no-tests + coverage guard (20ff394), generated-code marking/mapping/links (f97edee). Publish loop: close sessions -> dotnet publish both projects -> restart. The CLI twin sees everything immediately. The OLD server CAN load_graph new CLI-built graphs - every enum name pre-exists, and the page->class join deliberately rides References+compiledInto=true instead of a new EdgeType because JsonStringEnumConverter throws on unknown names.",
@@ -584,7 +584,7 @@
         "server_info reports the RESOLVED build directory rather than the launched path. A process started through the .mcp-bin\\current junction reports the link, which is identical across every build -- so the obvious value is the one that cannot distinguish them. Use it after a rotation to confirm the swap landed, and to tell a stale server from a stale graph."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping"]
     },
 
     {
@@ -620,7 +620,7 @@
         "Counts are regex over raw text - comments and string literals included, indicative not exact. Corpus = one personal app (ImageSelector, two versions of the same source) + nopCommerce (classic pole) + OrchardCore (bundled/TS pole). Selector-first and the @Url.Action finding hold at both poles; ESM/TS deferral survives but weakened - OrchardCore keeps sources outside wwwroot in Assets\\, so graph-sources-vs-graph-shipped is an open design question for bundled projects."
       ],
       "tags": ["code-analysis", "javascript", "razor", "research", "scoping"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping"]
     },
 
     {
@@ -632,7 +632,7 @@
         "Loads the whole file into memory (fine for MB-scale graphs). Unlike Get-Research it caps -Where results too (default -First 10) because blob arrays can hold tens of thousands of items; -All lifts the cap and the envelope always says when it was applied."
       ],
       "tags": ["retrieval", "json", "code-analysis", "powershell"],
-      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli", "script.invoke-dotnet-check"]
+      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli", "script.invoke-dotnet-check", "file.lightroom-api-index"]
     },
 
     {
@@ -890,7 +890,7 @@
         "After writing, the tool reports whether the output landed somewhere git can still see -- addressed to the agent, on stderr for the CLI and as a gitAdvice field on save_graph for the MCP server. It is SILENT when the path is outside a repository or already ignored, so its presence is the signal. Ignored-ness is asked of git (check-ignore), not reimplemented; if git cannot be run it advises rather than suppressing. The tool deliberately does NOT write a .gitignore of its own: creating files nobody asked for inside someone else's working tree was rejected as bad manners."
       ],
       "tags": ["code-analysis", "csharp", "roslyn", "cli", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping"]
     },
 
     {
@@ -1004,14 +1004,14 @@
       "kind": "note",
       "path": "notes\\razorgraph-lua-scoping.md",
       "summary": "Scoping measurements for the RazorGraph Lua extractor (2026-08-10), taken before the parser or architecture were chosen. Census over Penlight (MIT, 115 files) and Kong (Apache-2.0, 1309 files): paren-less `require \"x\"` outnumbers `require(` roughly 2:1 in both (249/2497 vs 65/1370), so a regex keyed on the parenthesised form silently misses ~65% of the module graph; function definitions spread across four forms with no dominant one (Kong: local function 2355, M.f = function() 1346, function M.f() 662, function M:f() 846); Kong uses goto/::label:: 148 times so Lua 5.1 grammar is insufficient; module(...) is dead (0 of 1424 files); 46 dynamic require(<expr>) sites cannot be resolved statically. Conclusion: real parser, not regex - chosen parser is Loretta. Separately, Lightroom plugins use import 191 times against 22 require, which established that the HOST (Lightroom, Neovim, LOVE2D, GMod, WoW, Roblox, LuaRocks) is the primary abstraction rather than the module system, and drove a three-way resolution outcome (InGraph/External/Unresolved-with-reason) plus a host-declares-whether-a-static-module-graph-exists flag.",
-      "tags": ["code-analysis", "lua", "research", "scoping"],
       "caveats": [
         "Counts are regex over raw text - comments and string literals are included, so they are indicative rather than exact. Same caveat as note.razorgraph-js-scoping.",
         "The host table lists eight environments; only LuaRocks and Lightroom are being implemented. The other six were validated on paper only, so their columns are design intent rather than measured behaviour.",
         "Kong is OpenResty: it leans on ngx.* globals and non-standard module loading, so a slice of it is not plain Lua semantics. Good for stress-testing, misleading for correctness claims.",
         "The corpora live at V:\\repos (Penlight, kong) and C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua, not in any repo. Shallow clones - no history."
       ],
-      "links": ["note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "note.razorgraph-cli", "pattern.graph-first-analysis", "note.razorgraph-cross-language"]
+      "tags": ["code-analysis", "lua", "research", "scoping"],
+      "links": ["note.razorgraph-js-scoping", "note.razorgraph-mcp-server", "note.razorgraph-cli", "pattern.graph-first-analysis", "note.razorgraph-cross-language", "note.razorgraph-attribute-scoping", "file.lightroom-api-index"]
     },
 
     {
@@ -1362,6 +1362,36 @@
       ],
       "tags": ["agent", "thread-items", "retrieval", "contract", "session", "startup", "context-budget", "powershell"],
       "links": ["pattern.thread-items", "script.show-thread-items", "script.test-output-contracts", "file.startup-manifest", "note.golden-tests", "note.thread-item-projection", "file.janet-core"]
+    },
+
+    {
+      "id": "note.razorgraph-attribute-scoping",
+      "kind": "note",
+      "path": "notes\\razorgraph-attribute-scoping.md",
+      "summary": "Attribute census for RazorGraph's attribute vocabulary (2026-08-17), 8,047 usages over five corpora via Roslyn SYNTAX-ONLY parse (scripts\\AttributeCensus.cs, exact not regex-indicative) -- and the method that let a scoping census graduate into a verification ORACLE: every shipped increment (DecoratedBy/Registers/Parameter/assembly, formatVersion 1.1) reconciled against exact expected numbers by a route independent of the extractor. Key findings: distinct attribute types are tiny (7-113) while usages are not; 50-80% is xUnit plumbing which is why payload suppression is policy data; parameter attributes are rare but pure signal (Parameter nodes emit only when decorated); ctor params are essentially never attributed (the DI fix is registration lookup + container ctor-selection rules, NOT attributed params); assembly attributes are an OrchardCore manifest story plus an obj\\ generated-file trap (plain .cs, not .g.cs -- gate on the path segment); typeof/generic type arguments are ~0.5% of arguments and every one is a framework-constructs-this link (the Registers edge).",
+      "caveats": [
+        "Counts are syntax-layer: exact over what syntax shows, but blind to what only the semantic layer decides -- record [property:] attributes land on the PROPERTY in the real extractor (2 in RazorGraphTool), and compiler-generated sources are compiled without being on disk (5), so a syntax census and a compile-based graph legitimately differ by exactly those; the note itemises the reconciliation.",
+        "Census scope must match BUILD scope before its numbers are an oracle: the whole-tree count was a wrong oracle for a .slnx build because tests\\fixtures\\ carried the repo's only ASP.NET attribute usages. Rescope, then reconcile.",
+        "KNOWN DEFECT: the corpus-declared matcher appends 'Attribute' to a name already carrying <>, so generic attributes never match the declared set -- ImageSelectorV2's usagesOfCorpusDeclaredAttributes reads 9, truth ~45 (40 field-verified). Per-target/per-type counts unaffected. Fix in scripts\\AttributeCensus.cs before trusting that one split.",
+        "The script is a .NET 10 file-based app needing '#:property JsonSerializerIsReflectionEnabledByDefault=true' and Roslyn 5.6.0 pinned to match the extractor; run with 'dotnet run AttributeCensus.cs -- <root>'."
+      ],
+      "tags": ["code-analysis", "csharp", "roslyn", "research", "scoping"],
+      "links": ["note.razorgraph-js-scoping", "note.razorgraph-lua-scoping", "note.razorgraph-mcp-server", "note.razorgraph-cli", "pattern.graph-first-analysis"]
+    },
+
+    {
+      "id": "file.lightroom-api-index",
+      "kind": "file",
+      "path": "C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua\\lightroom-api-15.3.json",
+      "summary": "The Lightroom Classic SDK API as a queryable JSON index: 909 members across 65 namespaces (SDK 15.3), each with signature, summary, params, return value, and the \"first supported in version\" stamp. Query with script.search-json (-Query scored search, -Where name=photo:setRawMetadata exact lookup); schema via Read-JsonCache -Schema. Built from the LuaDoc HTML the SDK ships by D:\\Repos\\ImageSelectorV2\\tools\\Build-LightroomApiIndex.ps1; sibling indexes lightroom-api-8.0.json (815 members) and lightroom-api-3.0.json (677) beside it answer \"when did this API appear\" beyond the since field. Source corpus: the three SDK folders under C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua.",
+      "caveats": [
+        "Derived data: rebuild with Build-LightroomApiIndex.ps1 after dropping in a new SDK; nothing detects a stale index.",
+        "Param descriptions flatten LuaDoc's nested key lists (setRawMetadata's 30 recognized keys become one prose string) -- the structure is in the HTML if ever needed.",
+        "The builder lives in ImageSelectorV2, not JanetHome: it is Lightroom-specific, and the indexes live beside the corpus outside any repo.",
+        "memberCount counts namespace overview rows too (one per module, kind=namespace); functions and methods are memberCount minus moduleCount."
+      ],
+      "tags": ["lightroom", "lua", "api", "retrieval", "json", "third-party"],
+      "links": ["script.search-json", "script.read-json-cache", "note.razorgraph-lua-scoping"]
     }
   ]
 }
