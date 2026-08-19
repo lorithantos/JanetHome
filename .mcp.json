@@ -1,5 +1,6 @@
 {
   "mcpServers": {
-    "janet": { "type": "http", "url": "http://127.0.0.1:7717/" }
+    "janet": { "type": "http", "url": "http://127.0.0.1:7717/" },
+    "razorgraph": { "type": "http", "url": "http://127.0.0.1:7718/" }
   }
 }
