@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/az-token.schema.json",
+  "title": "az_token envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 2,
+    "produces": "az_token / janet az token / GET /az/token on a running janet-mcp",
+    "surface": [
+      "src/Janet.Core/AzTokenJson.cs",
+      "src/Janet.Core/AzToken.cs",
+      "src/Janet.Core/ServerLink.cs",
+      "src/Janet.Cli/Program.cs",
+      "src/Janet.Mcp/AzTools.cs",
+      "src/Janet.Mcp/Program.cs"
+    ],
+    "node": "file.az-token",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.surfaceNotScript": "'surface' rather than 'script', and the first contract here to use it. The other three describe formats a PowerShell script emitted first and a C# port had to match byte for byte; this one was born in Janet.Core with two front ends and no PowerShell ancestor, so there is no recorded answer to be faithful to and no script to name. The gate reads either key.",
+    "$comment.sampledOnlyWhereSignedIn": "The sampler for this contract is the only one that depends on the machine rather than on the repo: it needs a live 'az login'. On a box without one it reports skipped, which is neither a pass nor a failure. Do not read a green run on a build agent as this format having been checked.",
+    "$comment.tokenAbsent": "The 'token' key is ABSENT rather than null when it was not asked for -- see its description. That is why it is not in 'required', and it is the one thing in this format worth not 'fixing' into a nullable field."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "requested", "scope", "resource", "tenant", "tokenType", "expiresOn", "expiresInSeconds", "cached", "servedBy"],
+  "properties": {
+    "contract": {
+      "const": 2,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "requested": {
+      "type": "string",
+      "description": "What the caller asked for, verbatim -- an alias, or a scope they typed out. Kept beside the resolved scope so a surprising answer can be traced to the request that produced it rather than reconstructed."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The scope actually sent to Azure, after alias resolution and after a bare resource URI had '/.default' appended."
+    },
+    "resource": {
+      "type": ["string", "null"],
+      "description": "The alias this resolved through, or null when the caller passed a literal scope. Null means 'not applicable', not 'unknown': a literal scope has no alias by definition."
+    },
+    "tenant": {
+      "type": ["string", "null"],
+      "description": "Tenant the token was issued for, or null for whatever `az` is signed in to. The cache is keyed on scope AND tenant, because a token is only valid for the pair."
+    },
+    "tokenType": {
+      "type": "string",
+      "description": "Almost always 'Bearer'. Reported rather than assumed, since the caller is the one building the Authorization header."
+    },
+    "expiresOn": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiry as a round-trip UTC timestamp. Not local time: a lifetime is the same fact everywhere, and a reader who has to guess the writer's timezone has an ambiguity rather than a timestamp."
+    },
+    "expiresInSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Seconds of life left, so a caller can tell whether the token outlasts the work without parsing a timestamp and inferring what 'now' the server meant. Floored at zero -- a negative lifetime is not something a caller should have to interpret."
+    },
+    "cached": {
+      "type": "boolean",
+      "description": "True when the answer came from the process cache rather than the Azure CLI. Always false from the CLI front end, which is a fresh process every time and has nothing to cache in; the field earns its keep in the server, where it is the difference between a millisecond and two seconds."
+    },
+    "servedBy": {
+      "type": "string",
+      "enum": ["process", "server"],
+      "description": "Whether the process you asked worked this out ('process') or borrowed it from a running janet-mcp ('server'). Added in contract 2. Only the CLI can ever report 'server' -- a tool call is already talking to the server, so from there the answer is always local. It exists because cached:false from the CLI is otherwise ambiguous between 'there was no server to ask' and 'the server's cache was cold', and those want different reactions."
+    },
+    "token": {
+      "type": "string",
+      "description": "The access token. PRESENT ONLY WHEN EXPLICITLY REQUESTED, and absent otherwise rather than null -- null would invite a reader to conclude no token exists, when the truth is that they did not ask for it, and those two want different actions from whoever hit the difference."
+    }
+  }
+}

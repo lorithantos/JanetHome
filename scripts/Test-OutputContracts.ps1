@@ -61,6 +61,39 @@ if (-not (Test-Path $Path)) {
 # the schema file because it is a test fixture, not part of the format: the format has to
 # be readable by someone who never runs this.
 $samplers = @{
+    'az-token' = {
+        param([string]$Janet, [string]$Root)
+
+        # $Root is unused: this format is produced from a sign-in, not from anything in the
+        # repo. Kept so every sampler has one shape.
+        $null = $Root
+
+        # THE ONLY SAMPLER HERE THAT DEPENDS ON THE MACHINE. Every other one builds what it
+        # needs; this one needs a live 'az login', which a build agent will not have. So it
+        # SKIPS rather than fails: a contract nobody could check must not read as a contract
+        # that failed, and it must not read as one that passed either.
+        $probe = @(& $Janet az token --scope arm 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            return [pscustomobject]@{
+                samples = @()
+                skipped = "no Azure CLI sign-in on this machine ($($probe -join ' '))"
+            }
+        }
+
+        # Two samples because the interesting half of this format is a key that is ABSENT by
+        # default. Sampling only the metadata shape would never exercise the arm that carries
+        # a token, and sampling only --raw would never prove the omission is legal.
+        $metadata = $probe -join "`n"
+        $literal = @(& $Janet az token --scope 'https://vault.azure.net/.default') -join "`n"
+
+        return [pscustomobject]@{
+            samples = @(
+                [pscustomobject]@{ label = 'arm alias, metadata only'; json = $metadata }
+                [pscustomobject]@{ label = 'literal scope, no alias'; json = $literal }
+            )
+        }
+    }
+
     'assembly-api' = {
         param([string]$Janet, [string]$Root)
 
@@ -172,6 +205,7 @@ function Get-SchemaBody {
 
 $findings = @()
 $pendingContracts = @()
+$skippedContracts = @()
 $checked = 0
 $live = $true
 
@@ -204,7 +238,10 @@ if ($schemas.Count -eq 0) {
 $changed = @()
 if ($Against) {
     $git = & (Join-Path $PSScriptRoot 'git.ps1')
-    $changed = @(& $git diff --name-only $Against -- 'contracts' 'scripts' | Where-Object { $_ })
+    # src\ is in the pathspec because a format no longer has to come from a script. The
+    # C#-native contracts name their surface in src\, and a diff that could not see it would
+    # report every one of them as "the schema changed but its surface did not".
+    $changed = @(& $git diff --name-only $Against -- 'contracts' 'scripts' 'src' | Where-Object { $_ })
 }
 
 foreach ($schemaFile in $schemas) {
@@ -220,7 +257,25 @@ foreach ($schemaFile in $schemas) {
 
     $meta = $schema.'$janet'
     $relative = (Join-Path 'contracts' $schemaFile.Name) -replace '\\', '/'
-    $scriptPath = $meta.script -replace '\\', '/'
+
+    # The files a format change has to drag with it. 'script' is the original spelling, and
+    # every contract that began as PowerShell still uses it; 'surface' is the general form,
+    # for a format born in C# with no script to name. Both are read, so a contract with two
+    # front ends can list them, and neither is required -- a schema that names nothing is
+    # caught below rather than crashing here, which is what it used to do.
+    $surface = @(
+        if ($meta.PSObject.Properties.Name -contains 'script') { $meta.script }
+        if ($meta.PSObject.Properties.Name -contains 'surface') { $meta.surface }
+    ) | ForEach-Object { $_ -replace '\\', '/' }
+
+    if (@($surface).Count -eq 0) {
+        $findings += [pscustomobject]@{
+            contract = $name
+            issue    = 'undeclared'
+            detail   = 'The $janet block names neither a script nor a surface, so nothing says which code is allowed to change this format.'
+        }
+        continue
+    }
 
     # A schema that did not exist at the reference commit is a NEW format, not a changed
     # one. Running the change rule on it would demand a bump from nothing and a script edit
@@ -248,11 +303,16 @@ foreach ($schemaFile in $schemas) {
             }
         }
 
-        if ($changed -notcontains $scriptPath) {
+        # ANY of the declared surface moving satisfies this, not all of it. A format with a
+        # CLI and a server front end is usually changed in one of them plus the serializer,
+        # and demanding every listed path move would fire on correct work.
+        $moved = @($surface | Where-Object { $changed -contains $_ })
+
+        if ($moved.Count -eq 0) {
             $findings += [pscustomobject]@{
                 contract = $name
-                issue    = 'script-unchanged'
-                detail   = "The schema changed but $($meta.script) did not. A format change has to move its surface too -- the help describing the envelope, and the node it points at ($($meta.node))."
+                issue    = 'surface-unchanged'
+                detail   = "The schema changed but none of $($surface -join ', ') did. A format change has to move its surface too -- the help describing the envelope, and the node it points at ($($meta.node))."
             }
         }
     }
@@ -268,8 +328,15 @@ foreach ($schemaFile in $schemas) {
     $pending = ($meta.PSObject.Properties.Name -contains 'implemented') -and (-not $meta.implemented)
 
     if ($pending) {
-        $scriptFile = Join-Path $repoRoot $meta.script
-        $shipped = (Test-Path $scriptFile) -and
+        # The self-clearing trick reads the shim banner, so it only means anything for a
+        # contract that names a SCRIPT. A C#-native pending format has no equivalent tell and
+        # stays pending until someone clears the flag by hand, which is the honest outcome:
+        # better a flag that must be cleared deliberately than one that clears itself wrongly.
+        $scriptFile = if ($meta.PSObject.Properties.Name -contains 'script') {
+            Join-Path $repoRoot $meta.script
+        }
+
+        $shipped = $scriptFile -and (Test-Path $scriptFile) -and
             ((Get-Content $scriptFile -TotalCount 1) -match 'JANET-SHIM')
 
         if ($shipped) {
@@ -291,7 +358,20 @@ foreach ($schemaFile in $schemas) {
         continue
     }
 
-    $samples = @((& $samplers[$name] $janet $repoRoot).samples)
+    $sampled = & $samplers[$name] $janet $repoRoot
+
+    # A sampler may report that it COULD NOT check, as distinct from checking and finding
+    # nothing. The difference matters: one is an environment this run could not exercise, the
+    # other is a format the code failed to produce. Collapsing them would let a machine with
+    # no Azure login look identical to a broken serializer.
+    $skip = if ($sampled.PSObject.Properties.Name -contains 'skipped') { $sampled.skipped }
+
+    if ($skip) {
+        $skippedContracts += [pscustomobject]@{ contract = $name; reason = $skip }
+        continue
+    }
+
+    $samples = @($sampled.samples)
 
     if ($samples.Count -eq 0) {
         $findings += [pscustomobject]@{ contract = $name; issue = 'no-sample'; detail = 'The sampler produced nothing -- build the solution first. Reported rather than passed: an unchecked schema is not a checked one.' }
@@ -335,6 +415,10 @@ $result = [pscustomobject]@{
     # verified, and a run reporting "0 failed" over a directory of them would be telling
     # the truth in the least useful way available.
     pending  = @($pendingContracts)
+
+    # Named for the same reason pending is: a format this run could not exercise is not a
+    # format this run approved, and a bare "0 failed" over one would be true and misleading.
+    skipped  = @($skippedContracts)
     against  = $Against
     findings = @($findings)
 }
@@ -343,8 +427,12 @@ if ($Text) {
     Write-Host "output contracts: $checked checked (sampled from the $($result.sampledFrom))" -ForegroundColor Cyan
     if (-not $live) { Write-Host '  janet is not on PATH -- SHAPE NOT CHECKED, only the change rule ran.' -ForegroundColor Yellow }
     foreach ($name in $pendingContracts) { Write-Host "  [pending] ${name}: format agreed, code not written. Not verified by anything." -ForegroundColor Yellow }
+    foreach ($item in $skippedContracts) { Write-Host "  [skipped] $($item.contract): $($item.reason). Shape NOT checked this run." -ForegroundColor Yellow }
     foreach ($finding in $findings) { Write-Host "  [$($finding.issue)] $($finding.contract): $($finding.detail)" -ForegroundColor Red }
-    if (@($findings).Count -eq 0) { Write-Host "  $($checked - @($pendingContracts).Count) format(s) match what the code emits." -ForegroundColor Green }
+    if (@($findings).Count -eq 0) {
+        $verified = $checked - @($pendingContracts).Count - @($skippedContracts).Count
+        Write-Host "  $verified format(s) match what the code emits." -ForegroundColor Green
+    }
 }
 else {
     $result | ConvertTo-Json -Depth 5 -Compress

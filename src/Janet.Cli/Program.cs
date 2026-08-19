@@ -49,6 +49,11 @@ static int Run(Args args)
         return Check(args);
     }
 
+    if (command == "az")
+    {
+        return Az(args);
+    }
+
     if (command != "research")
     {
         Console.Error.WriteLine($"Unknown command '{args.Positional[0]}'.");
@@ -284,6 +289,135 @@ static int Check(Args args)
         : DotnetCheckJson.Serialize(result, args.Flag("--pretty")) + Environment.NewLine);
 
     return result.Succeeded ? 0 : 1;
+}
+
+/// <summary>
+/// An Azure access token, borrowed from the CLI's sign-in and cached for the process.
+/// </summary>
+/// <remarks>
+/// A fresh CLI process has no cache, so on its own this verb pays the `az` startup every time --
+/// measured at 1.6s against 0.01s from a warm server. So it BORROWS one: if a janet-mcp is
+/// serving this graph it asks that instead, and if none is it starts one and waits briefly.
+/// Either way the fallback is to do the work here, because the CLI exists precisely so that
+/// hooks and shells have something that works without an MCP server, and a cache that can take
+/// the tool down is worse than no cache. --local skips the server; --no-launch will use one that
+/// is already running but will not start anything.
+///
+/// There is deliberately no --out-env. A child process cannot set a variable in the shell that
+/// launched it, so the flag could only ever have printed an assignment for the caller to eval --
+/// which puts the token back on stdout, the exact thing it would exist to avoid. The working
+/// equivalents are --out-file, or assigning the output: $env:AZ_TOKEN = janet az token --raw.
+/// </remarks>
+static int Az(Args args)
+{
+    string verb = args.Positional.Count > 1 ? args.Positional[1] : "token";
+
+    if (!verb.Equals("token", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.Error.WriteLine($"Unknown az verb '{verb}'.");
+        return Usage();
+    }
+
+    string? outFile = args.Value("--out-file");
+    bool raw = args.Flag("--raw");
+
+    AzTokenRequest request = new()
+    {
+        Scope = args.Value("--scope") ?? AzToken.DefaultResource,
+        Tenant = args.Value("--tenant"),
+
+        // --out-file needs the value even when the caller never wants to see it.
+        Raw = raw || outFile is not null,
+        Refresh = args.Flag("--refresh"),
+    };
+
+    AzTokenResult result = Borrowed(args, request) ?? AzToken.Acquire(request);
+
+    if (outFile is not null)
+    {
+        // UnixCreateMode is ignored on Windows and honoured everywhere else. It is not the whole
+        // answer -- the file still lands wherever the caller pointed it, and on Windows it takes
+        // the directory's ACL -- but a secret written world-readable by default is a worse
+        // default than one that at least asks for owner-only where the platform can express it.
+        using (FileStream stream = File.Open(outFile, new FileStreamOptions
+        {
+            Mode = FileMode.Create,
+            Access = FileAccess.Write,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        }))
+        using (StreamWriter writer = new(stream))
+        {
+            writer.Write(result.Token);
+        }
+
+        Console.Error.WriteLine($"Token written to {Path.GetFullPath(outFile)}");
+    }
+
+    // Written to the file, or asked for on stdout -- but not both by accident. Without --raw the
+    // printed answer drops the value again, so --out-file does not quietly become an echo.
+    AzTokenResult reported = raw ? result : result with { Token = null };
+
+    Console.Out.Write(args.Flag("--text")
+        ? AzTokenJson.Render(reported)
+        : AzTokenJson.Serialize(reported, args.Flag("--pretty")) + Environment.NewLine);
+
+    return 0;
+}
+
+/// <summary>
+/// Asks a running janet-mcp for the answer, or returns null to say "do it yourself".
+/// </summary>
+/// <remarks>
+/// EVERY failure here returns null rather than throwing, with one exception: a refusal the
+/// SERVER made -- an unknown scope alias -- is forwarded, because retrying it locally would
+/// reach the identical message a second time and more slowly. Everything else (no server, wrong
+/// graph, an older server without the endpoint, a socket that will not open) is a reason to do
+/// the work locally, not a reason to fail.
+///
+/// --why prints which of those happened. Without it the difference between "borrowed" and
+/// "did it here" is invisible except as a timing difference, and an invisible fallback is how a
+/// feature quietly stops working for months.
+/// </remarks>
+static AzTokenResult? Borrowed(Args args, AzTokenRequest request)
+{
+    if (args.Flag("--local"))
+    {
+        return null;
+    }
+
+    string graphPath;
+    try
+    {
+        graphPath = GraphLocator.Resolve(args.Value("--graph"), args.Value("--base"));
+    }
+    catch (GraphException)
+    {
+        // No JanetBase to identify a server by. Not an error for this verb -- a token has
+        // nothing to do with a catalog, and the graph is only ever used here as the server's name.
+        return null;
+    }
+
+    // Query, not path segments: a scope is a URI and a tenant is a guid, and both go through
+    // Uri.EscapeDataString rather than trusting them to be path-safe.
+    string query =
+        $"az/token?scope={Uri.EscapeDataString(request.Scope)}" +
+        $"&raw={(request.Raw ? "true" : "false")}" +
+        $"&refresh={(request.Refresh ? "true" : "false")}" +
+        (request.Tenant is null ? string.Empty : $"&tenant={Uri.EscapeDataString(request.Tenant)}");
+
+    LinkOutcome outcome = ServerLink.TryFetch(graphPath, query, allowStart: !args.Flag("--no-launch"));
+
+    if (args.Flag("--why"))
+    {
+        Console.Error.WriteLine(outcome.Detail);
+    }
+
+    return outcome is { ServedBy: ServedBy.Server, Body: string body }
+
+        // Stamped here rather than by the server: the server computed it in its own process and
+        // would be wrong to call itself borrowed. This is the only place that knows otherwise.
+        ? AzTokenJson.Parse(body) with { ServedBy = ServedBy.Server }
+        : null;
 }
 
 static int Query(Args args, string graphPath, bool pretty)
@@ -576,6 +710,24 @@ static int Usage()
                               [--test-filter EXPR] [--new] [--full] [--no-graph]
                               [--text] [--pretty]
                               (exit 0 iff the build succeeded and every test passed)
+
+        janet az token       [--scope ALIAS|SCOPE] [--tenant ID] [--raw] [--refresh]
+                              [--out-file PATH] [--local] [--no-launch] [--why]
+                              [--text] [--pretty]
+                              (aliases: arm, management, storage, graph, keyvault, sql,
+                               servicebus, cosmos; anything else must be a full scope)
+
+        az token borrows the Azure CLI's sign-in -- there is no separate credential, so it works
+        exactly when `az login` does. It reports scope, tenant and expiry by DEFAULT and withholds
+        the token itself: --raw prints it, --out-file writes it somewhere without echoing it.
+        There is no --out-env, because a child process cannot set a variable in its parent's
+        shell; write $env:AZ_TOKEN = janet az token --raw instead.
+
+        It also borrows the SERVER, because a fresh process has no cache: if a janet-mcp serves
+        this graph it is asked instead (0.01s against 1.6s), and if none does one is started.
+        The answer says which happened in 'servedBy', and --why explains it on stderr. --local
+        never contacts a server; --no-launch uses one already running but starts nothing. A
+        missing or broken server is never an error -- the work just happens here instead.
 
         check reports build and tests as one structured answer. --new diffs the warning census
         against the previous --new run, which is the question "what did THIS change introduce";

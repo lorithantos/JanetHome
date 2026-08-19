@@ -560,7 +560,7 @@
         "Manifest command lines execute as trusted code in the repo root - the manifest is project config, not untrusted input. Only push type azureWebAppZip exists so far; add types in the switch when a new target platform appears. Verify counts only HTTP 200 as healthy. Get-Prop uses the Properties indexer deliberately: .Properties.Name -contains throws under StrictMode when the JSON object is empty."
       ],
       "tags": ["deployment", "azure", "contract", "validation", "config"],
-      "links": ["pattern.manifest-startup", "note.azure-site-extension-mismatch"]
+      "links": ["pattern.manifest-startup", "note.azure-site-extension-mismatch", "file.az-token"]
     },
 
     {
@@ -1035,10 +1035,11 @@
         "Public types only, and -MaxTypes caps the listing at 40 (truncated is reported, never silent).",
         "The partial answer now actually holds. The original recovered from a failed GetTypes and then threw reading a property's type on a type that HAD loaded: against a bare nuget lib folder in a fresh process it printed its warning and died with \"The property 'Name' cannot be found on this object\". Members whose signature cannot be resolved are dropped and counted in 'membersDropped'; the same folder now returns 74 types loaded, 11 unloadable, 1 member dropped.",
         "A shim since the cutover: it forwards to the janet CLI. A missing or stale global tool fails or answers with old behaviour, and the tool is NOT rotated with the MCP server -- Update-McpServer.ps1 -ToolProject reinstalls it.",
-        "NOT golden-tested, unlike the rest of the port, and the reason is structural: the envelope carries an absolute folder path and a count of the DLLs beside the assembly, so a recorded answer would be pinned to one machine's build output. Parity was checked live across the flag space on 2026-08-12 -- all types, type filter, member filter, static, inherited and truncation identical to the PowerShell -- and the behaviour is covered by unit tests over types this repo's test assembly declares."
+        "NOT golden-tested, unlike the rest of the port, and the reason is structural: the envelope carries an absolute folder path and a count of the DLLs beside the assembly, so a recorded answer would be pinned to one machine's build output. Parity was checked live across the flag space on 2026-08-12 -- all types, type filter, member filter, static, inherited and truncation identical to the PowerShell -- and the behaviour is covered by unit tests over types this repo's test assembly declares.",
+        "A TYPE-FORWARDING FACADE REPORTS 'N types loaded, 0 matched' AND IS NOT A BROKEN LOOKUP. Found 2026-08-18 against Azure.Identity 1.21.0, whose net10.0 lib is a 17KB shim forwarding all 56 of its public types into Azure.Core: the assembly genuinely declares nothing, so both this tool and plain reflection answer zero, correctly. The tell is a suspiciously small file with a short referenced-assembly list. Resolve through GetForwardedTypes(), or point the tool at the assembly the types actually live in. Multi-targeted packages do this per-TFM, so the net8.0 lib of the same package can be a real assembly while net10.0 is a facade."
       ],
       "tags": ["reflection", "api-discovery", "dotnet", "nuget", "powershell", "third-party"],
-      "links": ["script.get-api-doc", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common", "script.test-output-contracts"]
+      "links": ["script.get-api-doc", "file.janet-core", "note.janet-mcp-port", "script.janet-cli-common", "script.test-output-contracts", "file.az-token"]
     },
 
     {
@@ -1104,7 +1105,7 @@
         "NOTHING STARTED THE HTTP SERVER UNTIL 2026-08-14, and that is the cost of the transport this node recommends. An HTTP server surviving rebuild is the same fact as no component owning its lifetime: .mcp.json names a URL, Start-Janet.ps1 never mentioned mcp/7717/http, so a session came up with zero catalog tools and fell back to the CLI without anything failing. Now a startup run entry (script.ensure-mcp-server) starts it and reports served-vs-declared tool counts into the brief. The staleness half was found the same day: the installed server answered with 3 tools while source declared 12. THE VERSION FIELD IS DECORATIVE -- janet.cli and janet.mcp have both reported 0.1.0 since the port, so the documented advice to bump rather than update is not something the file can confirm; only a count read off the running process distinguishes a fresh install from an old one. Note also the skew ran OPPOSITE to the direction script.update-mcp-server warns about: the CLI had every verb and the SERVER was stale. The hazard is symmetric; the caveat names one side."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server", "file.az-token", "file.server-link"]
     },
 
     {
@@ -1122,7 +1123,7 @@
         "-ToolProject packs and reinstalls global tools in the same pass. The CLI is NOT rotated -- a global tool is a separate copy on PATH -- so rebuilding the server leaves it stale, and a stale CLI reports a new verb as unknown while the server serves it fine. That was written down in a caveat and still caught us three times; the parameter is the structural fix a note could not be. Uninstalls then installs, because dotnet tool update no-ops on an identical version."
       ],
       "tags": ["agent", "deployment", "tooling", "csharp", "powershell", "failure-modes"],
-      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server"]
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server", "file.server-link"]
     },
 
     {
@@ -1136,7 +1137,7 @@
         "Substring matching, deliberately not -like. The PowerShell used -like, so a query term containing * or ? behaved as a wildcard by accident; that edge is not reproduced."
       ],
       "tags": ["csharp", "retrieval", "research", "index"],
-      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common", "note.graph-write-queue", "script.get-api-doc", "script.get-assembly-api", "script.invoke-dotnet-check", "script.get-thread-report"]
+      "links": ["note.janet-mcp-port", "file.research", "note.golden-tests", "script.rename-research-node", "script.swap-research-graph", "script.janet-cli-common", "note.graph-write-queue", "script.get-api-doc", "script.get-assembly-api", "script.invoke-dotnet-check", "script.get-thread-report", "file.az-token", "file.server-link"]
     },
 
     {
@@ -1308,7 +1309,7 @@
         "Verified by mutation 2026-08-12, eight ways: a field added, removed and renamed; a kind spelled differently; the contract number moved in code only; the schema edited alone; the schema edited with a bump but no script change. All caught."
       ],
       "tags": ["gate", "contract", "schema", "powershell", "verification", "json"],
-      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts", "script.test-mutation-catches", "script.get-thread-report"]
+      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts", "script.test-mutation-catches", "script.get-thread-report", "file.az-token"]
     },
 
     {
@@ -1345,7 +1346,7 @@
         "The tool-count comparison catches a stale SERVER, not a stale CLI. The global janet is a separate copy on PATH and goes stale independently -- and it is what every PowerShell shim calls, so the startup brief can carry an older envelope than the repo build emits, with every gate green. See script.get-thread-report, where that was measured."
       ],
       "tags": ["agent", "startup", "session", "contract", "powershell", "failure-modes", "verification"],
-      "links": ["script.get-thread-report"]
+      "links": ["script.get-thread-report", "file.server-link"]
     },
 
     {
@@ -1392,6 +1393,43 @@
       ],
       "tags": ["lightroom", "lua", "api", "retrieval", "json", "third-party"],
       "links": ["script.search-json", "script.read-json-cache", "note.razorgraph-lua-scoping"]
+    },
+
+    {
+      "id": "file.az-token",
+      "kind": "file",
+      "path": "src\\Janet.Core\\AzToken.cs",
+      "summary": "Azure access tokens borrowed from the machine's `az login`, cached for the life of the process and served by both front ends (az_token, janet az token). The CLI has no cache of its own, so it BORROWS a running janet-mcp over HTTP -- 0.10s against 1.0s local -- starting one if none serves this graph, and falling back to local acquisition whenever that cannot be done. Answers with METADATA by default; the token itself is withheld unless raw is asked for, because an MCP tool result is written into a transcript that is persisted and re-sent every turn. 'servedBy' says which process worked it out. Scope takes an alias (arm, management, storage, graph, keyvault, sql, servicebus, cosmos) or a literal URI; a bare resource gains /.default. Format declared in contracts\\az-token.schema.json, contract 2.",
+      "caveats": [
+        "IT IS THE CLI'S SIGN-IN, NOT JANET'S. There is no service principal and no stored secret: AzureCliCredential shells out to `az account get-access-token`, so this works exactly when `az login` works and stops the moment that lapses. The token carries the access the signed-in user already has, which is why no scope allow-list is enforced -- refusing a scope here would remove no permission, it would only push the caller back to `az` and cost them the cache. Chosen deliberately on 2026-08-18 over DefaultAzureCredential (portable but its probe order surprises) and a service principal (no app registration exists, and it would introduce a secret to store).",
+        "THE CLI HAS NO CACHE OF ITS OWN AND NEVER WILL -- every invocation is a fresh process. It borrows a running janet-mcp instead (file.server-link), which is why 'servedBy' exists: cached:false from the CLI would otherwise be ambiguous between 'no server to ask' and 'the server's cache was cold'. Measured 2026-08-18: borrowed-and-warm 0.10s, local acquisition 0.47-1.6s depending on how warm `az` itself is, auto-launch-then-serve 1.74s. Use --local to force local work, --no-launch to use a server only if one is already up, --why to print which happened on stderr.",
+        "THERE IS NO --out-env, and the omission is deliberate rather than unfinished. A child process cannot set a variable in the shell that launched it, so such a flag could only print an assignment for the caller to eval -- which puts the token back on stdout, the exact thing it would exist to avoid. Use --out-file, or $env:AZ_TOKEN = janet az token --raw.",
+        "The 'token' key is ABSENT rather than null when it was not requested. Absent says 'you did not ask'; null would say 'there is no token', and those want different actions from whoever hit the difference. Do not 'fix' it into a nullable field -- the contract requires the other keys and deliberately does not require this one.",
+        "GET /az/token ON A RUNNING SERVER HANDS A BEARER TOKEN TO ANY LOCAL PROCESS THAT ASKS. That is the same access a local process already has by running `az account get-access-token` itself, so the trust boundary is unchanged -- but it is unchanged ONLY because the server binds 127.0.0.1 and nothing else. Binding this server to any other interface would turn a loopback convenience into a token oracle; the endpoint would have to grow authentication in the same change.",
+        "A SERVER OLDER THAN THIS ENDPOINT ANSWERS /health AND 404s /az/token, and the CLI then falls back to local work SILENTLY. Correct, and invisible: the only symptom is that a borrowed call is unaccountably slow. --why names the port and says the server did not answer. Rotate the server (Update-McpServer.ps1) after taking this change.",
+        "THE CONTRACT GATE CANNOT CHECK THIS FORMAT ON A MACHINE WITHOUT `az login`. Its sampler is the only one in Test-OutputContracts.ps1 that depends on the environment rather than the repo; it reports skipped, which is neither a pass nor a failure. A green run on a build agent is NOT evidence that this envelope matches its schema. Verified both ways on 2026-08-18, the skip by pointing AZURE_CONFIG_DIR at an empty directory.",
+        "The unit tests never touch Azure and never start a server -- they drive a stub credential, a controlled clock, and a port nothing serves. That is deliberate, so they do not assert the machine's state. What it leaves unproven: the AzureCliCredential wiring, and the auto-launch path. Both were exercised by hand on 2026-08-18 (launch verified by killing the server and watching the next CLI call bring one back from .janet-bin\\current); nothing re-checks either automatically.",
+        "Azure.Identity 1.21.0 ships its net10.0 lib as a 17KB facade that FORWARDS all 56 public types into Azure.Core. Reflection over the file reports zero types, and so does `janet assembly` -- correctly, but it reads exactly like a broken lookup. Resolve through GetForwardedTypes(), or introspect Azure.Core instead. The package's XML doc file is a 156-byte stub with no members, so `janet api` has nothing to say about it either."
+      ],
+      "tags": ["azure", "csharp", "contract", "session", "failure-modes", "agent"],
+      "links": ["file.janet-core", "file.server-link", "note.janet-mcp-port", "script.invoke-build-deploy", "script.test-output-contracts", "script.get-assembly-api", "script.ensure-mcp-server"]
+    },
+
+    {
+      "id": "file.server-link",
+      "kind": "file",
+      "path": "src\\Janet.Core\\ServerLink.cs",
+      "summary": "Lets the CLI borrow a running janet-mcp instead of repeating its work: resolves the port the way the server does (.mcp.json first, derivation only as a bootstrap), probes /health, starts a server from .janet-bin\\current or PATH when none serves this graph, and fetches a path over loopback HTTP. Every failure path returns \"do it yourself\" rather than throwing, because the CLI exists so hooks and shells have something that works WITHOUT a server. A server identified by port alone is the bug this avoids: identity is the graph it serves, which is why /health carries the graph path. Used today only by `janet az token` -- the one place a fresh process pays for state it cannot keep.",
+      "caveats": [
+        "NOT A GENERAL FORWARDING LAYER, and deliberately not one yet. Only `janet az token` routes through it. Making every CLI verb forward would fix the version skew note.janet-mcp-port and script.ensure-mcp-server both warn about (a stale global CLI answering differently from the server), and it is the 'elect one owner' half of the parked shared-state thread item -- but it would also mean the CLI stopped being the thing that works when the server is down, which is the entire reason the CLI exists. Decide that on purpose, not by extending this to one more verb at a time.",
+        "IT STARTS A DAEMON AS A SIDE EFFECT. `janet az token` with no server running spawns a detached janet-mcp that outlives the command, by design and at Lori's request. A caller that must not do this passes --no-launch; a caller that wants nothing to do with a server passes --local. Worth remembering before wiring this verb into a hook that runs on every file write.",
+        "The child is started with its streams LEFT ALONE -- not redirected. Redirecting and not draining is how a child deadlocks once a pipe buffer fills (the same failure Janet.Mcp's stdio logging comment describes), and draining would mean a short-lived CLI process babysitting a server meant to outlive it. The cost is that the server's startup errors go wherever the CLI's console went.",
+        "The start wait is bounded at 5s and a timeout is NOT a failure to start: the server may still come up and serve the next call. The current call falls back to local work. So a first invocation on a cold machine can legitimately report servedBy:process while leaving a healthy server behind it.",
+        "PROBE FAILURE MEANS FREE, NOT FOREIGN -- inherited from Health, and load-bearing here for a different reason: this class treats 'not obviously a janet-mcp for my graph' as a reason to work locally. A server that is genuinely there but slow to answer /health (500ms timeout) is therefore skipped rather than waited for, which is the right trade for a CLI and would be the wrong one for a supervisor.",
+        "Not covered by any test that starts a real server. The unit tests point it at a port nothing serves and assert the fallback; the launch path was exercised by hand on 2026-08-18. A test that spawned a daemon from the suite would leave one behind on failure, which is worse than the gap."
+      ],
+      "tags": ["agent", "csharp", "session", "tooling", "failure-modes", "contract"],
+      "links": ["file.az-token", "file.janet-core", "note.janet-mcp-port", "script.ensure-mcp-server", "script.update-mcp-server"]
     }
   ]
 }

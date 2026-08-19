@@ -9,4 +9,22 @@
     app, a web host, and a test runner without dragging any of them in.
   -->
 
+  <ItemGroup>
+    <!--
+      The first package reference here, and the rule above is the reason it needed an
+      argument. Azure.Identity is a library rather than a framework: it drags in no host,
+      so a console app, a web host and a test runner can all still load this project.
+
+      It is here rather than in the front ends because token acquisition is BEHAVIOUR:
+      which scope alias resolves to which resource, and when a cached token is too near
+      expiry to hand out. Behaviour that lives in a front end is behaviour the other front
+      end gets to disagree about.
+
+      Note for anyone introspecting it: on net10.0 this package ships a 17KB facade that
+      forwards all 56 of its public types into Azure.Core. Reflection over the file itself
+      reports zero types, which is true and reads as a broken lookup.
+    -->
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+  </ItemGroup>
+
 </Project>

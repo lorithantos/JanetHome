@@ -34,6 +34,15 @@ public sealed class Args
 
         // The build check.
         "--no-tests", "--new", "--full", "--no-graph",
+
+        // Azure tokens. --raw is the opt-in that lets the token itself out; without it the
+        // answer is metadata, so forgetting the flag costs a re-run rather than a leaked secret.
+        "--raw", "--refresh",
+
+        // Borrowing a running server's cache. Both are opt-OUT: the useful default is to use a
+        // server that is already there, and both of these exist for callers who need to know
+        // that this process did the work -- a test, or a hook that must not spawn anything.
+        "--local", "--no-launch", "--why",
     };
 
     public static Args Parse(IReadOnlyList<string> argv)

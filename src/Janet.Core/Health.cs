@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
-namespace Janet.Mcp;
+namespace Janet.Core;
 
 /// <summary>What a janet-mcp reports about itself at /health.</summary>
 public sealed record HealthReport(
@@ -18,6 +18,11 @@ public sealed record HealthReport(
 /// Neither the crash nor the claim is useful. An HTTP server is shared infrastructure: a
 /// second start against a healthy server serving the same graph is not an error, it is a
 /// no-op, and should say so and exit 0.
+///
+/// Lives in Core rather than in the server because the CLI asks the same question for the
+/// opposite reason: the server asks "may I bind this port", the CLI asks "is there someone
+/// here worth talking to". One answer, so the two cannot disagree about what a healthy
+/// janet-mcp looks like.
 /// </remarks>
 public static class Health
 {
