@@ -120,7 +120,7 @@
         "Trims by default (-Full restores): strips $-prefixed manifest keys, reduces retrieval to graph/via/hint, emits rule text without why, omits run output already in captured. enforcedBy verification recognizes TWO wirings: project-level (Join-Path <project dir> <enforcedBy>) and user-level (~\\.claude\\settings.json names the script AND it exists at repo root) -- so ENFORCED labels survive foreign-dir sessions on this machine. An unwired hook NEVER fails startup: the rule is relabelled ADVISORY (claims ENFORCED; hook not wired here) and the note goes to the brief's own enforcement field plus the warning stream, NOT to problems (Start-Janet gates launch on problems). Only unresolved manifest entries are fatal, governed by onMissing. Runs from any working directory: everything resolves from $PSScriptRoot. Writes .janet\\last-brief.json every run INCLUDING -Text; -OutFile moves it, an empty -OutFile skips writing. Adding a parameter renames every same-named local: $full/$text collided with -Full/-Text. See note.startup-brief-budget."
       ],
       "tags": ["startup", "session", "validation", "entrypoint"],
-      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget", "script.ensure-mcp-server"]
+      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget", "script.ensure-mcp-server", "script.test-config-paths"]
     },
     {
       "id": "script.get-research",
@@ -443,7 +443,7 @@
         "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
       ],
       "tags": ["startup", "contract", "config"],
-      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection", "script.ensure-mcp-server", "script.get-thread-report"]
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection", "script.ensure-mcp-server", "script.get-thread-report", "script.test-config-paths"]
     },
     {
       "id": "file.research",
@@ -1430,6 +1430,21 @@
       ],
       "tags": ["agent", "csharp", "session", "tooling", "failure-modes", "contract"],
       "links": ["file.az-token", "file.janet-core", "note.janet-mcp-port", "script.ensure-mcp-server", "script.update-mcp-server"]
+    },
+
+    {
+      "id": "script.test-config-paths",
+      "kind": "script",
+      "path": "scripts\\Test-ConfigPaths.ps1",
+      "summary": "Checks that drive-absolute paths in CLIENT config (.mcp.json commands, settings.json permission rules) still resolve, and suggests replacements by deepest shared path suffix. The gap Invoke-JanetStartup leaves: it validates the manifest's own entries, not the config files a session actually depends on.",
+      "caveats": [
+        "Only DRIVE-ABSOLUTE paths are checked. A relative rule resolves against whichever project dir the session launched in, which is unknowable here, and guessing would produce false accusations against rules that work.",
+        "Route findings into their own captured field, NEVER into the brief's problems: Start-Janet gates launch on problems, and this fires legitimately from a foreign project dir -- the exact 2026-08-01 regression that broke launching from anywhere but JanetHome.",
+        "Reports and proposes, never rewrites. Repairing a permission allow-list is a privilege change and stays a deliberate act.",
+        "Resolution is existence only: a path that resolves to a stale flat copy instead of the intended .mcp-bin\\current junction still reports ok."
+      ],
+      "tags": ["config", "validation", "startup"],
+      "links": ["script.invoke-janet-startup", "file.startup-manifest"]
     }
   ]
 }
