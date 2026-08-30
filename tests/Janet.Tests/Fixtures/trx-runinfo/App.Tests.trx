@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TestRun id="8a5f1c22-0b8e-4f1a-9a2a-11119a3f0006" name="host crashed after three, TRX otherwise healthy-looking" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <ResultSummary outcome="Failed">
+    <Counters total="3" executed="3" passed="3" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <RunInfos>
+      <RunInfo computerName="SAMPLE" outcome="Error" timestamp="2026-08-30T15:27:45.0000000-07:00">
+        <Text>The active test run was aborted. Reason: Test host process crashed : Unhandled exception. System.InvalidOperationException: Cannot create more than one System.Windows.Application instance in the same AppDomain.
+   at System.Windows.Application..ctor()</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+  <TestDefinitions>
+    <UnitTest name="OpensMainWindow" storage="d:\repos\sample\src\app.tests\bin\debug\net10.0\app.tests.dll" id="55555555-0000-0000-0000-000000000001">
+      <TestMethod codeBase="D:\Repos\Sample\src\App.Tests\bin\Debug\net10.0\App.Tests.dll" className="Sample.App.Tests.ShellTests" name="OpensMainWindow" />
+    </UnitTest>
+  </TestDefinitions>
+  <Results>
+    <UnitTestResult testName="OpensMainWindow" outcome="Passed" duration="00:00:00.0400000" testId="55555555-0000-0000-0000-000000000001" executionId="65555555-0000-0000-0000-000000000001" />
+    <UnitTestResult testName="BindsLedgerToGrid" outcome="Passed" duration="00:00:00.0110000" testId="55555555-0000-0000-0000-000000000002" executionId="65555555-0000-0000-0000-000000000002" />
+    <UnitTestResult testName="ShowsErrorBanner" outcome="Passed" duration="00:00:00.0090000" testId="55555555-0000-0000-0000-000000000003" executionId="65555555-0000-0000-0000-000000000003" />
+  </Results>
+</TestRun>

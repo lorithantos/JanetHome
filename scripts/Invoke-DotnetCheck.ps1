@@ -18,11 +18,16 @@
     failures carry their payload up front and are read from TRX files rather than scraped.
     The exit code means exactly one thing: 0 when the build succeeded and every test passed.
 
-    THE CONTRACT IS NOW 4, NOT 3. The envelope gained a 'status' discriminator, because the
-    MCP tool can answer "running" with a handle when a rebuild outlasts the client's call
-    timeout. This script only ever produces "complete" -- every invocation is a fresh
-    process, so there is nobody to poll -- but the field is present, and a reader keying on
-    contract 3 needs updating. Everything else is unchanged, field for field. The declared
+    THE CONTRACT IS NOW 5. Contract 4 added the 'status' discriminator, because the MCP tool
+    can answer "running" with a handle when a rebuild outlasts the client's call timeout;
+    this script only ever produces "complete" -- every invocation is a fresh process, so
+    there is nobody to poll -- but the field is present. Contract 5 makes 'tests' carry the
+    runner's verdict rather than recompute one from the TRX files it managed to parse:
+    'runnerExitCode' is dotnet test's own exit code and forces succeeded false when non-zero,
+    'abort' carries the runner's abort banner (the exception that killed a crashed test host,
+    or null), and each assembly entry carries 'status' -- "aborted" marks a partial TRX whose
+    counters are what the host lived to write, not a result. Before this, a crashed test host
+    summed to 423/423 passing with exit 0 (notes\test-count-blind-spot.md). The declared
     format is contracts\dotnet-check.schema.json.
 
     Baselines written under contract 3 are still read. The baseline file's format did not

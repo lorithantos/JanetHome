@@ -170,12 +170,15 @@ public static class DotnetCheckJson
                 ["passed"] = assembly.Passed,
                 ["failed"] = assembly.Failed,
                 ["skipped"] = assembly.Skipped,
+                ["status"] = assembly.Status,
             });
         }
 
         return new JsonObject
         {
             ["succeeded"] = tests.Succeeded,
+            ["runnerExitCode"] = tests.RunnerExitCode,
+            ["abort"] = tests.Abort,
             ["total"] = tests.Total,
             ["passed"] = tests.Passed,
             ["failed"] = tests.Failed,
@@ -236,6 +239,26 @@ public static class DotnetCheckJson
 
         TestRun tests = result.Tests;
         text.AppendLine($"tests: {tests.Passed}/{tests.Total} passed, {tests.Failed} failed, {tests.Skipped} skipped");
+
+        // An aborted run's counters describe only what the host lived to write, so they are
+        // rendered under the abort rather than the abort under them.
+        if (tests.RunnerExitCode != 0 && tests.Failed == 0)
+        {
+            text.AppendLine($"  RUN DID NOT PASS: dotnet test exited {tests.RunnerExitCode} -- the counters above are partial, not a verdict");
+        }
+
+        if (tests.Abort is not null)
+        {
+            foreach (string line in tests.Abort.Split('\n'))
+            {
+                text.AppendLine($"  ABORT {line}");
+            }
+        }
+
+        foreach (TestAssembly assembly in tests.Assemblies.Where(a => a.Status != "complete"))
+        {
+            text.AppendLine($"  ABORTED {assembly.Name}: partial results ({assembly.Passed}/{assembly.Total})");
+        }
 
         foreach (TestFailure failure in tests.Failures)
         {

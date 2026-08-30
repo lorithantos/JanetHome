@@ -59,8 +59,12 @@ public static class DotnetDiagnostics
     /// </summary>
     private static readonly Regex WpfTempInfix = new(@"_[a-z0-9]+_wpftmp(?=\.)", RegexOptions.Compiled);
 
-    /// <summary>The envelope format. Bumped to 4 by the status discriminator.</summary>
-    public const int Contract = 4;
+    /// <summary>
+    /// The envelope format. Bumped to 4 by the status discriminator; to 5 when tests gained
+    /// the runner's verdict (runnerExitCode, abort, per-assembly status) after a crashed test
+    /// host summed to a passing run -- notes\test-count-blind-spot.md.
+    /// </summary>
+    public const int Contract = 5;
 
     /// <summary>
     /// The baseline file's own format, deliberately NOT the envelope's.

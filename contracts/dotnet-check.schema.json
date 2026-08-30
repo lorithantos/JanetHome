@@ -5,7 +5,7 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
-    "contract": 4,
+    "contract": 5,
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
@@ -22,7 +22,7 @@
       "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
       "properties": {
         "status": { "const": "complete" },
-        "contract": { "const": 4 },
+        "contract": { "const": 5 },
         "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
         "configuration": { "type": "string" },
         "succeeded": {
@@ -113,9 +113,20 @@
           "type": ["object", "null"],
           "description": "NULL MEANS NOT RUN -- -NoTests, or the build failed. Which one is visible from build.succeeded. It does not mean a suite with no tests.",
           "additionalProperties": false,
-          "required": ["succeeded", "total", "passed", "failed", "skipped", "failures", "assemblies"],
+          "required": ["succeeded", "runnerExitCode", "abort", "total", "passed", "failed", "skipped", "failures", "assemblies"],
           "properties": {
-            "succeeded": { "type": "boolean" },
+            "succeeded": {
+              "type": "boolean",
+              "description": "False when any test failed, when dotnet test exited non-zero, or when any assembly's results are partial. The counters alone cannot say this: a crashed test host reports fewer tests, not failed ones."
+            },
+            "runnerExitCode": {
+              "type": "integer",
+              "description": "dotnet test's own exit code, propagated rather than recomputed. Non-zero with failed=0 is the signature of an aborted run."
+            },
+            "abort": {
+              "type": ["string", "null"],
+              "description": "The runner's abort banner -- the exception that killed the test host and the top of its stack -- or null for a run that finished. The one channel that names why a host died; best effort, the exit code is the verdict."
+            },
             "total": { "type": "integer", "minimum": 0 },
             "passed": { "type": "integer", "minimum": 0 },
             "failed": { "type": "integer", "minimum": 0 },
@@ -141,13 +152,17 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["name", "total", "passed", "failed", "skipped"],
+                "required": ["name", "total", "passed", "failed", "skipped", "status"],
                 "properties": {
                   "name": { "type": "string" },
                   "total": { "type": "integer", "minimum": 0 },
                   "passed": { "type": "integer", "minimum": 0 },
                   "failed": { "type": "integer", "minimum": 0 },
-                  "skipped": { "type": "integer", "minimum": 0 }
+                  "skipped": { "type": "integer", "minimum": 0 },
+                  "status": {
+                    "enum": ["complete", "aborted"],
+                    "description": "'aborted' is a crashed run's leftovers: the TRX says the run was aborted, or is too partial to name its assembly (the name is then the TRX filename). Its counters are what the host lived to write, not a result."
+                  }
                 }
               }
             }
@@ -181,7 +196,7 @@
       "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
       "properties": {
         "status": { "const": "running" },
-        "contract": { "const": 4 },
+        "contract": { "const": 5 },
         "target": { "type": "string" },
         "configuration": { "type": "string" },
         "handle": {

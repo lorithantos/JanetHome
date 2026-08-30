@@ -227,9 +227,12 @@ public static class DotnetCheck
                 arguments.Add(request.TestFilter);
             }
 
-            RunDotnet("test", arguments, cancellation);
+            (int exitCode, IReadOnlyList<string> lines) = RunDotnet("test", arguments, cancellation);
 
-            return DotnetTests.ReadDirectory(results);
+            // The runner's verdict travels with the counters. Discarding it here is how a
+            // crashed test host once summed to 423/423 passing and exit 0 -- the TRX files
+            // held only the results the host lived to write.
+            return DotnetTests.WithRunnerVerdict(DotnetTests.ReadDirectory(results), exitCode, lines);
         }
         finally
         {

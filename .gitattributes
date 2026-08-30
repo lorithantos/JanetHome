@@ -1,0 +1,6 @@
+# The TRX fixtures are parsed by XmlDocument, which preserves a CR inside text content, and
+# the goldens were recorded from an LF working tree. A CRLF checkout (autocrlf on a fresh
+# clone) makes TheTestRunMatchesTheRecordedAnswer fail on \r\n vs \n in the failure message
+# -- an environmental red that looks like a parity break. Pin them so every checkout parses
+# to the recorded answer.
+tests/Janet.Tests/Fixtures/**/*.trx text eol=lf
