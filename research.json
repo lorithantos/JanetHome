@@ -827,7 +827,8 @@
       "caveats": [
         "The candidate list leads with this machine's VS 18 Enterprise path. On another machine that misses and the fallback is a recursive Get-ChildItem over the Visual Studio install root, which is slow but only reached once per invocation.",
         "On THIS machine since 2026-08-14 the VS git directory is also in the persistent User PATH, so git resolves in agent sessions without this shim. That is a machine setting, not a repo one: the shim stays the portable answer, and it stays correct on any checkout elsewhere. The profile (profile.ps1, CurrentUserAllHosts) already added the same directory, but a session launched without loading a profile -- which is how an agent shell and a bare \"claude -c\" both arrive -- never ran it, which is why the fix moved to the environment.",
-        "The path added is Visual Studio's bundled copy, under the VS install root. A VS upgrade or uninstall can move or remove it, at which point the User PATH entry silently points at nothing and this shim -- which rescans candidates -- is the thing that still works. A standalone Git for Windows would be the durable answer; none is installed."
+        "The path added is Visual Studio's bundled copy, under the VS install root. A VS upgrade or uninstall can move or remove it, at which point the User PATH entry silently points at nothing and this shim -- which rescans candidates -- is the thing that still works. A standalone Git for Windows would be the durable answer; none is installed.",
+        "CORRECTION 2026-08-31, measured: the caveat above claiming the VS git directory sits in the persistent User PATH is NO LONGER TRUE on this machine. Neither the User PATH nor the Machine PATH contains any entry matching 'git' or 'Visual Studio', and a fresh agent session confirmed it -- a bare 'git clone' failed with \"The term 'git' is not recognized\". The predicted cause in the caveat below it is what happened: C:\\Program Files\\Microsoft Visual Studio\\18 now holds ONLY 'Community', so the shim's first candidate (the VS 18 Enterprise path) also misses and resolution falls through to the recursive scan of the VS install root, which does find it. So the shim is currently the ONLY thing that resolves git in an agent session, and its slow path is the one being taken every time. Two cheap fixes worth considering: put the Community path first in the candidate list, and re-add it to the User PATH."
       ],
       "tags": ["git", "powershell", "entrypoint"],
       "links": ["script.get-drive-survey", "script.test-standalone-scripts"]
@@ -1161,7 +1162,7 @@
         "Tests read frozen fixtures, never the live research.json. They used to read the live graph, which meant their expectations changed whenever anyone added a node. Regenerating the fixtures (Build-Fixtures.ps1) invalidates every golden and needs the generator re-run."
       ],
       "tags": ["testing", "csharp", "powershell", "failure-modes", "contract", "concurrency"],
-      "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research", "script.test-mutation-catches", "script.get-thread-report"]
+      "links": ["file.janet-core", "note.janet-mcp-port", "script.get-research", "script.test-mutation-catches", "script.get-thread-report", "script.get-window-capture", "script.compare-image"]
     },
 
     {
@@ -1469,6 +1470,38 @@
       ],
       "tags": ["testing", "dotnet", "contract", "failure-modes", "quality"],
       "links": ["script.invoke-dotnet-check"]
+    },
+
+    {
+      "id": "script.get-window-capture",
+      "kind": "script",
+      "path": "scripts\\Get-WindowCapture.ps1",
+      "summary": "Captures a running application's window to a PNG so an agent can SEE what it drew. Launches an exe (or attaches by -ProcessId), waits for its first titled window, brings it forward, and saves the client area; -FullWindow captures the frame too. Exists because an agent session cannot look at a window, so \"does it render correctly\" otherwise degrades to \"it started and did not crash\" -- a claim a viewer drawing nothing at all passes. Three defaults were learned by getting them wrong, and each wrong answer looked confident rather than failing: match by PROCESS ID not title (title matching silently captured an unrelated window that merely had the app name in its caption), require a NON-EMPTY title (a console-subsystem exe owns a console window too, and MainWindowHandle can resolve to it), and declare PER-MONITOR DPI AWARENESS before any coordinate call (a DPI-unaware process gets virtualized coordinates, so ClientToScreen points somewhere else entirely on a scaled display). JSON envelope by default with width/height/origin/title/waitedMs, -Text for a terminal; exit 1 on failure. Kills a launched process unless -KeepRunning; never kills an attached one.",
+      "params": ["Path", "ArgumentList", "ProcessId", "OutFile", "TimeoutSeconds", "SettleMilliseconds", "FullWindow", "KeepRunning", "Text", "Pretty"],
+      "caveats": [
+        "Uses CopyFromScreen, which grabs the SCREEN region rather than the window's own backing store -- so the window is brought to the foreground first, and ANYTHING OVERLAPPING IT IS CAPTURED INSTEAD. Do not run two captures concurrently, and do not trust a capture taken while a dialog or notification was on top. PrintWindow with PW_RENDERFULLCONTENT would capture an occluded window, but it returns BLACK for GPU-presented content (Direct3D, OpenGL, raylib), which is exactly the content this script exists to look at -- hence the trade.",
+        "-SettleMilliseconds defaults to 1200 because a GPU-rendered window can present its first real frame several frames after it becomes visible; capturing too early yields a blank or half-drawn image that looks like a rendering bug. Raise it for a slow-starting app rather than concluding the app is broken.",
+        "Windows-only: the whole thing is user32 P/Invoke. There is no cross-platform equivalent here.",
+        "Verified 2026-08-31 against a raylib viewer (996x607 client, correct content confirmed by reading the PNG back) and against a WPF window hosting a Direct3D 11 surface through D3DImage -- GPU-presented content captures correctly, which is the case PrintWindow would have failed."
+      ],
+      "tags": ["powershell", "windows", "verification", "ui", "agent", "testing"],
+      "links": ["script.compare-image", "note.golden-tests"]
+    },
+
+    {
+      "id": "script.compare-image",
+      "kind": "script",
+      "path": "scripts\\Compare-Image.ps1",
+      "summary": "Diffs two PNGs and reports the count, the ratio, the maximum per-channel delta, and the BOUNDING BOX of the differences. The other half of Get-WindowCapture.ps1: capture answers what it looks like, this answers whether it changed. The bounding box is the field that earns its place -- a count says something moved, a box says whether it was the thing you touched or the corner of the window, and those want different reactions. -Tolerance absorbs compositing and antialiasing noise, -MaxDifferingRatio turns it into a gate (exit 1), -DiffFile writes differing pixels in red over a dimmed copy of the reference. Comparison runs over locked bits rather than GetPixel, which is the difference between milliseconds and seconds on a 600k-pixel image. JSON envelope by default, -Text for a terminal.",
+      "params": ["Reference", "Candidate", "Tolerance", "MaxDifferingRatio", "DiffFile", "Text", "Pretty"],
+      "caveats": [
+        "AN EXACT-ZERO THRESHOLD IS USUALLY WRONG FOR WINDOW CAPTURES. Windows 11 rounds window corners and composites the desktop through them, so a captured window's corner pixels carry whatever was behind it. Measured twice on 2026-08-31, on a 996x607 client area of the same unchanged application: 31 then 29 differing pixels of 604,572, max channel delta 2, every one inside a 10x10 patch at ONE corner. Read the bounding box before believing a small non-zero count is a regression, or pass -Tolerance 4.",
+        "Dimension mismatch is an error, not a difference -- it exits 1 with the two sizes rather than trying to align or scale. Comparing a resized capture would report a difference at every pixel and mean nothing.",
+        "Alpha is ignored deliberately: a screen capture is opaque and its alpha channel carries no information. Two images differing ONLY in alpha compare as identical.",
+        "The visual-golden trap is the same one note.golden-tests records for text goldens: a reference image regenerated from the current build agrees with the current build by construction. Capture the reference from the code as it stood BEFORE the change -- a git worktree of the prior commit is the cheap way -- and edit it deliberately when behaviour is meant to change."
+      ],
+      "tags": ["powershell", "windows", "verification", "ui", "testing", "quality"],
+      "links": ["script.get-window-capture", "note.golden-tests"]
     }
   ]
 }
