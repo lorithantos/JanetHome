@@ -1485,7 +1485,7 @@
         "Verified 2026-08-31 against a raylib viewer (996x607 client, correct content confirmed by reading the PNG back) and against a WPF window hosting a Direct3D 11 surface through D3DImage -- GPU-presented content captures correctly, which is the case PrintWindow would have failed."
       ],
       "tags": ["powershell", "windows", "verification", "ui", "agent", "testing"],
-      "links": ["script.compare-image", "note.golden-tests"]
+      "links": ["script.compare-image", "note.golden-tests", "script.find-screenshot"]
     },
 
     {
@@ -1501,7 +1501,23 @@
         "The visual-golden trap is the same one note.golden-tests records for text goldens: a reference image regenerated from the current build agrees with the current build by construction. Capture the reference from the code as it stood BEFORE the change -- a git worktree of the prior commit is the cheap way -- and edit it deliberately when behaviour is meant to change."
       ],
       "tags": ["powershell", "windows", "verification", "ui", "testing", "quality"],
-      "links": ["script.get-window-capture", "note.golden-tests"]
+      "links": ["script.get-window-capture", "note.golden-tests", "script.find-screenshot"]
+    },
+
+    {
+      "id": "script.find-screenshot",
+      "kind": "script",
+      "path": "scripts\\Find-Screenshot.ps1",
+      "summary": "Finds screenshots wherever Windows and OneDrive have actually put them, so \"the user mentioned a screenshot, where is it\" stops being a guessing game. Resolves the Screenshots KNOWN FOLDER from the registry (KNOWNFOLDERID_Screenshots, {B7BEDE81-DF94-4682-A7D8-57A52620B86F}, under User Shell Folders), adds the OneDrive and local Pictures/Desktop/Downloads roots, prunes roots nested inside other roots, and searches by DEPTH rather than by folder name -- because the name is localised and OneDrive suffixes duplicates. Filters by -Name substring (a pasted full filename or just the time digits both work) and -WithinHours, newest first. Reports the roots it searched alongside the hits, since \"nothing found\" and \"nothing found in the wrong places\" are otherwise indistinguishable. -IncludeVideos adds the Game Bar capture folder. JSON envelope by default, -Text for a terminal; exit 1 on no match.</summary>\n<parameter name=\"parameters\">[\"Name\", \"WithinHours\", \"First\", \"SearchDepth\", \"Path\", \"IncludeVideos\", \"Text\", \"Pretty\"]",
+      "caveats": [
+        "WRITTEN BECAUSE GUESSING FAILED, 2026-08-31. Pictures\\Screenshots, Desktop and Downloads were all tried and all missed; the file was in OneDrive\\Pictures\\Screenshots 1 -- with a space and a digit, because OneDrive made a second folder during a sync conflict. An exact-name match on 'Screenshots' finds nothing, and a %USERPROFILE%-relative guess misses entirely once OneDrive has redirected Pictures.",
+        "NESTED ROOTS DOUBLE-REPORT, and they nest by default: the registry known folder resolves to <OneDrive>\\Pictures\\Screenshots, which sits inside the Pictures root. The first version deduplicated only identical paths and reported every hit twice (measured: 58 matches where there were 41). Roots are now sorted shortest-first so an ancestor subsumes its children, and results are deduplicated by path as well, in case a junction puts one file under two roots that do not look nested.",
+        "SearchDepth defaults to 2, which reaches Pictures\\Screenshots 1\\ without walking a whole photo library. A screenshot filed deeper needs -SearchDepth raised; a large Pictures tree wants -Name or -WithinHours to keep the listing useful rather than the search fast, since the walk happens either way.",
+        "Windows-only: known folders are a registry concept and there is no cross-platform equivalent. On a machine with no OneDrive the OneDrive roots are simply skipped rather than erroring.",
+        "Matches by file extension, not by content or provenance, so any png or jpg in those roots is a candidate -- a photo library under Pictures will match a bare -First query. It finds FILES that could be screenshots, not screenshots specifically."
+      ],
+      "tags": ["powershell", "windows", "files", "agent", "retrieval"],
+      "links": ["script.get-window-capture", "script.compare-image"]
     }
   ]
 }
