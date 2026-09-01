@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Make sure the janet-mcp HTTP server is up before a session starts, and report what it
-    is actually serving.
+    Make sure an MCP HTTP server is up before a session starts, and report what it is
+    actually serving. Defaults to janet-mcp; -Name points it at any of them.
 
 .DESCRIPTION
     The HTTP transport is a separate process the client dials, which is what lets the
@@ -29,8 +29,26 @@
     Repo the server serves. Defaults to the repo this script lives in.
 
 .PARAMETER ServerPath
-    Server executable. Defaults to the .janet-bin\current junction Update-McpServer.ps1
-    maintains, falling back to janet-mcp on PATH.
+    Server executable. Defaults to <BinDir>\<Name>.exe -- the junction Update-McpServer.ps1
+    maintains -- falling back to <Name> on PATH.
+
+.PARAMETER Name
+    Server binary and process name, without .exe. Drives the default executable, the log
+    file names, and the remediation text. Defaults to janet-mcp.
+
+.PARAMETER BinDir
+    Directory holding the 'current' junction Update-McpServer.ps1 repoints. Defaults to
+    <repo>\.janet-bin\current. Point it at another repo's rotation root to ensure that
+    repo's server -- RazorGraphTool\.mcp-bin\current, for instance.
+
+.PARAMETER ServerArgument
+    Arguments for the started process. Defaults to janet's --http/--port/--base set. Pass
+    it explicitly for a server that does not take --base: razorgraph-mcp does not.
+
+.PARAMETER SourceDir
+    Source tree whose [McpServerTool( attributes are counted for the served-versus-declared
+    staleness check. Defaults to <repo>\src\Janet.Mcp. Absent source means no comparison
+    rather than a false verdict.
 
 .PARAMETER TimeoutSeconds
     Budget for the readiness poll and for each HTTP probe.
@@ -47,12 +65,24 @@
 .EXAMPLE
     # What is the running server actually serving?
     .\Ensure-McpServer.ps1 -NoStart -Pretty
+
+.EXAMPLE
+    # razorgraph-mcp, which lives in another repo and takes no --base.
+    .\Ensure-McpServer.ps1 -Name RazorGraph.Mcp -Port 7718 `
+        -Base C:\repos\RazorGraphTool `
+        -BinDir C:\repos\RazorGraphTool\.mcp-bin\current `
+        -SourceDir C:\repos\RazorGraphTool\src\RazorGraph.Mcp `
+        -ServerArgument '--http', '--port', '7718'
 #>
 [CmdletBinding()]
 param(
     [int]$Port = 7717,
     [string]$Base,
     [string]$ServerPath,
+    [string]$Name = 'janet-mcp',
+    [string]$BinDir,
+    [string[]]$ServerArgument,
+    [string]$SourceDir,
     [int]$TimeoutSeconds = 10,
     [switch]$NoStart,
     [switch]$Pretty
@@ -172,16 +202,22 @@ try {
     if (-not $Base) { $Base = $repoRoot }
     $result.base = $Base
 
+    if (-not $BinDir) { $BinDir = Join-Path $repoRoot '.janet-bin\current' }
+    if (-not $SourceDir) { $SourceDir = Join-Path $repoRoot 'src\Janet.Mcp' }
+    # Defaulted here rather than in the param block because it reads $Port and $Base, which
+    # are not settled until this point.
+    if (-not $ServerArgument) { $ServerArgument = @('--http', '--port', "$Port", '--base', "$Base") }
+
     if (-not $ServerPath) {
         # The junction Update-McpServer.ps1 repoints; a stable path that resolves to the
         # newest build by lookup. The global tool on PATH is a SEPARATE copy and goes stale
         # independently, so it is the fallback rather than the default.
-        $junction = Join-Path $repoRoot '.janet-bin\current\janet-mcp.exe'
+        $junction = Join-Path $BinDir "$Name.exe"
         if (Test-Path -LiteralPath $junction -PathType Leaf) {
             $ServerPath = $junction
         }
         else {
-            $onPath = Get-Command 'janet-mcp' -ErrorAction SilentlyContinue
+            $onPath = Get-Command $Name -ErrorAction SilentlyContinue
             if ($null -ne $onPath) { $ServerPath = $onPath.Source }
         }
     }
@@ -192,9 +228,9 @@ try {
     if ($null -eq $listenerPid -and -not $NoStart) {
         if (-not $ServerPath -or -not (Test-Path -LiteralPath $ServerPath -PathType Leaf)) {
             $result.state = 'no-server-binary'
-            $result.note = "No janet-mcp binary found. Build one with " +
-                           "scripts\Update-McpServer.ps1 -Project src\Janet.Mcp\Janet.Mcp.csproj " +
-                           "-ProcessName janet-mcp -ServerArgument '--http','--port','$Port','--base','$Base'"
+            $result.note = "No $Name binary found under $BinDir or on PATH. Build one with " +
+                           "scripts\Update-McpServer.ps1 -ProcessName $Name " +
+                           "-ServerArgument '$($ServerArgument -join "','")'"
         }
         else {
             $logDir = Join-Path ([System.IO.Path]::GetTempPath()) 'Janet'
@@ -205,10 +241,10 @@ try {
             }
 
             $started = Start-Process -FilePath $ServerPath `
-                -ArgumentList '--http', '--port', "$Port", '--base', "$Base" `
+                -ArgumentList $ServerArgument `
                 -WindowStyle Hidden -PassThru `
-                -RedirectStandardOutput (Join-Path $logDir 'janet-mcp.out.log') `
-                -RedirectStandardError (Join-Path $logDir 'janet-mcp.err.log')
+                -RedirectStandardOutput (Join-Path $logDir "$Name.out.log") `
+                -RedirectStandardError (Join-Path $logDir "$Name.err.log")
 
             # Poll rather than sleep a fixed interval: the server is usually listening well
             # inside a second, and a startup script should not spend the whole budget.
@@ -223,7 +259,7 @@ try {
             if ($null -eq $listenerPid) {
                 $result.state = 'start-failed'
                 $result.note = "Started $ServerPath but nothing was listening on $Port within " +
-                               "$TimeoutSeconds s. See $logDir\janet-mcp.err.log"
+                               "$TimeoutSeconds s. See $logDir\$Name.err.log"
             }
             else {
                 $result.state = 'started'
@@ -242,7 +278,7 @@ try {
 
     if ($null -ne $listenerPid) {
         $servedNames = Get-ServedToolName -TcpPort $Port -Budget $TimeoutSeconds
-        $declared = Get-DeclaredToolCount -SourceDir (Join-Path $repoRoot 'src\Janet.Mcp')
+        $declared = Get-DeclaredToolCount -SourceDir $SourceDir
 
         $result.toolsDeclared = $declared
 
@@ -253,7 +289,7 @@ try {
             $result.state = 'not-answering'
             $result.toolsServed = 0
             $result.note = "Port $Port is held by pid $listenerPid but it did not answer " +
-                           "tools/list. Something other than janet-mcp may own the port."
+                           "tools/list. Something other than $Name may own the port."
         }
         else {
             $result.toolsServed = $servedNames.Count
@@ -262,11 +298,12 @@ try {
                 $result.stale = $true
                 $result.ok = $false
                 $result.note = "STALE SERVER: serving $($servedNames.Count) tools, source declares " +
-                               "$declared. The running build predates the current source. Rebuild: " +
-                               "scripts\Update-McpServer.ps1 -Project src\Janet.Mcp\Janet.Mcp.csproj " +
-                               "-ProcessName janet-mcp -ServerArgument '--http','--port','$Port'," +
-                               "'--base','$Base' -ToolProject src\Janet.Mcp\Janet.Mcp.csproj," +
-                               "src\Janet.Cli\Janet.Cli.csproj"
+                               "$declared. The running build predates the current source ($SourceDir). " +
+                               "Rebuild with scripts\Update-McpServer.ps1 -ProcessName $Name " +
+                               "-ServerArgument '$($ServerArgument -join "','")'" +
+                               $(if ($Name -eq 'janet-mcp') {
+                                   " -ToolProject src\Janet.Mcp\Janet.Mcp.csproj,src\Janet.Cli\Janet.Cli.csproj"
+                                 } else { '' })
             }
             elseif (-not $result.note) {
                 $result.note = "$($servedNames.Count) tools served on $Port by pid $listenerPid."

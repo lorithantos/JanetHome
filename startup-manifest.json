@@ -29,6 +29,11 @@
       "why": "Nothing else starts the janet-mcp HTTP server -- the transport is a separate process the client dials, which is what lets it be rebuilt mid-session and also what means no component owns starting it. Check 'ok' and 'stale' in the captured result before trusting that the research_* and thread_* tools are present"
     },
     {
+      "cmd": "scripts\\Ensure-RazorGraphServer.ps1",
+      "captureAs": "razorGraphServer",
+      "why": "This repo's .mcp.json declares razorgraph on 7718 as well as janet on 7717, so a session here depends on both -- but until 2026-08-31 startup ensured only janet, and razorgraph's tools could be silently absent with every startup gate green. Same contract as the entry above: check 'ok' and 'stale' before trusting the razorgraph tools are present. A thin forwarder to Ensure-McpServer.ps1, which is now parameterised per server; a manifest 'cmd' is a bare path with nowhere to put arguments"
+    },
+    {
       "cmd": "scripts\\Get-ThreadReport.ps1",
       "captureAs": "threadReport",
       "why": "Unfinished investigations from the last session: topics, focus, and note SIZES. Small, stateful, and useless if fetched late -- so it runs at startup rather than on demand. Read a specific item's notes with Show-ThreadItems.ps1 -Path, or thread_show, once you know which one you want"

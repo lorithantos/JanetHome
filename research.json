@@ -44,7 +44,7 @@
         "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -443,7 +443,7 @@
         "Rules are { text, why, enforcedBy } objects; text is emitted every session, why only under -Full/-Text. Keep text to one line and put the argument in why. enforcedBy names the hook script backing an ENFORCED rule and is verified against the current project dir -- an unwired hook does NOT fail startup: the rule is relabelled ADVISORY and the mismatch is reported under the brief's enforcement field (not problems, which Start-Janet treats as fatal). Plain strings still parse. $-prefixed keys never reach the brief."
       ],
       "tags": ["startup", "contract", "config"],
-      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection", "script.ensure-mcp-server", "script.get-thread-report", "script.test-config-paths"]
+      "links": ["script.invoke-janet-startup", "pattern.manifest-startup", "note.startup-brief-budget", "file.readme", "note.thread-item-projection", "script.ensure-mcp-server", "script.get-thread-report", "script.test-config-paths", "script.ensure-razorgraph-server"]
     },
     {
       "id": "file.research",
@@ -584,7 +584,7 @@
         "server_info reports the RESOLVED build directory rather than the launched path. A process started through the .mcp-bin\\current junction reports the link, which is identical across every build -- so the obvious value is the one that cannot distinguish them. Use it after a rotation to confirm the swap landed, and to tell a stale server from a stale graph."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.ensure-razorgraph-server", "script.invoke-mcp-tool", "script.find-divergent-state-roots"]
     },
 
     {
@@ -632,7 +632,7 @@
         "Loads the whole file into memory (fine for MB-scale graphs). Unlike Get-Research it caps -Where results too (default -First 10) because blob arrays can hold tens of thousands of items; -All lifts the cap and the envelope always says when it was applied."
       ],
       "tags": ["retrieval", "json", "code-analysis", "powershell"],
-      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli", "script.invoke-dotnet-check", "file.lightroom-api-index"]
+      "links": ["script.get-research", "note.razorgraph-mcp-server", "note.razorgraph-cli", "script.invoke-dotnet-check", "file.lightroom-api-index", "script.invoke-mcp-tool"]
     },
 
     {
@@ -741,7 +741,7 @@
         "Parse errors are reported and exit 1, never silently skipped - an unparseable staged file fails the gate by design. Counting script-block literals is a deliberate divergence from the C# metric (lambdas add no depth there): pipeline-style trees would otherwise vanish from the report."
       ],
       "tags": ["style-gate", "powershell", "code-analysis", "refactoring"],
-      "links": ["skill.christmas-tree-flattening", "script.test-pre-commit", "note.pre-checkin-style-janet-level"]
+      "links": ["skill.christmas-tree-flattening", "script.test-pre-commit", "note.pre-checkin-style-janet-level", "script.find-divergent-state-roots"]
     },
 
     {
@@ -895,7 +895,7 @@
         "After writing, the tool reports whether the output landed somewhere git can still see -- addressed to the agent, on stderr for the CLI and as a gitAdvice field on save_graph for the MCP server. It is SILENT when the path is outside a repository or already ignored, so its presence is the signal. Ignored-ness is asked of git (check-ignore), not reimplemented; if git cannot be run it advises rather than suppressing. The tool deliberately does NOT write a .gitignore of its own: creating files nobody asked for inside someone else's working tree was rejected as bad manners."
       ],
       "tags": ["code-analysis", "csharp", "roslyn", "cli", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping"]
+      "links": ["note.razorgraph-mcp-server", "pattern.graph-first-analysis", "skill.christmas-tree-flattening", "script.search-json", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.invoke-mcp-tool"]
     },
 
     {
@@ -1114,7 +1114,7 @@
         "NOTHING STARTED THE HTTP SERVER UNTIL 2026-08-14, and that is the cost of the transport this node recommends. An HTTP server surviving rebuild is the same fact as no component owning its lifetime: .mcp.json names a URL, Start-Janet.ps1 never mentioned mcp/7717/http, so a session came up with zero catalog tools and fell back to the CLI without anything failing. Now a startup run entry (script.ensure-mcp-server) starts it and reports served-vs-declared tool counts into the brief. The staleness half was found the same day: the installed server answered with 3 tools while source declared 12. THE VERSION FIELD IS DECORATIVE -- janet.cli and janet.mcp have both reported 0.1.0 since the port, so the documented advice to bump rather than update is not something the file can confirm; only a count read off the running process distinguishes a fresh install from an old one. Note also the skew ran OPPOSITE to the direction script.update-mcp-server warns about: the CLI had every verb and the SERVER was stale. The hazard is symmetric; the caveat names one side."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server", "file.az-token", "file.server-link"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server", "file.az-token", "file.server-link", "script.invoke-mcp-tool"]
     },
 
     {
@@ -1132,7 +1132,7 @@
         "-ToolProject packs and reinstalls global tools in the same pass. The CLI is NOT rotated -- a global tool is a separate copy on PATH -- so rebuilding the server leaves it stale, and a stale CLI reports a new verb as unknown while the server serves it fine. That was written down in a caveat and still caught us three times; the parameter is the structural fix a note could not be. Uninstalls then installs, because dotnet tool update no-ops on an identical version."
       ],
       "tags": ["agent", "deployment", "tooling", "csharp", "powershell", "failure-modes"],
-      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server", "file.server-link"]
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server", "file.server-link", "script.ensure-razorgraph-server"]
     },
 
     {
@@ -1344,18 +1344,20 @@
       "id": "script.ensure-mcp-server",
       "kind": "script",
       "path": "scripts\\Ensure-McpServer.ps1",
-      "summary": "Startup run entry that makes sure the janet-mcp HTTP server is up, and reports what it is actually SERVING. The HTTP transport is a separate process the client dials -- which is what lets the server be rebuilt mid-session, and also what means no component owns starting it. A session whose server is down does not fail: .mcp.json names a URL, so every research_*, thread_*, api_* and dotnet_check tool is simply absent and the session falls back to the CLI, which works well enough that nobody notices. Emits compressed JSON: ok, state (already-running|started|not-running|not-answering|start-failed|no-server-binary|error), port, pid, serverPath, base, toolsServed, toolsDeclared, stale, note, error. Starts from the .janet-bin\\current junction Update-McpServer.ps1 maintains, falling back to janet-mcp on PATH. -NoStart to probe only, -Pretty to indent.",
+      "summary": "Startup run entry that makes sure an MCP HTTP server is up, and reports what it is actually SERVING. Parameterised per server since 2026-08-31 (-Name, -BinDir, -ServerArgument, -SourceDir); janet-mcp on 7717 remains the default, and Ensure-RazorGraphServer.ps1 forwards to it for razorgraph-mcp on 7718. The HTTP transport is a separate process the client dials -- which is what lets the server be rebuilt mid-session, and also what means no component owns starting it. A session whose server is down does not fail: .mcp.json names a URL, so the tools are simply absent and the session falls back to the CLI, which works well enough that nobody notices. Emits compressed JSON: ok, state (already-running|started|not-running|not-answering|start-failed|no-server-binary|error), port, pid, serverPath, base, toolsServed, toolsDeclared, stale, note, error. Starts from the <BinDir> junction Update-McpServer.ps1 maintains, falling back to <Name> on PATH. -NoStart to probe only, -Pretty to indent.",
+      "params": ["Port", "Base", "ServerPath", "Name", "BinDir", "ServerArgument", "SourceDir", "TimeoutSeconds", "NoStart", "Pretty"],
       "caveats": [
+        "GENERALISED 2026-08-31, and the defaults are what keep it compatible: omit the new parameters and it behaves exactly as the janet-only version did (verified -- identical 14/14 already-running output before and after). -Name drives the default executable, the log file names, and the remediation text; -SourceDir drives the staleness count; -ServerArgument replaces the argument list wholesale, which is REQUIRED for a server that does not take --base. razorgraph-mcp does not: it is told which solution to graph per call, not per process, so passing janet's default set would make it exit at startup.",
         "NEVER THROWS, BY DESIGN -- it runs in the startup path, and a startup script that can take the session down is worse than the problem it solves (house rule 6). Read ok, not the exit code. Its failure reaches the brief as a captured run result, never as a problems entry, so it cannot block a launch: the CLI fallback is real, and refusing to start over a missing convenience would be worse than the fault.",
-        "The staleness check counts [McpServerTool( in src\\Janet.Mcp and compares it to what tools/list returns. THE PAREN IS LOAD-BEARING: matching the bare prefix also matches the four [McpServerToolType] container classes, which inflates declared from 12 to 16 and reports a stale server that is perfectly current. That bug was written and caught during authoring, 2026-08-14.",
-        "toolsDeclared is null where src\\Janet.Mcp is absent, and no comparison is made -- a deployment without source reports no verdict rather than a false one.",
+        "The staleness check counts [McpServerTool( in -SourceDir (default src\\Janet.Mcp) and compares it to what tools/list returns. THE PAREN IS LOAD-BEARING: matching the bare prefix also matches the [McpServerToolType] container classes, which inflated declared from 12 to 16 and reported a stale server that was perfectly current. That bug was written and caught during authoring, 2026-08-14.",
+        "toolsDeclared is null where -SourceDir is absent, and no comparison is made -- a deployment without source reports no verdict rather than a false one.",
         "A live pid with toolsServed 0 is state not-answering, NOT already-running: something holds the port that does not speak MCP. Verified against a raw TcpListener. A plain TCP check cannot tell these apart, which is why the probe does the MCP handshake rather than testing the socket.",
-        "THE STALE BRANCH IS NOW VERIFIED END-TO-END, 2026-08-14, and by accident rather than by a contrived fixture: adding the thread_report tool took declared to 13 against a server still serving 12, the detector fired with stale:true, the remediation command it prints was run verbatim, and the next probe read 13/13. Recorded here because the caveat previously said this branch was the least-evidenced path in the script; it is now the best-evidenced one.",
+        "BOTH INTERESTING BRANCHES ARE NOW VERIFIED END-TO-END. Stale, 2026-08-14, by accident rather than by a contrived fixture: adding the thread_report tool took declared to 13 against a server still serving 12, the detector fired with stale:true, the remediation command it prints was run verbatim, and the next probe read 13/13. Start, 2026-08-31: razorgraph's server was killed deliberately, the port confirmed empty, and the script brought up a new pid from the junction serving 25/25.",
         "Windows-only: Get-NetTCPConnection has no cross-platform equivalent here. Wrapped so a failure reports not-running rather than throwing, which on another OS would mean it starts a second server rather than finding the first.",
         "The tool-count comparison catches a stale SERVER, not a stale CLI. The global janet is a separate copy on PATH and goes stale independently -- and it is what every PowerShell shim calls, so the startup brief can carry an older envelope than the repo build emits, with every gate green. See script.get-thread-report, where that was measured."
       ],
       "tags": ["agent", "startup", "session", "contract", "powershell", "failure-modes", "verification"],
-      "links": ["script.get-thread-report", "file.server-link"]
+      "links": ["script.get-thread-report", "file.server-link", "script.ensure-razorgraph-server", "script.update-mcp-server"]
     },
 
     {
@@ -1518,6 +1520,58 @@
       ],
       "tags": ["powershell", "windows", "files", "agent", "retrieval"],
       "links": ["script.get-window-capture", "script.compare-image"]
+    },
+
+    {
+      "id": "script.ensure-razorgraph-server",
+      "kind": "script",
+      "path": "scripts\\Ensure-RazorGraphServer.ps1",
+      "summary": "Manifest run entry that makes sure the razorgraph-mcp HTTP server is up on 7718. A thin forwarder to Ensure-McpServer.ps1 with razorgraph's parameters, so the probe/start/staleness logic exists once; it emits that script's JSON envelope unchanged. Added 2026-08-31, when this repo's .mcp.json was found to declare razorgraph alongside janet while startup ensured only janet -- so razorgraph's tools could be silently absent with every startup gate green.",
+      "params": ["Repo", "Port", "NoStart", "Pretty"],
+      "caveats": [
+        "IT EXISTS ONLY BECAUSE A MANIFEST 'cmd' IS A BARE PATH. Invoke-JanetStartup validates run entries with Test-Path -PathType Leaf and has nowhere to put an argument list, so a per-server wrapper is the cheapest way to reach a parameterised script. Do not copy the probe/start logic into it -- that is the duplication this shape avoids.",
+        "-Repo defaults to C:\\repos\\RazorGraphTool, a MACHINE-SPECIFIC path. On a checkout elsewhere the forward reports state no-server-binary rather than failing, which is truthful but will read as a permanent red in the brief until the default is corrected or the parameter is passed.",
+        "Passes -ServerArgument explicitly BECAUSE razorgraph-mcp takes no --base: it is told which solution to graph per call, not per process. Inheriting Ensure-McpServer's janet default would make the server exit at startup.",
+        "The port is duplicated between this default (7718), the -ServerArgument it builds, and the url in .mcp.json. They must agree; nothing checks that they do."
+      ],
+      "tags": ["agent", "startup", "session", "powershell", "razorgraph", "entrypoint"],
+      "links": ["script.ensure-mcp-server", "script.update-mcp-server", "file.startup-manifest", "note.razorgraph-mcp-server", "script.invoke-mcp-tool"]
+    },
+
+    {
+      "id": "script.invoke-mcp-tool",
+      "kind": "script",
+      "path": "scripts\\Invoke-McpTool.ps1",
+      "summary": "Calls one tool on an MCP server over HTTP and hands back its parsed payload, so a script can ask the graph or the catalog a question directly instead of going through a CLI twin or a saved-graph file. Written 2026-09-01 after measuring that \"hooks run as separate processes and cannot speak MCP\" is true only of STDIO -- a stdio server is a child process the client owns, but an HTTP server is a port and anything can dial it. Both janet (7717) and razorgraph (7718) are HTTP today, so both are script-reachable now. Handles the three things that make the naive attempt fail: responses are SSE-framed rather than bare JSON, the session id arrives as an Mcp-Session-Id header that every later request must echo, and the handshake needs a notifications/initialized between initialize and the first tools/call. Unwraps twice by default -- out of the JSON-RPC envelope and out of the text content block -- so a tool returning JSON comes back as an object; -Raw stops at the text for tools that return prose. -ListTools is a cheap liveness and surface check.",
+      "params": ["Tool", "Arguments", "ListTools", "Uri", "Raw", "TimeoutSec", "Text", "Pretty"],
+      "caveats": [
+        "INVOKE-RESTMETHOD DOES NOT WORK HERE, and that is the whole reason this script is thirty lines rather than three. The body arrives as 'event: message' then 'data: {json}', so Invoke-RestMethod hands back a string that looks like a broken response. Use Invoke-WebRequest and pull the data: lines -- both framings are accepted, so a server answering plain application/json also works.",
+        "Only tools/call and tools/list are implemented. Resources, prompts, sampling, progress notifications and cancellation are not, and a long-running tool is simply waited on -- hence the 120s default TimeoutSec, which build_solution can still exceed on a large solution.",
+        "A protocol error (unknown tool, bad arguments) and a tool-level failure (isError on the result) are reported differently on purpose: the first is a JSON-RPC error object, the second is a normal result carrying isError. Collapsing them would hide which one happened. Both exit 1.",
+        "The session is not reused across invocations -- every call performs a fresh handshake. That costs a round trip per call and is irrelevant for a report that makes a handful of calls, but a loop over hundreds of nodes should batch through one tool call (research with many focusIds) rather than calling this per node.",
+        "VERIFIED AGAINST BOTH SERVERS 2026-09-01, which matters because they are different implementations: RazorGraph.Mcp 1.0.0.0 on 7718 (25 tools, graph_summary) and janet-mcp 0.1.0.0 on 7717 (14 tools, research_query). Same handshake, same SSE framing, same session header on both. protocolVersion is sent as the literal 2025-06-18 rather than negotiated down, so a server wanting an older version has not been tested.",
+        "The default Uri is razorgraph (7718) because that is what the first caller needed. Pass -Uri http://127.0.0.1:7717/ for janet. Nothing checks that the server behind a given port is the one you meant, so a wrong port reports 'unknown tool' rather than 'wrong server'."
+      ],
+      "tags": ["powershell", "mcp", "agent", "retrieval", "http", "entrypoint"],
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-razorgraph-server", "script.search-json", "script.find-divergent-state-roots"]
+    },
+
+    {
+      "id": "script.find-divergent-state-roots",
+      "kind": "script",
+      "path": "scripts\\Find-DivergentStateRoots.ps1",
+      "summary": "Reports types whose members split into groups that share no state -- connected-component cohesion (the LCOM4 shape) computed from the code graph's Reads/Writes and sibling Calls edges rather than from source. Two members are linked if they touch a common field or one calls the other; two or more components means the members partition into clusters that never meet. Exists because a divergence in BACKING STATE between members used together is invisible at the call site and obvious in the graph: in GameHub, GroupOps.IsClaimed reads the system-wide claim cache while ClaimantOf reads the group's own member list, GatherDoctrine.ReconcilePass treats them as a matched pair, and with two concurrent groups the second question answers \"nobody\" about a cell the first said was taken -- so the squatter swap never fires and a unit is stranded. Five adversarial reviewers and a night of reading found that once; this prints it as one row. Calls the graph live through script.invoke-mcp-tool, so there is no saved-graph step and no staleness question.",
+      "params": ["Project", "GraphId", "Type", "MinComponents", "Uri", "ChunkSize", "Text", "Pretty"],
+      "caveats": [
+        "IT CANNOT TELL A BUG FROM A DESIGN, because the graph cannot say whether two roots are semantically alternatives for the same information. _system and _group are both 'where claim state lives', which is what made their divergence a defect; a type genuinely holding two unrelated responsibilities reports identically and is a refactor. Read the clusters before believing either story. Measured on Nav.Core: 3 of 48 types reported, of which one is the real bug and two (Movement, Terrain) are benign static-utility splits.",
+        "TWO FILTERS DO ALL THE NOISE REDUCTION, and without them the report is useless -- the first run flagged 44 of 48 types. (1) Members touching no field are excluded from the component count: an auto-property or a positional record member reads no field the graph can see, because the backing field is compiler-generated and absent, so every record otherwise reports as N singleton clusters. (2) Const fields are not state: counting them links every static helper reading the same literal and reports a parser as split from the type it parses.",
+        "Constructors are excluded deliberately. A constructor writes every field, so leaving it in merges every cluster and the answer is always 'cohesive'.",
+        "GROUP-OBJECT RETURNING ONE GROUP HANDS BACK A BARE GROUPINFO, whose own .Count is the number of items IN the group -- so an unwrapped $groups.Count read 6 members as 6 clusters and reported BinaryHeap, which has exactly one. The @() around it is not optional. Found by the first sweep printing a cluster count that disagreed with the clusters it printed.",
+        "Static analysis only: a field reached through a property accessor, through reflection, or by a method call that mutates a collection is invisible here, and note.razorgraph-mcp-server records that Writes detection is assignment-syntax only. Absence of a shared field is not proof of independence.",
+        "Scope it with -Project. Across a whole solution the answer means little, because cohesion is a per-assembly judgement."
+      ],
+      "tags": ["powershell", "code-analysis", "quality", "csharp", "review", "mcp"],
+      "links": ["script.invoke-mcp-tool", "note.razorgraph-mcp-server", "pattern.graph-first-analysis", "script.test-deep-nesting"]
     }
   ]
 }
