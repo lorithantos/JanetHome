@@ -11,7 +11,7 @@
       "section": "1",
       "summary": "Manifest-driven startup: an explicit checkable contract of files to read and commands to run, instead of a prose context file that drifts silently.",
       "tags": ["startup", "contract", "agent", "validation"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims", "note.design-notes-projection", "script.ensure-mcp-server"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.debugger-displays-are-claims", "note.design-notes-projection", "script.ensure-mcp-server", "note.janet-machine-move"]
     },
     {
       "id": "pattern.progressive-disclosure",
@@ -39,12 +39,13 @@
       "kind": "pattern",
       "path": "DESIGN-NOTES.md",
       "section": "4",
-      "summary": "Give the agent a compiler's semantic model rather than text search; query the narrowest slice first and read source only to spot-check. Rebuilt clean-room as RazorGraph.Mcp in D:\\Repos\\RazorGraphTool.",
+      "summary": "Give the agent a compiler's semantic model rather than text search; query the narrowest slice first and read source only to spot-check. Rebuilt clean-room as RazorGraph.Mcp in C:\\repos\\RazorGraphTool.",
       "caveats": [
-        "The implementation lives outside this repo (D:\\Repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup."
+        "The implementation lives outside this repo (C:\\repos\\RazorGraphTool, RazorGraph.Mcp) -- see note.razorgraph-mcp-server for shape and operational caveats. Extraction is Razor/ASP.NET-oriented; within this repo Get-LspReferences.ps1 still covers only reference lookup.",
+        "PATH CORRECTED 2026-09-01 to C:\\repos\\RazorGraphTool, verified to exist. It previously named a location on the PREVIOUS MACHINE, and several nodes carried that dead path for weeks without anything failing -- see note.janet-machine-move for the full list, for the three silent-failure shapes involved, and for what still has no home on this machine."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots", "note.janet-machine-move"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -567,7 +568,7 @@
       "id": "note.razorgraph-mcp-server",
       "kind": "note",
       "path": "notes\\razorgraph-mcp-server.md",
-      "summary": "MCP stdio server over the RazorGraphTool code graph (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 22 tools (exception_escapes added 2026-08-07), Janet JSON envelope conventions. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise (full call closure, depth carried on each edge); excludeTests=true skips test projects before compiling for a lean navigation graph. Method-level detail: explicit constructors are Method nodes, using/await-using disposal is a Calls edge, bodyDepth nesting metric feeds deep_methods (the christmas-tree report), method_body_graph exposes one method's CFG with guard depths, method_body_diff proves two bodies flow-equivalent by bisimulation. Member-level detail since cd12114 (2026-08-08): Property and Field nodes (statics included, isStatic/isConst marked), Reads/Writes edges from the accessing code, References edges to member declared types. Generated code (f97edee): #line-mapped positions, generated:true markers, generatedFrom on Razor-generated classes, page->class join via References+compiledInto. Traversal takes a direction (outgoing/incoming/both) and descends containment for free.",
+      "summary": "MCP server over the RazorGraphTool code graph (C:\\repos\\RazorGraphTool\\src\\RazorGraph.Mcp) - the DESIGN-NOTES section-4 graph-first pattern rebuilt clean-room; 25 tools, Janet JSON envelope conventions, served over HTTP on 7718. Holds many graphs at once (keyed registry, optional graphId on every tool). build_solution spans a whole solution so Calls/InjectedInto cross project boundaries, and emits Covers edges from test methods to the code they exercise (full call closure, depth carried on each edge); excludeTests=true skips test projects before compiling for a lean navigation graph. Method-level detail: explicit constructors are Method nodes, using/await-using disposal is a Calls edge, bodyDepth nesting metric feeds deep_methods (the christmas-tree report), method_body_graph exposes one method's CFG with guard depths, method_body_diff proves two bodies flow-equivalent by bisimulation. Member-level detail since cd12114 (2026-08-08): Property and Field nodes (statics included, isStatic/isConst marked), Reads/Writes edges from the accessing code, References edges to member declared types. Generated code (f97edee): #line-mapped positions, generated:true markers, generatedFrom on Razor-generated classes, page->class join via References+compiledInto. Traversal takes a direction (outgoing/incoming/both) and descends containment for free.",
       "caveats": [
         "build_graph and build_solution are slow (full Roslyn compile); build_solution compiles every project in the solution. Solution graphs scope Razor and client-asset ids by project name (page:<Project>/<relPath>, js:<Project>/<relPath>), so ids differ from single-project graphs of the same code.",
         ".mcp.json launches a PUBLISHED copy -- D:/Repos/RazorGraphTool/.mcp-bin/RazorGraph.Mcp.exe, absolute path, gitignored -- refreshed with: dotnet publish src\\RazorGraph.Mcp -c Release -o .mcp-bin. It used to launch the live bin/Debug output, which a running server locks, so any rebuild of that configuration failed with MSB3021 while a Claude session was up. Verified 2026-08-01 that Debug and Release solution builds both succeed with the server live. Residual: .mcp-bin itself is locked while a session runs, so re-publishing needs those sessions closed, and code changes reach the MCP tools only after re-publish AND a session restart.",
@@ -581,10 +582,13 @@
         "Escape reports cite the thrower METHOD node, not the throw site: a throw authored in a .cshtml code block whose enclosing method is generated scaffolding (ExecuteAsync) still displays the .g.cs path even after f97edee - the node is correctly marked generated:true with generatedFrom and a compiledInto edge back to the page, but the mapped .cshtml line of the throw itself is not persisted on the edge. Persisting throw-site locations is the open follow-up.",
         "save_graph creates its output directory and returns a gitAdvice field when the saved path is inside a git repository that does not ignore it; the field is absent when there is nothing to act on. Same Core helper (GraphOutput) the CLI uses, so the two front ends cannot drift on it.",
         "HOT RELOAD, SETTLED BY EXPERIMENT 2026-08-14. THE POINT IS ALGORITHMIC CHANGE: a fix to an extractor, a query, a scoring rule reaches every attached session the moment the server is rotated -- no republish ceremony, no session restart, and no per-session drift. That last part is new with HTTP and easy to miss. Under stdio each session owned its own child process, so a fix arrived session by session as they restarted, and two sessions could answer the same query differently because they were running different builds. One shared HTTP server moves everybody at once, which removes a class of confusion rather than just saving time. THE ONE LIMIT: a changed TOOL SURFACE does not propagate. Tested directly -- added server_info, rotated mid-session, and the running server served 24 tools including it (verified over raw HTTP tools/list) while the attached session still could not see it. A client fixes its tool list at connection time and a genuine kill-and-reconnect does not refresh it, not merely the notification path Janet.Mcp had already measured. So: never restart for a behaviour change. A new, renamed or removed tool costs a `claude -c`, which CONTINUES the conversation rather than starting one -- so even adding tools every fifteen minutes is not a real cost, and it is close to free from an unrelated client that was not going to have the old surface anyway. WHAT ACTUALLY CHANGED, and the reason this matters more than the timing: nothing you care about gets killed to perform an update. Under stdio the client OWNED the server process, so updating meant closing sessions -- the publish itself failed on the locked binaries while any were attached. Now the publish never conflicts, and the only thing stopped is a process no session owns.",
-        "server_info reports the RESOLVED build directory rather than the launched path. A process started through the .mcp-bin\\current junction reports the link, which is identical across every build -- so the obvious value is the one that cannot distinguish them. Use it after a rotation to confirm the swap landed, and to tell a stale server from a stale graph."
+        "server_info reports the RESOLVED build directory rather than the launched path. A process started through the .mcp-bin\\current junction reports the link, which is identical across every build -- so the obvious value is the one that cannot distinguish them. Use it after a rotation to confirm the swap landed, and to tell a stale server from a stale graph.",
+        "SUMMARY CORRECTED 2026-09-01 IN THREE PLACES, all verified rather than assumed. (1) The path was D:\\Repos\\RazorGraphTool and the drive is gone; it is C:\\repos\\RazorGraphTool. (2) It said 'MCP stdio server' -- RazorGraphTool\\.mcp.json now reads {\"razorgraph\": {\"type\": \"http\", \"url\": \"http://127.0.0.1:7718/\"}}, the stdio holdout having been converted on 2026-08-31, so the caveat below about launching a published .mcp-bin copy describes a configuration that no longer exists. HTTP is what lets Update-McpServer rotate the build without stripping an attached session of its tools. (3) It said 22 tools; the running server serves 25.",
+        "SCRIPTS CAN CALL THIS SERVER DIRECTLY, measured 2026-09-01 -- see script.invoke-mcp-tool. The README's 'hooks run as separate processes and cannot speak MCP' is true only of stdio; an HTTP server is a port and any process can dial it. The gotcha is that responses are SSE-framed ('event: message' then 'data: {json}'), so Invoke-RestMethod mangles them.",
+        "VISIBILITY, INTERFACE-NESS AND EXTENSION METHODS, as of 2026-09-01: isPublic IS carried on Method and Field nodes and research() returns it in bulk, but find_nodes exposes no filter for it. isInterface is NOT modelled -- interfaces are emitted as Class nodes, and only DI-registered ones get the distinct ServiceInterface type (measured on ImageSelectorV2: 37 declared, 7 typed). isExtension is NOT modelled. proj: nodes carry no Contains edges, so research from a project root returns the project alone and reads like 'cannot be answered'."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.ensure-razorgraph-server", "script.invoke-mcp-tool", "script.find-divergent-state-roots"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.ensure-razorgraph-server", "script.invoke-mcp-tool", "script.find-divergent-state-roots", "note.janet-machine-move"]
     },
 
     {
@@ -883,7 +887,7 @@
       "id": "note.razorgraph-cli",
       "kind": "note",
       "path": "notes\\razorgraph-cli.md",
-      "summary": "Command-line twin of RazorGraph.Mcp over the same Core+Extractor engine (D:\\Repos\\RazorGraphTool\\src\\RazorGraph.Cli). Six commands: build (one project; a .sln needs --project), build-solution (spans every project - the only source of cross-project edges), query (--id/--type/--uncovered/--deep/--mismatches/--escapes), body and body-diff (compile the project, emit a method CFG / prove two bodies flow-equivalent, exit 0 equivalent 1 different 2 error), research (relevance-scored subgraph). Matters because it has NO publish cycle: dotnet run sees the change you just made, while the MCP server reports on the last .mcp-bin publish - so the CLI is the only surface that can observe RazorGraph while RazorGraph itself is being changed, and CLI-vs-MCP disagreement is expected mid-development.",
+      "summary": "Command-line twin of RazorGraph.Mcp over the same Core+Extractor engine (C:\\repos\\RazorGraphTool\\src\\RazorGraph.Cli). Six commands: build (one project; a .sln needs --project), build-solution (spans every project - the only source of cross-project edges), query (--id/--type/--uncovered/--deep/--mismatches/--escapes), body and body-diff (compile the project, emit a method CFG / prove two bodies flow-equivalent, exit 0 equivalent 1 different 2 error), research (relevance-scored subgraph). Matters because it has NO publish cycle: dotnet run sees the change you just made, while the MCP server reports on the last .mcp-bin publish - so the CLI is the only surface that can observe RazorGraph while RazorGraph itself is being changed, and CLI-vs-MCP disagreement is expected mid-development.",
       "caveats": [
         "query mode precedence is silent and fixed (mismatches > escapes > uncovered > deep > id > type): pass two modes and the earlier wins with no warning the other was ignored. --deep 0 is gated on Deep > 0, so it is indistinguishable from not passing --deep.",
         "RESOLVED 2026-08-14. All four output defaults (build, build-solution, build-lua, research) now write into Janet.Plumbline\\ rather than a bare file name in the current directory. The research command can no longer overwrite a repo's own research.json by being run from the wrong place. Passing -o still puts the file exactly where you say, so the old footgun is reachable deliberately but not by default.",
@@ -1070,7 +1074,7 @@
       "id": "script.get-drive-survey",
       "kind": "script",
       "path": "scripts\\Get-DriveSurvey.ps1",
-      "summary": "Runs the DriveSurvey CLI (D:\\Repos\\DriveSurvey): finds the freshest survey.exe build, runs it with every argument passed through verbatim, and reports what it said. Holds no command list of its own -- survey.exe owns the command surface, the validation and the help, so a command or flag the tool grows works here the day it ships.",
+      "summary": "Runs the DriveSurvey CLI: finds the freshest survey.exe build, runs it with every argument passed through verbatim, and reports what it said. Holds no command list of its own -- survey.exe owns the command surface, the validation and the help, so a command or flag the tool grows works here the day it ships.",
       "params": ["Arguments"],
       "caveats": [
         "Arguments pass through UNCHANGED, so this takes the CLI's syntax and not PowerShell's: pass --volume E: --set working, not -Volume E:. The wrapper used to model every command as typed parameters, and that second copy drifted six commands behind the tool while rejecting the exact flags a person who knows the tool types. Run it with no arguments for the CLI's own help.",
@@ -1078,10 +1082,12 @@
         "Stream handling switches on [Console]::IsOutputRedirected, never on the command name -- which is what lets this file hold no list of commands. At a console both streams pass straight through so the scan and hash progress bars animate; when redirected, stderr is separated into warnings so stdout stays a clean JSON envelope.",
         "The redirected path must relax ErrorActionPreference or Windows PowerShell 5.1 escalates the native command's captured stderr into a terminating NativeCommandError before it can be reported, delivering the tool's own clean refusal as a wall of PowerShell plumbing. PowerShell 7 does not escalate it, so this is invisible from a 7 session and must be checked under 5.1.",
         "The tool is read-only against surveyed volumes and never deletes, but this wrapper no longer refuses anything: copy, the CLI's one command that writes to a drive, is reachable here like any other now that the wrapper does not know what the commands are. It only ever adds -- an occupied destination is reported, never overwritten.",
-        "scan refuses a docked drive that cannot prove which physical drive it is (the Sabrent bridge blanks hardware serials) -- answer with --nickname. It also refuses to guess a volume's role on a bus that could be a backup drive or a card, answered once with --role durable|working."
+        "scan refuses a docked drive that cannot prove which physical drive it is (the Sabrent bridge blanks hardware serials) -- answer with --nickname. It also refuses to guess a volume's role on a bus that could be a backup drive or a card, answered once with --role durable|working.",
+        "THE DRIVESURVEY REPO IS NOT ON THIS MACHINE, checked 2026-09-01. The summary named D:\\Repos\\DriveSurvey, which died with the drive move; a search of C:\\repos, C:\\Users\\lori_, F:\\repos and D:\\ to depth 2 found no DriveSurvey anywhere. The dead path has been removed from the summary rather than replaced with a guess -- unlike RazorGraphTool and ImageSelectorV2, which were relocated and verified, this one has no known home. The script will report no survey.exe build until the repo is cloned back or the path is supplied.",
+        "AND IT IS NOT ON GITHUB EITHER, checked 2026-09-01 after the note above. ls-remote misses on lorithantos/DriveSurvey and on drive-survey, DriveSurveyTool, Survey, drivesurvey-cli and DriveSurveyCli, while ImageSelectorV2 resolves from the same shell with the same credentials -- so this is a real absence rather than an authentication failure. It was a MACHINE move, not a drive move: the repo is on the previous machine, or unpushed, or under a name not guessed here. Recovering it needs the remote, which only Lori has. See note.janet-machine-move."
       ],
       "tags": ["drives", "inventory", "backup", "storage", "coverage"],
-      "links": ["script.git", "script.invoke-dotnet-check", "note.tuples-do-not-cross-boundaries"]
+      "links": ["script.git", "script.invoke-dotnet-check", "note.tuples-do-not-cross-boundaries", "note.janet-machine-move"]
     },
 
     {
@@ -1395,7 +1401,7 @@
       "id": "file.lightroom-api-index",
       "kind": "file",
       "path": "C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua\\lightroom-api-15.3.json",
-      "summary": "The Lightroom Classic SDK API as a queryable JSON index: 909 members across 65 namespaces (SDK 15.3), each with signature, summary, params, return value, and the \"first supported in version\" stamp. Query with script.search-json (-Query scored search, -Where name=photo:setRawMetadata exact lookup); schema via Read-JsonCache -Schema. Built from the LuaDoc HTML the SDK ships by D:\\Repos\\ImageSelectorV2\\tools\\Build-LightroomApiIndex.ps1; sibling indexes lightroom-api-8.0.json (815 members) and lightroom-api-3.0.json (677) beside it answer \"when did this API appear\" beyond the since field. Source corpus: the three SDK folders under C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua.",
+      "summary": "The Lightroom Classic SDK API as a queryable JSON index: 909 members across 65 namespaces (SDK 15.3), each with signature, summary, params, return value, and the \"first supported in version\" stamp. Query with script.search-json (-Query scored search, -Where name=photo:setRawMetadata exact lookup); schema via Read-JsonCache -Schema. Built from the LuaDoc HTML the SDK ships by C:\\repos\\ImageSelectorV2\\tools\\Build-LightroomApiIndex.ps1; sibling indexes lightroom-api-8.0.json (815 members) and lightroom-api-3.0.json (677) beside it answer \"when did this API appear\" beyond the since field. Source corpus: the three SDK folders under C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua.",
       "caveats": [
         "Derived data: rebuild with Build-LightroomApiIndex.ps1 after dropping in a new SDK; nothing detects a stale index.",
         "Param descriptions flatten LuaDoc's nested key lists (setRawMetadata's 30 recognized keys become one prose string) -- the structure is in the HTML if ever needed.",
@@ -1403,7 +1409,7 @@
         "memberCount counts namespace overview rows too (one per module, kind=namespace); functions and methods are memberCount minus moduleCount."
       ],
       "tags": ["lightroom", "lua", "api", "retrieval", "json", "third-party"],
-      "links": ["script.search-json", "script.read-json-cache", "note.razorgraph-lua-scoping"]
+      "links": ["script.search-json", "script.read-json-cache", "note.razorgraph-lua-scoping", "note.janet-machine-move"]
     },
 
     {
@@ -1455,7 +1461,7 @@
         "Resolution is existence only: a path that resolves to a stale flat copy instead of the intended .mcp-bin\\current junction still reports ok."
       ],
       "tags": ["config", "validation", "startup"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.janet-machine-move"]
     },
 
     {
@@ -1572,6 +1578,15 @@
       ],
       "tags": ["powershell", "code-analysis", "quality", "csharp", "review", "mcp"],
       "links": ["script.invoke-mcp-tool", "note.razorgraph-mcp-server", "pattern.graph-first-analysis", "script.test-deep-nesting"]
+    },
+
+    {
+      "id": "note.janet-machine-move",
+      "kind": "note",
+      "path": "notes\\machine-move.md",
+      "summary": "The work moved to a DIFFERENT MACHINE, not a different drive, and that distinction is the point: a drive rename means D:\\Repos\\X became C:\\repos\\X and find-and-replace closes it, while a machine move means some things are not here at all and no path rewrite reaches them. Absolute paths naming the old machine sat dead in the catalog and in a permission allow-list for weeks without failing once. Swept 2026-09-01: five catalog nodes corrected, and two dead rules in RetirementCore\\.claude\\settings.json repointed at C:\\repos\\lorithantos\\JanetHome\\scripts\\Get-Research.ps1. RazorGraphTool and ImageSelectorV2 were carried over so their paths were merely wrong; DriveSurvey is absent from this machine AND from GitHub under six guessed names (ImageSelectorV2 resolves from the same shell, so that is a real absence, not an auth failure), so its path was REMOVED rather than guessed and recovering it needs a remote only Lori has. Three silent-failure shapes recorded: a path inside prose is read rather than resolved so nothing checks it; an allow-list entry for a nonexistent path is never consulted and surfaces only as an unexpected prompt long after the cause; and an existence check standing in for a correctness check.",
+      "tags": ["maintenance", "config", "failure-modes", "retrieval", "validation"],
+      "links": ["script.test-config-paths", "pattern.graph-first-analysis", "note.razorgraph-mcp-server", "script.get-drive-survey", "file.lightroom-api-index", "pattern.manifest-startup"]
     }
   ]
 }
