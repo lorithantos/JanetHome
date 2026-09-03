@@ -37,6 +37,11 @@
       "cmd": "scripts\\Get-ThreadReport.ps1",
       "captureAs": "threadReport",
       "why": "Unfinished investigations from the last session: topics, focus, and note SIZES. Small, stateful, and useless if fetched late -- so it runs at startup rather than on demand. Read a specific item's notes with Show-ThreadItems.ps1 -Path, or thread_show, once you know which one you want"
+    },
+    {
+      "cmd": "scripts\\Test-ConfigPaths.ps1",
+      "captureAs": "configPaths",
+      "why": "Startup validates the manifest's own entries; this validates the config files a session actually depends on -- drive-absolute paths in .mcp.json commands and settings.json permission rules -- and proposes replacements by deepest shared suffix. Captured, never a problem: it fires legitimately from a foreign project dir, and Start-Janet gates launch on problems (the 2026-08-01 regression). Read 'broken' in the captured result; it reports and proposes, never rewrites"
     }
   ],
 

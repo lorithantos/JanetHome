@@ -186,7 +186,7 @@ public static class DotnetCheck
         // compiled. Refreshing only when stale keeps a tight edit loop from paying for a graph
         // nothing changed.
         string? repositoryRoot = CodeGraph.FindRepositoryRoot(target);
-        GraphState? graph = CodeGraph.Read(repositoryRoot);
+        GraphState? graph = CodeGraph.Read(repositoryRoot, target);
 
         bool refreshWanted = graph is not null
             && !request.NoGraph
@@ -244,12 +244,7 @@ public static class DotnetCheck
     private static (int ExitCode, IReadOnlyList<string> Lines) RunDotnet(
         string verb, IReadOnlyList<string> arguments, CancellationToken cancellation)
     {
-        ProcessStartInfo info = new()
-        {
-            FileName = "dotnet",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
+        ProcessStartInfo info = new() { FileName = "dotnet" };
 
         info.ArgumentList.Add(verb);
         foreach (string argument in arguments)
@@ -257,21 +252,15 @@ public static class DotnetCheck
             info.ArgumentList.Add(argument);
         }
 
-        using Process process = Process.Start(info)
-            ?? throw new GraphException("Could not start dotnet. Is the .NET SDK on PATH?");
-
         // Both streams, because MSBuild writes diagnostics to stdout and the driver writes its
         // own failures to stderr; reading one is how a build failure comes back with no errors
-        // in it.
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+        // in it. Drained together, by ProcessOutput: reading them one after the other deadlocked
+        // under 6 KB of stderr, which is what 70 failing tests produce (2026-09-01).
+        ProcessCapture captured = ProcessOutput.Capture(info, cancellation);
 
-        cancellation.ThrowIfCancellationRequested();
+        List<string> lines = [.. captured.StandardOutput.Split('\n'), .. captured.StandardError.Split('\n')];
 
-        List<string> lines = [.. stdout.Split('\n'), .. stderr.Split('\n')];
-
-        return (process.ExitCode, [.. lines.Select(l => l.TrimEnd('\r'))]);
+        return (captured.ExitCode, [.. lines.Select(l => l.TrimEnd('\r'))]);
     }
 }
 

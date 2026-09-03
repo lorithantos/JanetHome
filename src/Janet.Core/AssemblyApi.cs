@@ -111,11 +111,35 @@ public static class AssemblyApi
 
     public static AssemblyApiResult Describe(string nameOrPath, string searchRoot, AssemblyApiRequest request)
     {
+        (AssemblyApiResult result, WeakReference context) = DescribeInContext(nameOrPath, searchRoot, request);
+
+        // Unload() only SCHEDULES the unload. The assemblies stay mapped, and their files stay
+        // locked, until a garbage collection actually collects the context -- which a long-lived
+        // server that allocates little may not run for hours. Measured 2026-09-01: seven scratch
+        // DLLs held open by janet-mcp after four calls, every build of that folder warning
+        // MSB3061, and all seven released by one forced collection. So collect here, until the
+        // context is gone or it is clear something is still holding it. The work happens in a
+        // separate, non-inlined frame so that no Type or Assembly local of it is still live on
+        // this stack while we wait; that is the documented pattern for collectible contexts.
+        for (int attempt = 0; context.IsAlive && attempt < 10; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
+        return result;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (AssemblyApiResult Result, WeakReference Context) DescribeInContext(
+        string nameOrPath, string searchRoot, AssemblyApiRequest request)
+    {
         string assemblyPath = ResolveAssemblyPath(nameOrPath, searchRoot);
         string folder = Path.GetDirectoryName(assemblyPath)!;
         int siblings = Directory.GetFiles(folder, "*.dll").Length;
 
         FolderContext context = new(folder);
+        WeakReference alive = new(context);
 
         try
         {
@@ -169,7 +193,7 @@ public static class AssemblyApi
                 dropped += missed;
             }
 
-            return new AssemblyApiResult(
+            AssemblyApiResult result = new(
                 Contract: 1,
                 Assembly: Path.GetFileName(assemblyPath),
                 Folder: folder,
@@ -184,11 +208,13 @@ public static class AssemblyApi
                 Types: report,
                 SiblingWarning: warning,
                 MembersDropped: dropped);
+
+            return (result, alive);
         }
         finally
         {
-            // Nothing above escapes as a Type, only strings, so the context has no live
-            // references once this returns and the assemblies stop being pinned.
+            // Nothing above escapes as a Type, only strings, so once this frame is gone the
+            // context has no live references and the caller can collect it.
             context.Unload();
         }
     }

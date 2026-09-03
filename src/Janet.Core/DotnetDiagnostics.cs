@@ -62,9 +62,11 @@ public static class DotnetDiagnostics
     /// <summary>
     /// The envelope format. Bumped to 4 by the status discriminator; to 5 when tests gained
     /// the runner's verdict (runnerExitCode, abort, per-assembly status) after a crashed test
-    /// host summed to a passing run -- notes\test-count-blind-spot.md.
+    /// host summed to a passing run -- notes\test-count-blind-spot.md; to 6 when graph gained
+    /// 'via' and 'graphId', because a graph can now live in a RazorGraph server rather than a
+    /// file and the envelope has to say which convention answered.
     /// </summary>
-    public const int Contract = 5;
+    public const int Contract = 6;
 
     /// <summary>
     /// The baseline file's own format, deliberately NOT the envelope's.

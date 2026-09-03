@@ -31,8 +31,12 @@ public static class CheckTools
         "mistake this envelope is shaped to prevent: newWarnings null means NO COMPARISON " +
         "HAPPENED (no 'new', or no prior baseline), not that none were new; tests null means " +
         "NOT RUN (noTests, or the build failed), not a suite with no tests; graph null means " +
-        "NOT APPLICABLE -- this repository has no graph convention -- while a missing graph is " +
-        "status 'absent'.\n\n" +
+        "NOT APPLICABLE -- this repository carries neither graph convention (a .graph directory " +
+        "with scripts\\graph.ps1, or a razorgraph server declared in its .mcp.json) -- while a " +
+        "missing graph is status 'absent'. Where razorgraph is declared and holds a graph built " +
+        "from this repository, a successful build rebuilds it whenever source has outrun it, so " +
+        "the graph tools stay current across the check loop; 'via' says which convention " +
+        "answered and 'graphId' names the server-side graph.\n\n" +
         "'new' answers what did THIS change introduce, by diffing the warning census against " +
         "the previous 'new' run. 'full' rebuilds everything without the baseline machinery and " +
         "is what to reach for whenever the SHAPE of the build changed -- a project added or " +
@@ -53,7 +57,7 @@ public static class CheckTools
         bool @new = false,
         [Description("Rebuild everything without the baseline machinery.")]
         bool full = false,
-        [Description("Skip the code-graph refresh. Only relevant where the repository carries the convention.")]
+        [Description("Skip the code-graph refresh. Only relevant where the repository carries a convention: a .graph directory with scripts\\graph.ps1, or a razorgraph server in its .mcp.json.")]
         bool noGraph = false,
         [Description("A handle from an earlier 'running' response. Poll with it; everything else is ignored.")]
         string? handle = null)

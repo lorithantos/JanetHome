@@ -5,7 +5,7 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
-    "contract": 5,
+    "contract": 6,
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
@@ -22,7 +22,7 @@
       "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
       "properties": {
         "status": { "const": "complete" },
-        "contract": { "const": 5 },
+        "contract": { "const": 6 },
         "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
         "configuration": { "type": "string" },
         "succeeded": {
@@ -171,18 +171,29 @@
 
         "graph": {
           "type": ["object", "null"],
-          "description": "NULL MEANS NOT APPLICABLE -- this repository carries no graph convention, which most do not. It does not mean a graph is missing; that is status 'absent'.",
+          "description": "NULL MEANS NOT APPLICABLE -- this repository carries no graph convention: no .graph directory or scripts\\graph.ps1, and no razorgraph server declared in its .mcp.json. Most repositories carry neither. It does not mean a graph is missing; that is status 'absent'.",
           "additionalProperties": false,
-          "required": ["path", "builtAt", "newestSourceAt", "status", "refreshed", "canRefresh"],
+          "required": ["via", "graphId", "path", "builtAt", "newestSourceAt", "status", "refreshed", "canRefresh"],
           "properties": {
-            "path": { "type": ["string", "null"] },
+            "via": {
+              "enum": ["script", "razorgraph"],
+              "description": "Which convention answered (contract 6). 'script': a .graph directory refreshed by scripts\\graph.ps1. 'razorgraph': a graph held by the RazorGraph MCP server the repository's .mcp.json declares, matched by the solution or project it was built from lying under this repository, and rebuilt in place with build_solution or build_graph."
+            },
+            "graphId": {
+              "type": ["string", "null"],
+              "description": "The server-side id of the graph. razorgraph only; null for the script convention and for an absent graph."
+            },
+            "path": {
+              "type": ["string", "null"],
+              "description": "The graph file (script), or the solution or project the server graphed (razorgraph)."
+            },
             "builtAt": { "type": ["string", "null"] },
             "newestSourceAt": { "type": ["string", "null"] },
             "status": { "enum": ["current", "stale", "absent", "failed"] },
             "refreshed": { "type": "boolean" },
             "canRefresh": {
               "type": "boolean",
-              "description": "False with status 'stale' means the repo has a graph and no way to rebuild it here. Staleness is reported even where it cannot be fixed."
+              "description": "False with status 'stale' means the repo has a graph and no way to rebuild it here. Staleness is reported even where it cannot be fixed. Under razorgraph, false with 'absent' means the server holds no graph of this repository or did not answer: nothing is built that nobody asked for, so build one with build_solution when you want it."
             }
           }
         }
@@ -196,7 +207,7 @@
       "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
       "properties": {
         "status": { "const": "running" },
-        "contract": { "const": 5 },
+        "contract": { "const": 6 },
         "target": { "type": "string" },
         "configuration": { "type": "string" },
         "handle": {

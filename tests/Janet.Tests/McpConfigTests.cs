@@ -73,6 +73,34 @@ public class McpConfigTests : IDisposable
     }
 
     [Fact]
+    public void ReadsTheUrlOfOneNamedServer()
+    {
+        WriteConfig("""
+            {
+              "mcpServers": {
+                "janet": { "type": "http", "url": "http://127.0.0.1:7717/" },
+                "razorgraph": { "type": "http", "url": "http://127.0.0.1:7718/" }
+              }
+            }
+            """);
+
+        Assert.True(McpConfig.TryReadUrl(_root, "razorgraph", out Uri? url));
+        Assert.Equal(7718, url!.Port);
+    }
+
+    [Fact]
+    public void TheUrlLookupNeverFallsBackToAnotherServer()
+    {
+        // "Does this repository declare razorgraph" must be no when it declares only janet;
+        // the port lookup's any-url fallback would have said yes.
+        WriteConfig("""
+            { "mcpServers": { "janet": { "type": "http", "url": "http://127.0.0.1:7717/" } } }
+            """);
+
+        Assert.False(McpConfig.TryReadUrl(_root, "razorgraph", out _));
+    }
+
+    [Fact]
     public void DerivedPortIsStableAndOutsideTheEphemeralRange()
     {
         int a = GraphLocator.DerivePort(@"D:\Repos\JanetHome");

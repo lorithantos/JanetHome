@@ -260,4 +260,32 @@ public class AssemblyApiTests
             first.Types.Select(t => t.Name),
             second.Types.Select(t => t.Name));
     }
+
+    [Fact]
+    public void TheInspectedFileIsReleasedWhenDescribeReturns()
+    {
+        // Unload() only schedules the unload; the file stays mapped until a collection actually
+        // runs, which inside a long-lived server can be never. Measured 2026-09-01 as seven
+        // scratch DLLs held open by janet-mcp and MSB3061 on every later build of that folder.
+        // A copy is inspected so that deleting it afterwards is the assertion: a mapped image
+        // cannot be deleted on Windows.
+        string directory = Path.Combine(Path.GetTempPath(), $"janet-asm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string copy = Path.Combine(directory, Path.GetFileName(Assembly));
+        File.Copy(Assembly, copy);
+
+        try
+        {
+            AssemblyApi.Describe(copy, directory, new AssemblyApiRequest { Type = "^SurfaceProbe$" });
+
+            File.Delete(copy);
+
+            Assert.False(File.Exists(copy));
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* the assertion above already said what matters */ }
+        }
+    }
 }

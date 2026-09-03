@@ -49,10 +49,18 @@ function Resolve-GitExecutable {
         Select-Object -First 1
     if ($onPath) { return $onPath.Source }
 
-    # Known-good path on this machine first, then standard standalone installs, so
-    # the common case never reaches the recursive scan below.
+    # Visual Studio's bundled copy first -- any version, any edition, newest first --
+    # then standard standalone installs, so the common case never reaches the
+    # recursive scan below. This named one edition (18 Enterprise) until 2026-09-01,
+    # and missed the moment the machine held only Community; the scan below caught
+    # it in 40 ms, so this is correctness rather than speed.
+    $vsBundled = @(
+        Get-ChildItem -Path "$env:ProgramFiles\Microsoft Visual Studio\*\*\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -ExpandProperty FullName
+    )
     $candidates = @(
-        "$env:ProgramFiles\Microsoft Visual Studio\18\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe"
+        $vsBundled
         "$env:ProgramFiles\Git\cmd\git.exe"
         "${env:ProgramFiles(x86)}\Git\cmd\git.exe"
         "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe"

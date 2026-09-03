@@ -28,23 +28,7 @@ public static class McpConfig
         source = null;
 
         string path = Path.Combine(basePath, FileName);
-        if (!File.Exists(path))
-        {
-            return false;
-        }
-
-        JsonNode? root;
-        try
-        {
-            root = JsonNode.Parse(File.ReadAllText(path));
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            // A malformed config is the user's to fix; it must not stop the server starting.
-            return false;
-        }
-
-        if (root?["mcpServers"] is not JsonObject servers)
+        if (ReadServers(path) is not JsonObject servers)
         {
             return false;
         }
@@ -70,5 +54,61 @@ public static class McpConfig
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The url declared for ONE named http server in <c>&lt;basePath&gt;/.mcp.json</c>.
+    /// </summary>
+    /// <remarks>
+    /// Exact name only, unlike <see cref="TryReadPort"/>: this answers "does this repository
+    /// declare a razorgraph server", and falling back to whichever entry has a url would answer
+    /// yes for a repository that declares only janet.
+    /// </remarks>
+    public static bool TryReadUrl(string basePath, string serverName, out Uri? url)
+    {
+        url = null;
+
+        if (ReadServers(Path.Combine(basePath, FileName)) is not JsonObject servers)
+        {
+            return false;
+        }
+
+        foreach ((string name, JsonNode? entry) in servers)
+        {
+            if (!string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (entry?["url"]?.GetValue<string>() is string declared
+                && Uri.TryCreate(declared, UriKind.Absolute, out Uri? parsed))
+            {
+                url = parsed;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static JsonObject? ReadServers(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(File.ReadAllText(path));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // A malformed config is the user's to fix; it must not stop the server starting.
+            return null;
+        }
+
+        return root?["mcpServers"] as JsonObject;
     }
 }

@@ -119,6 +119,19 @@ function Get-ServerProcess {
     return , @($matched)
 }
 
+function Get-ListenerPid {
+    # $null when nothing holds the port. Get-NetTCPConnection is Windows-only and throws
+    # rather than returning empty when there is no match, so both are caught here. Same
+    # function as Ensure-McpServer.ps1 carries, for the same reason.
+    param([int]$TcpPort)
+    try {
+        $conn = @(Get-NetTCPConnection -State Listen -LocalPort $TcpPort -ErrorAction Stop)
+        if ($conn.Count -eq 0) { return $null }
+        return [int]$conn[0].OwningProcess
+    }
+    catch { return $null }
+}
+
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $buildDir = Join-Path $Root "build-$stamp"
 $currentLink = Join-Path $Root 'current'
@@ -202,15 +215,63 @@ if ($ProcessName) {
         Write-Host "  stopped pid $($p.ProcessId)" -ForegroundColor DarkGray
     }
 
-    $start = Join-Path $currentLink $exe.Name
-    $started = if ($ServerArgument.Count -gt 0) {
-        Start-Process -FilePath $start -ArgumentList $ServerArgument -PassThru -WindowStyle Hidden
-    }
-    else {
-        Start-Process -FilePath $start -PassThru -WindowStyle Hidden
+    # Started the way Ensure-McpServer.ps1 starts it, logs included, so the two scripts cannot
+    # disagree about how a server comes up -- and so a server that dies on start leaves a reason
+    # somewhere. Until 2026-09-01 this launch had no redirect, and a death would have been silent.
+    $logDir = Join-Path ([System.IO.Path]::GetTempPath()) 'Janet'
+    if (-not (Test-Path -LiteralPath $logDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
 
-    Write-Host "  started pid $($started.Id) from current" -ForegroundColor Green
+    $launch = @{
+        FilePath               = Join-Path $currentLink $exe.Name
+        PassThru               = $true
+        WindowStyle            = 'Hidden'
+        RedirectStandardOutput = Join-Path $logDir "$ProcessName.out.log"
+        RedirectStandardError  = Join-Path $logDir "$ProcessName.err.log"
+    }
+    if ($ServerArgument.Count -gt 0) { $launch.ArgumentList = $ServerArgument }
+
+    $started = Start-Process @launch
+
+    # Wait until it LISTENS, not merely until it exists. This used to return the moment the
+    # process was spawned, and the port stayed empty for up to three seconds after that: a client
+    # call inside that window failed with "Unable to connect", the client's reconnect backoff then
+    # outlasted a human's patience, and the whole thing read as the new server having died. It had
+    # not -- measured 2026-09-01, the rotated pid was serving 16 s later every time. The port is
+    # read from --port in -ServerArgument; without one there is nothing to poll, and that is said
+    # rather than guessed at.
+    $port = $null
+    for ($i = 0; $i -lt $ServerArgument.Count - 1; $i++) {
+        if ($ServerArgument[$i] -eq '--port') { $port = [int]$ServerArgument[$i + 1] }
+    }
+
+    if ($null -eq $port) {
+        Write-Host "  started pid $($started.Id) from current (no --port in -ServerArgument, so not waiting for it to listen)" -ForegroundColor Green
+    }
+    else {
+        $listening = $false
+        $deadline = (Get-Date).AddSeconds(15)
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 200
+            if ($started.HasExited) { break }
+            if ((Get-ListenerPid -TcpPort $port) -eq $started.Id) { $listening = $true; break }
+        }
+
+        if ($listening) {
+            Write-Host "  started pid $($started.Id) from current, listening on $port" -ForegroundColor Green
+        }
+        elseif ($started.HasExited) {
+            throw ("pid $($started.Id) exited (code $($started.ExitCode)) before listening on $port. " +
+                "See $logDir\$ProcessName.err.log. $currentLink already points at the new build; " +
+                'repoint it at the previous build-* directory to roll back.')
+        }
+        else {
+            Write-Warning ("pid $($started.Id) is alive but nothing owns port $port after 15 s. Clients " +
+                "will fail until it listens; see $logDir\$ProcessName.out.log.")
+        }
+    }
+
     Write-Host '  attached sessions reconnect on their own (HTTP: five attempts, 1s doubling).' -ForegroundColor DarkGray
 }
 else {

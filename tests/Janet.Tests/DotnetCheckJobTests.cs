@@ -27,7 +27,7 @@ public class DotnetCheckJobTests
         JsonObject envelope = JsonNode.Parse(DotnetCheckJson.Serialize(pending))!.AsObject();
 
         Assert.Equal("running", envelope["status"]!.GetValue<string>());
-        Assert.Equal(5, envelope["contract"]!.GetValue<int>());
+        Assert.Equal(6, envelope["contract"]!.GetValue<int>());
         Assert.Equal(@"D:\Repos\Sample\App.slnx", envelope["target"]!.GetValue<string>());
         Assert.Equal("Debug", envelope["configuration"]!.GetValue<string>());
         Assert.Equal("abc123def456", envelope["handle"]!.GetValue<string>());
@@ -55,7 +55,7 @@ public class DotnetCheckJobTests
         JsonObject envelope = JsonNode.Parse(DotnetCheckJson.Serialize(result))!.AsObject();
 
         Assert.Equal("complete", envelope["status"]!.GetValue<string>());
-        Assert.Equal(5, envelope["contract"]!.GetValue<int>());
+        Assert.Equal(6, envelope["contract"]!.GetValue<int>());
 
         // The three fields whose null is a statement rather than an absence. They are present
         // and null, not missing: a reader has to be able to tell "not applicable" from "this

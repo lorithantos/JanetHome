@@ -18,7 +18,7 @@
     failures carry their payload up front and are read from TRX files rather than scraped.
     The exit code means exactly one thing: 0 when the build succeeded and every test passed.
 
-    THE CONTRACT IS NOW 5. Contract 4 added the 'status' discriminator, because the MCP tool
+    THE CONTRACT IS NOW 6. Contract 4 added the 'status' discriminator, because the MCP tool
     can answer "running" with a handle when a rebuild outlasts the client's call timeout;
     this script only ever produces "complete" -- every invocation is a fresh process, so
     there is nobody to poll -- but the field is present. Contract 5 makes 'tests' carry the
@@ -27,8 +27,13 @@
     'abort' carries the runner's abort banner (the exception that killed a crashed test host,
     or null), and each assembly entry carries 'status' -- "aborted" marks a partial TRX whose
     counters are what the host lived to write, not a result. Before this, a crashed test host
-    summed to 423/423 passing with exit 0 (notes\test-count-blind-spot.md). The declared
-    format is contracts\dotnet-check.schema.json.
+    summed to 423/423 passing with exit 0 (notes\test-count-blind-spot.md). Contract 6 gives
+    'graph' two fields: 'via' names the convention that answered ("script" for a .graph
+    directory with scripts\graph.ps1, "razorgraph" for a graph held by the RazorGraph MCP
+    server the repository's .mcp.json declares) and 'graphId' names the server-side graph.
+    Under razorgraph a successful build rebuilds a graph that source has outrun, in place,
+    so the graph tools stay current across the check loop. The declared format is
+    contracts\dotnet-check.schema.json.
 
     Baselines written under contract 3 are still read. The baseline file's format did not
     change when the envelope's did, and stamping both from one number would have discarded
@@ -52,8 +57,8 @@
     that session passed without once compiling it.
 
 .PARAMETER NoGraph
-    Skip the code-graph refresh. Only relevant in repositories carrying the convention (a
-    .graph directory and scripts\graph.ps1).
+    Skip the code-graph refresh. Only relevant in repositories carrying a convention: a
+    .graph directory with scripts\graph.ps1, or a razorgraph server declared in .mcp.json.
 #>
 [CmdletBinding()]
 param(
