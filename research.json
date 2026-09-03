@@ -20,7 +20,7 @@
       "section": "2",
       "summary": "Capability lives in per-topic skill files loaded on match, not one monolithic prompt; context is the scarce resource and instructions interfere.",
       "tags": ["skills", "context", "agent", "retrieval"],
-      "links": ["script.get-research", "file.research", "note.janet-origin", "file.readme", "note.design-notes-projection", "note.gamehub-design-record"]
+      "links": ["script.get-research", "file.research", "note.janet-origin", "file.readme", "note.design-notes-projection", "note.gamehub-design-record", "note.subagent-delegation"]
     },
     {
       "id": "pattern.thread-items",
@@ -54,7 +54,7 @@
       "section": "5",
       "summary": "Model emits a reviewable JSON plan of exact edit operations; a script executes it. Judgment from the model, mechanical execution from code.",
       "tags": ["editing", "agent", "determinism"],
-      "links": ["script.invoke-surgical-edit"]
+      "links": ["script.invoke-surgical-edit", "note.subagent-delegation"]
     },
     {
       "id": "pattern.reviewer-principles",
@@ -722,10 +722,10 @@
       "path": "notes\\skill-graph-first-code-analysis.md",
       "summary": "The operating skill for the RazorGraph cluster: WHEN to reach for the graph (questions text search cannot answer - callers, implementers, blast radius, test reach, nesting, flow equivalence) and the workflow (build once/save/load, orient then drill, direction semantics, exact m:Type.Name(params) ids, coverage=reachability, body tools for method-level, mechanical refactor gates, source only to spot-check). Judgment here; depth delegated to the linked nodes; blind spots on note.razorgraph-mcp-server.",
       "caveats": [
-        "A GRAPH BUILT AT SESSION START GOES STALE AND NOTHING SAYS SO. Observed 2026-08-30: a graph built once was queried well for the analysis questions, then silently drifted from the source across a day of edits -- new module, new types, changed signatures -- and the session gradually stopped reaching for it and went back to grep, without ever deciding to. The pull toward text search is not laziness, it is a stale graph genuinely answering worse. script.invoke-dotnet-check refreshes a graph after a successful build ONLY for repos carrying the .graph + scripts/graph.ps1 convention; a repo whose graph lives in the MCP server's registry has no refresh hook at all. Rebuild with build_solution after any substantial edit, and treat 'when did I last build this' as part of reading any answer."
+        "A GRAPH BUILT AT SESSION START GOES STALE AND NOTHING SAYS SO. Observed 2026-08-30: a graph built once was queried well for the analysis questions, then silently drifted from the source across a day of edits -- new module, new types, changed signatures -- and the session gradually stopped reaching for it and went back to grep, without ever deciding to. The pull toward text search is not laziness, it is a stale graph genuinely answering worse. Rebuild with build_solution after any substantial edit, and treat 'when did I last build this' as part of reading any answer. PARTLY CLOSED 2026-09-01: script.invoke-dotnet-check now refreshes BOTH conventions after a successful build -- the .graph + scripts/graph.ps1 one it always handled, and, new at envelope contract 6, a graph held in a razorgraph server declared in the repo's .mcp.json, matched by source path and rebuilt in place under the same graphId. The envelope's 'via' says which one answered. What is still open is a graph nobody asked for: no match means status 'absent', deliberately, so a session that never built one gets no refresh and no warning."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json", "skill.crash-escape-analysis"]
+      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json", "skill.crash-escape-analysis", "note.subagent-delegation"]
     },
 
     {
@@ -836,7 +836,7 @@
         "Run with no arguments it prints the resolved path on the SUCCESS stream, so \"$g = & .\\git.ps1\" captures it; the RetirementCore counterpart uses Write-Host and yields nothing to an assignment."
       ],
       "tags": ["git", "powershell", "entrypoint"],
-      "links": ["script.get-drive-survey", "script.test-standalone-scripts"]
+      "links": ["script.get-drive-survey", "script.test-standalone-scripts", "note.subagent-delegation"]
     },
 
     {
@@ -1267,7 +1267,7 @@
         "RESOLVED 2026-08-14, and not the way this node proposed. The -Index bug it subsumed (Show-ThreadItems filters done before printing, while the selector counted into the unfiltered file, so -Index was live-wrong by the done count) was fixed by REMOVING selection by position everywhere -- Janet.Core, the CLI, the MCP tools, and the three shims -- rather than by emitting a true unfiltered index per row. The list is addressed as a dictionary keyed by topic. Ignore any suggestion here to surface a row index; a correct index is still a position, and position is not identity."
       ],
       "tags": ["thread-items", "progressive-disclosure", "context-budget", "measurement", "startup", "session"],
-      "links": ["note.startup-brief-budget", "pattern.thread-items", "script.show-thread-items", "script.thread-items-common", "file.startup-manifest", "note.design-notes-projection", "script.get-thread-report"]
+      "links": ["note.startup-brief-budget", "pattern.thread-items", "script.show-thread-items", "script.thread-items-common", "file.startup-manifest", "note.design-notes-projection", "script.get-thread-report", "note.subagent-delegation"]
     },
 
     {
@@ -1608,6 +1608,20 @@
       ],
       "tags": ["documentation", "csharp", "gamehub", "retrieval", "review"],
       "links": ["pattern.progressive-disclosure", "note.build-retrospective", "note.razorgraph-mcp-server"]
+    },
+
+    {
+      "id": "note.subagent-delegation",
+      "kind": "note",
+      "path": "notes\\subagent-delegation.md",
+      "summary": "A session's context is what runs out first, and most of what spends it is evidence that only mattered in flight -- diffs, build logs, sweep results; delegate the half that is expensive to read and cheap to summarise, keep the half that is cheap to state and expensive to get wrong, and quote the operating rules into the prompt because an agent inherits the tool surface and none of the rules.",
+      "caveats": [
+        "Delegation is not strictly cheaper. The agent re-derives orientation the session already has, and a badly scoped one returns something confidently wrong that costs more to detect than the task cost to do. The trade turns on the ratio of tool output to answer: a single file read, one known symbol or a two-line edit are all cheaper done directly.",
+        "An agent inherits the tool surface but NOT the operating rules -- nothing tells it the graph server exists, that git is off PATH, or that the checkout is CRLF. Every one of those has to be written into the prompt. Observed 2026-08-11: three exploration agents ran text-first until instructed mid-flight, and their graph-verified second passes found facts the text passes missed.",
+        "Stated as a standing preference by Lori on 2026-09-03, which matters because the harness default in some sessions is the opposite -- 'do not call the Agent tool unless the user requested it'. The request has been made once, for all tasks; do not re-ask per task."
+      ],
+      "tags": ["agent", "context-budget", "progressive-disclosure", "session", "retrieval"],
+      "links": ["pattern.progressive-disclosure", "skill.graph-first-code-analysis", "pattern.deterministic-edits", "script.git", "note.thread-item-projection"]
     }
   ]
 }
