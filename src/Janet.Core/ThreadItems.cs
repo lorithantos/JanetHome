@@ -5,13 +5,14 @@ using System.Text.Json.Nodes;
 namespace Janet.Core;
 
 /// <summary>
-/// One investigation topic. Five fields, three of which are distinct roles rather than stages
+/// One investigation topic. Six fields, four of which are distinct roles rather than stages
 /// of one idea.
 /// </summary>
 /// <remarks>
 /// refs -- context that has earned a research.json node.
 /// next -- the resume cursor: the one thing to do first on return.
 /// notes -- detail too small or too fresh to be worth a node.
+/// area -- which project this item belongs to.
 ///
 /// An item may legitimately carry any combination, including none.
 /// </remarks>
@@ -22,6 +23,19 @@ public sealed record ThreadItem
     public IReadOnlyList<string> Refs { get; init; } = [];
     public string Next { get; init; } = string.Empty;
     public string Notes { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Which project or area this item belongs to. Empty means unfiled.
+    /// </summary>
+    /// <remarks>
+    /// STORED, never derived from the topic. Measured on the live list (see
+    /// note.thread-item-projection): splitting topics on their first colon produced 12 groups
+    /// for 16 topics and split single projects across several of them, while 4 topics had no
+    /// colon at all. An inferred area is therefore not a cheaper version of a stored one, it is
+    /// a wrong one. An item with none reads as <see cref="ThreadItems.Unfiled"/> and is never
+    /// guessed into a neighbour.
+    /// </remarks>
+    public string Area { get; init; } = string.Empty;
 
     public bool IsActive => string.Equals(Status, ThreadItems.Active, StringComparison.OrdinalIgnoreCase);
 
@@ -87,9 +101,13 @@ public sealed record ThreadShowResult(
 /// characters, so the reader can tell a one-line note from a five-day log without carrying it.
 /// Reporting the length rather than a bare truncation flag is the catalog's convention -- a
 /// response that truncates says so, and says by how much.
+///
+/// Area is the RESOLVED label: <see cref="ThreadItems.Unfiled"/> where the item carries none,
+/// so a reader of the report never has to know that the stored field is empty. What is stored
+/// stays empty -- an unlabelled item is not backfilled by being displayed.
 /// </remarks>
 public sealed record ThreadReportItem(
-    string Topic, string Status, IReadOnlyList<string> Refs, string Next,
+    string Topic, string Status, string Area, IReadOnlyList<string> Refs, string Next,
     string NotesLead, int NotesLength);
 
 /// <summary>
@@ -131,6 +149,14 @@ public static class ThreadItems
 
     public static readonly string[] Statuses = [Active, Parked, Done];
 
+    /// <summary>The single group an item with no area belongs to.</summary>
+    /// <remarks>
+    /// A literal, and one group rather than many: an unlabelled item is not sorted into a
+    /// plausible neighbour, because a guess that is usually right is indistinguishable from a
+    /// label that was set, and the point of the field is to be able to trust it.
+    /// </remarks>
+    public const string Unfiled = "(unfiled)";
+
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
@@ -154,7 +180,7 @@ public static class ThreadItems
     // ---- reading -----------------------------------------------------------------------
 
     /// <summary>
-    /// Parses the list, normalising every item to the five-field shape.
+    /// Parses the list, normalising every item to the six-field shape.
     /// </summary>
     /// <remarks>
     /// Absent fields default rather than fail, which is what makes migrating the old
@@ -193,6 +219,17 @@ public static class ThreadItems
         return File.Exists(resolved) ? Parse(File.ReadAllText(resolved)) : [];
     }
 
+    /// <summary>
+    /// One stored entry as a <see cref="ThreadItem"/>.
+    /// </summary>
+    /// <remarks>
+    /// This and <see cref="Serialize"/> are an ALLOW-LIST, not a passthrough: they read and
+    /// write exactly the keys named here, and a key absent from both is silently dropped by the
+    /// next write. research_update preserves fields it does not know about; this deliberately
+    /// does not, because the list is a fixed shape rather than an open record. The consequence
+    /// is that a field added to <see cref="ThreadItem"/> and to only one of these two is a data
+    /// loss with no error -- so they are edited together, always.
+    /// </remarks>
     private static ThreadItem Normalise(JsonObject entry) => new()
     {
         Topic = Text(entry, "topic", string.Empty),
@@ -200,6 +237,7 @@ public static class ThreadItems
         Refs = Strings(entry, "refs"),
         Next = Text(entry, "next", string.Empty),
         Notes = Text(entry, "notes", string.Empty),
+        Area = Text(entry, "area", string.Empty),
     };
 
     private static string Text(JsonObject entry, string name, string fallback) =>
@@ -213,16 +251,40 @@ public static class ThreadItems
             : [];
 
     public static string Serialize(IReadOnlyList<ThreadItem> items) =>
-        JsonSerializer.Serialize(
-            items.Select(i => new JsonObject
-            {
-                ["topic"] = i.Topic,
-                ["status"] = i.Status,
-                ["refs"] = new JsonArray([.. i.Refs.Select(r => (JsonNode)JsonValue.Create(r)!)]),
-                ["next"] = i.Next,
-                ["notes"] = i.Notes,
-            }).ToArray(),
-            Options);
+        JsonSerializer.Serialize(items.Select(Stored).ToArray(), Options);
+
+    /// <summary>
+    /// One item as it is written back to disk. The other half of the allow-list.
+    /// </summary>
+    /// <remarks>
+    /// 'area' is written only when the item has one. Emitting "area": "" for every unlabelled
+    /// item would rewrite all of them the first time any write touched the list -- a backfill
+    /// by another name, and the whole point of the field is that a label was assigned rather
+    /// than acquired. An absent key reads back as empty, which reads as (unfiled), so the
+    /// round trip is stable in both directions.
+    /// </remarks>
+    private static JsonObject Stored(ThreadItem item)
+    {
+        JsonObject stored = new()
+        {
+            ["topic"] = item.Topic,
+            ["status"] = item.Status,
+            ["refs"] = new JsonArray([.. item.Refs.Select(r => (JsonNode)JsonValue.Create(r)!)]),
+            ["next"] = item.Next,
+            ["notes"] = item.Notes,
+        };
+
+        if (item.Area.Length > 0)
+        {
+            stored["area"] = item.Area;
+        }
+
+        return stored;
+    }
+
+    /// <summary>The area an item is filed under, or <see cref="Unfiled"/> where it has none.</summary>
+    public static string AreaOf(ThreadItem item) =>
+        string.IsNullOrWhiteSpace(item.Area) ? Unfiled : item.Area;
 
     /// <summary>The topic in focus, or null. Nothing active is an ordinary state, not a fault.</summary>
     public static string? ActiveTopic(IEnumerable<ThreadItem> items) =>
@@ -262,11 +324,7 @@ public static class ThreadItems
                     "No item is active, so there is nothing to act on. Pass a topic.");
         }
 
-        List<int> matched =
-        [
-            .. Enumerable.Range(0, items.Count)
-                .Where(i => items[i].Topic.Contains(selector.Topic, StringComparison.OrdinalIgnoreCase))
-        ];
+        List<int> matched = Matching(items, selector.Topic);
 
         if (matched.Count == 0)
         {
@@ -283,6 +341,24 @@ public static class ThreadItems
 
         return matched[0];
     }
+
+    /// <summary>
+    /// Every item whose topic contains the given text, case-insensitively.
+    /// </summary>
+    /// <remarks>
+    /// The single definition of what a topic match IS, so that the writing verbs and the
+    /// reading ones cannot come to disagree about which item a caller named -- a selector that
+    /// means one thing to update and another to show is worse than either alone.
+    ///
+    /// Substring rather than -like: the PowerShell used -like "*topic*", so a topic containing
+    /// * or ? behaved as a pattern by accident. That edge is not reproduced, matching the same
+    /// decision made for the catalog. A '*' here is a literal asterisk.
+    /// </remarks>
+    private static List<int> Matching(IReadOnlyList<ThreadItem> items, string topic) =>
+    [
+        .. Enumerable.Range(0, items.Count)
+            .Where(i => items[i].Topic.Contains(topic, StringComparison.OrdinalIgnoreCase))
+    ];
 
     private static int IndexOfActive(IReadOnlyList<ThreadItem> items)
     {
@@ -335,7 +411,7 @@ public static class ThreadItems
 
     public static ThreadAddResult Add(
         string? path, string topic, string notes = "", string next = "",
-        IReadOnlyList<string>? refs = null, bool active = false)
+        IReadOnlyList<string>? refs = null, bool active = false, string? area = null)
     {
         if (string.IsNullOrWhiteSpace(topic))
         {
@@ -362,6 +438,10 @@ public static class ThreadItems
                 Refs = refs ?? [],
                 Next = next,
                 Notes = notes,
+
+                // Absent stays absent. An add that names no area produces an unfiled item,
+                // rather than one filed under whatever the caller was last working on.
+                Area = (area ?? string.Empty).Trim(),
             });
 
             IReadOnlyList<ThreadItem> live = Live(items);
@@ -381,11 +461,12 @@ public static class ThreadItems
     public static ThreadUpdateResult Update(
         string? path, ThreadSelector selector, string? notes = null, string? next = null,
         IReadOnlyList<string>? refs = null, string? status = null,
-        bool appendNotes = false, bool appendRefs = false)
+        bool appendNotes = false, bool appendRefs = false, string? area = null)
     {
-        if (notes is null && next is null && refs is null && string.IsNullOrEmpty(status))
+        if (notes is null && next is null && refs is null && area is null
+            && string.IsNullOrEmpty(status))
         {
-            throw new GraphException("Nothing to change. Pass notes, next, refs, or status.");
+            throw new GraphException("Nothing to change. Pass notes, next, refs, status, or area.");
         }
 
         if (!string.IsNullOrEmpty(status) && !Statuses.Contains(status, StringComparer.OrdinalIgnoreCase))
@@ -427,6 +508,14 @@ public static class ThreadItems
                 // to decide about. Deduplicating here would quietly drop one they meant twice.
                 item = item with { Refs = appendRefs ? [.. item.Refs, .. refs] : refs };
                 changed.Add("refs");
+            }
+
+            if (area is not null)
+            {
+                // Empty clears, as everywhere else here: an item filed by mistake has to be
+                // returnable to (unfiled), and there is no other way to say that.
+                item = item with { Area = area.Trim() };
+                changed.Add("area");
             }
 
             if (!string.IsNullOrEmpty(status))
@@ -496,13 +585,34 @@ public static class ThreadItems
         });
 
     /// <summary>
-    /// Reads the list without writing it. Never throws for a bad file.
+    /// Reads the list without writing it. Never throws for a BAD FILE; a bad selector is
+    /// different, and does.
     /// </summary>
     /// <remarks>
-    /// This runs in the startup path, so a corrupt list is reported in-band and startup carries
-    /// on. Throwing here would mean a mangled temp file could stop a session from beginning.
+    /// The two failures are not the same kind of thing, and collapsing them would make both
+    /// unreadable. A corrupt or unreadable list is reported in-band through 'error', because
+    /// this runs in the startup path and a mangled temp file must not stop a session from
+    /// beginning -- 'error' means, and only means, "the list could not be read". A topic that
+    /// matches nothing, or an area nothing is filed under, is a CALLER error: there is no
+    /// degraded answer to give, and returning an empty list would say "no such work is open",
+    /// which is a different and false claim. Those throw <see cref="GraphException"/>, which
+    /// Surfaced.Filter re-throws as McpException so the message survives the MCP boundary
+    /// intact. Startup passes no selector, so the never-throws property is preserved exactly
+    /// where it is load-bearing.
+    ///
+    /// A read failure wins over a selector: with nothing read there is nothing to select from,
+    /// and "no item matches 'x'" would name the wrong cause.
+    ///
+    /// Neither selector is capped. An explicit selector means the caller already knows what
+    /// they asked for, and truncating it would hide answers -- the rule CatalogQuery and ApiDoc
+    /// both state where they cap free-text ranking and nothing else.
     /// </remarks>
-    public static ThreadShowResult Show(string? path, bool all = false)
+    /// <param name="path">List file, or null for the well-known one.</param>
+    /// <param name="all">Include completed items.</param>
+    /// <param name="topic">Case-insensitive substring naming exactly ONE item.</param>
+    /// <param name="area">Case-insensitive substring narrowing to one area's items.</param>
+    public static ThreadShowResult Show(
+        string? path, bool all = false, string? topic = null, string? area = null)
     {
         IReadOnlyList<ThreadItem> items;
         string? error = null;
@@ -517,12 +627,100 @@ public static class ThreadItems
             error = ex.Message;
         }
 
-        if (!all)
+        // Over the UNPROJECTED list, and this is the whole point of the field. 'active' means
+        // "the focus of the list", not "the focus of this answer": computing it after a
+        // selector had run would report null whenever the caller asked about some other item,
+        // and a reader would correctly conclude from that envelope that nothing is in focus.
+        // Nothing catches this by accident -- no caller that passes a selector existed before
+        // these selectors did.
+        string? active = ActiveTopic(items);
+
+        if (error is not null)
         {
-            items = Live(items);
+            return new ThreadShowResult(0, active, [], error);
         }
 
-        return new ThreadShowResult(items.Count, ActiveTopic(items), items, error);
+        IReadOnlyList<ThreadItem> shown = all ? items : Live(items);
+
+        if (!string.IsNullOrWhiteSpace(area))
+        {
+            shown = InArea(shown, area);
+        }
+
+        if (!string.IsNullOrWhiteSpace(topic))
+        {
+            shown = [Only(shown, topic)];
+        }
+
+        return new ThreadShowResult(shown.Count, active, shown, error);
+    }
+
+    /// <summary>
+    /// Narrows to one area, refusing an area nothing is filed under.
+    /// </summary>
+    /// <remarks>
+    /// A NARROWING selector, so case-insensitive Contains -- the house split is that an
+    /// identity selector uses equality and a narrowing one uses containment. Matched against
+    /// the RESOLVED area, so '(unfiled)' reaches the unlabelled items with no special case in
+    /// the matcher: they are a group like any other, and the point of the design is that they
+    /// stay one group rather than being distributed into plausible neighbours.
+    ///
+    /// A miss names the areas actually in use, because the likeliest cause is a label that
+    /// reads differently from how it was stored.
+    /// </remarks>
+    private static IReadOnlyList<ThreadItem> InArea(IReadOnlyList<ThreadItem> items, string area)
+    {
+        IReadOnlyList<ThreadItem> matched =
+            [.. items.Where(i => AreaOf(i).Contains(area, StringComparison.OrdinalIgnoreCase))];
+
+        if (matched.Count > 0)
+        {
+            return matched;
+        }
+
+        string[] known =
+        [
+            .. items.Select(AreaOf)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+        ];
+
+        throw new GraphException(
+            $"No item is filed under an area matching '{area}'. " + (known.Length > 0
+                ? $"Areas in use: {string.Join(", ", known)}. Set one with thread_update."
+                : "The list is empty, so no area is in use yet."));
+    }
+
+    /// <summary>
+    /// Resolves a topic to exactly ONE item, or throws.
+    /// </summary>
+    /// <remarks>
+    /// The same contract <see cref="Find"/> holds the writing verbs to, and deliberately so:
+    /// ambiguity is refused with every candidate named, never resolved to a first match. A
+    /// reader that quietly showed the first of two matches would teach its caller that the
+    /// topic they typed identifies one item, which is exactly the belief that makes the next
+    /// update rewrite the wrong one.
+    /// </remarks>
+    private static ThreadItem Only(IReadOnlyList<ThreadItem> items, string topic)
+    {
+        List<int> matched = Matching(items, topic);
+
+        if (matched.Count == 1)
+        {
+            return items[matched[0]];
+        }
+
+        if (matched.Count == 0)
+        {
+            throw new GraphException(
+                $"No item matches topic '{topic}'. Call this without a topic to see what is " +
+                "on the list, or pass all=true if you meant a completed item.");
+        }
+
+        throw new GraphException(
+            $"Topic '{topic}' is ambiguous -- it matches {matched.Count} items: " +
+            string.Join("; ", matched.Select(i => items[i].Topic)) +
+            ". Pass more of the one you meant.");
     }
 
     /// <summary>How much of a note the reporter carries before it is doing the list's job for it.</summary>
@@ -561,18 +759,24 @@ public static class ThreadItems
     /// The list without the note bodies. Never throws, for the same reason Show does not.
     /// </summary>
     /// <remarks>
-    /// Reads through Show so the two cannot disagree about what "live" means or about how a
-    /// corrupt file is reported. The only difference is what is carried back.
+    /// Reads through Show so the two cannot disagree about what "live" means, about which item
+    /// is in focus, about which selector matched, or about how a corrupt file is reported. The
+    /// only difference is what is carried back. That includes the selectors: they are Show's,
+    /// unchanged, and a bad one throws from here for the same reason it throws from there.
+    ///
+    /// 'notesLength' totals the items ACTUALLY RETURNED, so a narrowed report states what its
+    /// own answer withheld rather than what the whole list holds.
     /// </remarks>
-    public static ThreadReportResult Report(string? path, bool all = false)
+    public static ThreadReportResult Report(
+        string? path, bool all = false, string? topic = null, string? area = null)
     {
-        ThreadShowResult shown = Show(path, all);
+        ThreadShowResult shown = Show(path, all, topic, area);
 
         return new ThreadReportResult(
             shown.Count,
             shown.Active,
             [.. shown.Items.Select(i => new ThreadReportItem(
-                i.Topic, i.Status, i.Refs, i.Next, Lead(i.Notes), i.Notes.Length))],
+                i.Topic, i.Status, AreaOf(i), i.Refs, i.Next, Lead(i.Notes), i.Notes.Length))],
             shown.Items.Sum(i => i.Notes.Length),
             shown.Error);
     }

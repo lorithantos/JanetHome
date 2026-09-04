@@ -20,12 +20,27 @@ public static class ThreadTools
     [Description(
         "The investigation topics from this session and the last, with which one is in focus. " +
         "Read this when resuming work, or when you have lost the thread of what you were doing. " +
-        "Completed items are excluded unless all=true -- nothing is ever deleted. The 'error' " +
+        "Pass topic to read ONE item in full, or area to see only one project's items -- the " +
+        "list is shared by every repo on this machine, so an unnarrowed read is mostly someone " +
+        "else's work. Completed items are excluded unless all=true -- nothing is ever deleted. " +
+        "'active' always names the focus of the WHOLE list, not of the narrowed answer, so it " +
+        "does not become null just because you asked about a different item. A topic that " +
+        "matches nothing or several items, and an area nothing is filed under, are refused with " +
+        "a message saying what to do -- they are not answered with an empty list. The 'error' " +
         "field reports a list that could not be read; it is a fact about the list, not a failure " +
         "of this call, so check it rather than assuming an empty result means no work is open.")]
     public static string Show(
-        [Description("Include completed items as well as open ones.")] bool all = false) =>
-        ThreadJson.Serialize(ThreadItems.Show(null, all));
+        [Description("Include completed items as well as open ones.")] bool all = false,
+        [Description(
+            "Substring of ONE item's topic, case-insensitive. Returns that item with its notes " +
+            "in full. Ambiguous is refused with every candidate named, never resolved to the " +
+            "first match. A '*' is a literal asterisk, not a wildcard.")]
+        string? topic = null,
+        [Description(
+            "Area to narrow to, case-insensitive substring. '(unfiled)' is the group of items " +
+            "with no area set -- items are never guessed into a neighbouring area.")]
+        string? area = null) =>
+        ThreadJson.Serialize(ThreadItems.Show(null, all, topic, area));
 
     [McpServerTool(Name = "thread_report")]
     [Description(
@@ -35,10 +50,20 @@ public static class ThreadTools
         "limit outright. Each item carries notesLead (the first non-empty line) and notesLength " +
         "(the full size in characters), and the envelope totals what was withheld, so nothing is " +
         "omitted silently. Read one item in full with thread_show once you know which one you " +
-        "want. Completed items are excluded unless all=true.")]
+        "want. Each item carries the area it is filed under; pass area to see one project's " +
+        "items only, which is usually what you want, since this list is shared by every repo on " +
+        "this machine. Completed items are excluded unless all=true.")]
     public static string Report(
-        [Description("Include completed items as well as open ones.")] bool all = false) =>
-        ThreadJson.Serialize(ThreadItems.Report(null, all));
+        [Description("Include completed items as well as open ones.")] bool all = false,
+        [Description(
+            "Substring of ONE item's topic, case-insensitive. Ambiguous or unmatched is refused " +
+            "rather than answered with an empty list.")]
+        string? topic = null,
+        [Description(
+            "Area to narrow to, case-insensitive substring. '(unfiled)' is the group of items " +
+            "with no area set.")]
+        string? area = null) =>
+        ThreadJson.Serialize(ThreadItems.Report(null, all, topic, area));
 
     [McpServerTool(Name = "thread_add")]
     [Description(
@@ -46,7 +71,9 @@ public static class ThreadTools
         "now -- that is the point: debugging is depth-first and working memory is not, so the " +
         "descent gets written down. Adding does NOT take focus unless active=true, so noting " +
         "something costs you nothing. Refuses a topic that already exists rather than creating " +
-        "a second one that selectors cannot tell apart.")]
+        "a second one that selectors cannot tell apart. Set area to the project this belongs " +
+        "to: the list is shared by every repo on this machine, and an unfiled item is only " +
+        "findable by reading all of them.")]
     public static string Add(
         [Description("What the investigation is about. One line, distinctive enough to select on.")]
         string topic,
@@ -57,9 +84,14 @@ public static class ThreadTools
         [Description("Catalog node ids that carry the context for this topic.")]
         string[]? refs = null,
         [Description("Also take focus, parking whatever held it.")]
-        bool active = false) =>
+        bool active = false,
+        [Description(
+            "Which project or area this belongs to, free text -- a stored label, never derived " +
+            "from the topic. Omit and the item is '(unfiled)', which is a real group, not a " +
+            "guess at which project it resembles.")]
+        string? area = null) =>
         ThreadJson.Serialize(ThreadItems.Add(
-            null, topic, notes ?? string.Empty, next ?? string.Empty, refs ?? [], active));
+            null, topic, notes ?? string.Empty, next ?? string.Empty, refs ?? [], active, area));
 
     [McpServerTool(Name = "thread_update")]
     [Description(
@@ -83,9 +115,15 @@ public static class ThreadTools
         [Description("Add to the existing notes rather than replacing them.")]
         bool appendNotes = false,
         [Description("Add to the existing refs rather than replacing them. Repeats are kept.")]
-        bool appendRefs = false) =>
+        bool appendRefs = false,
+        [Description(
+            "Which project or area this item belongs to, or empty to unfile it. Omit to leave " +
+            "alone. This is how an existing item gets labelled -- none were backfilled, so most " +
+            "read as '(unfiled)' until someone says otherwise.")]
+        string? area = null) =>
         ThreadJson.Serialize(ThreadItems.Update(
-            null, Selector(topic, index), notes, next, refs, status, appendNotes, appendRefs));
+            null, Selector(topic, index), notes, next, refs, status, appendNotes, appendRefs,
+            area));
 
     [McpServerTool(Name = "thread_complete")]
     [Description(

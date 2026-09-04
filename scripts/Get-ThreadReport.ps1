@@ -30,6 +30,19 @@
 .PARAMETER All
     Include completed items. They are kept, never deleted, and hidden by default.
 
+.PARAMETER Topic
+    Case-insensitive substring naming exactly ONE item. Ambiguous is refused with every
+    candidate named; unmatched is refused too, rather than answered with an empty list.
+
+.PARAMETER Area
+    Narrows to one area, case-insensitive substring. Each item carries the area it is filed
+    under -- a STORED label, never derived from the topic -- and '(unfiled)' is the group of
+    items with none. Nothing was backfilled, so most items read as (unfiled) until they are
+    labelled deliberately.
+
+    This is the selector the list needed: it is shared by every repo on this machine, so an
+    unnarrowed report is mostly some other project's work.
+
 .PARAMETER Text
     The formatted view, for a terminal. The default is compressed JSON: the consumer is a model.
 
@@ -46,6 +59,8 @@
 param(
     [string]$Path = '',
     [switch]$All,
+    [string]$Topic = '',
+    [string]$Area = '',
     [switch]$Text,
     [switch]$Pretty
 )
@@ -60,6 +75,8 @@ $janet = Get-JanetCommand
 $arguments = @('thread', 'report')
 if ($Path) { $arguments += @('--path', $Path) }
 if ($All) { $arguments += '--all' }
+if ($Topic) { $arguments += @('--topic', $Topic) }
+if ($Area) { $arguments += @('--area', $Area) }
 if ($Text) { $arguments += '--text' }
 if ($Pretty) { $arguments += '--pretty' }
 

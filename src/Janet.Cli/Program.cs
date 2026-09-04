@@ -104,8 +104,12 @@ static int Thread(Args args)
 
     switch (verb.ToLowerInvariant())
     {
+        // --topic and --area are READ selectors here, not the write selector above: --topic
+        // names one item and --area narrows to a group. Neither is capped, and a miss is
+        // refused rather than answered with an empty list -- see ThreadItems.Show.
         case "show":
-            ThreadShowResult shown = ThreadItems.Show(path, args.Flag("--all"));
+            ThreadShowResult shown = ThreadItems.Show(
+                path, args.Flag("--all"), args.Value("--topic"), args.Value("--area"));
 
             Console.Out.WriteLine(args.Flag("--text")
                 ? ThreadJson.Render(shown)
@@ -116,7 +120,8 @@ static int Thread(Args args)
         // The map, not the contents. Separate verb rather than a flag on show, because show's
         // envelope is asserted byte-for-byte against recorded output and has a live consumer.
         case "report":
-            ThreadReportResult reported = ThreadItems.Report(path, args.Flag("--all"));
+            ThreadReportResult reported = ThreadItems.Report(
+                path, args.Flag("--all"), args.Value("--topic"), args.Value("--area"));
 
             Console.Out.WriteLine(args.Flag("--text")
                 ? ThreadJson.Render(reported)
@@ -131,7 +136,8 @@ static int Thread(Args args)
                 notes: args.Value("--notes") ?? string.Empty,
                 next: args.Value("--next") ?? string.Empty,
                 refs: args.Values("--ref"),
-                active: args.Flag("--active")), pretty));
+                active: args.Flag("--active"),
+                area: args.Value("--area")), pretty));
 
             return 0;
 
@@ -147,7 +153,11 @@ static int Thread(Args args)
                 refs: args.Has("--ref") ? args.Values("--ref") : null,
                 status: args.Value("--status"),
                 appendNotes: args.Flag("--append-notes"),
-                appendRefs: args.Flag("--append-refs")), pretty));
+                appendRefs: args.Flag("--append-refs"),
+
+                // Presence, not truthiness: --area '' returns an item filed by mistake to
+                // (unfiled), and reading the value alone would silently drop that request.
+                area: args.Has("--area") ? args.Value("--area") ?? string.Empty : null), pretty));
 
             return 0;
 
@@ -686,17 +696,23 @@ static int Usage()
                               (moves every inbound link with the node; prose mentions are
                               reported on stderr, never rewritten)
 
-        janet thread show     [--all] [--text] [--pretty]
-        janet thread report   [--all] [--text] [--pretty]
+        janet thread show     [--all] [--topic TEXT] [--area TEXT] [--text] [--pretty]
+        janet thread report   [--all] [--topic TEXT] [--area TEXT] [--text] [--pretty]
                               (topics, focus and note SIZES -- the map, not the bodies)
-        janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]... [--active]
+                              (--topic names ONE item and refuses an ambiguous or absent
+                               one; --area narrows to a group, '(unfiled)' being the
+                               group of items with no area. Neither is capped, and
+                               'active' still names the focus of the whole list)
+        janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]...
+                              [--area TEXT] [--active]
         janet thread update   [--topic TEXT] [--notes TEXT] [--next TEXT]
-                              [--ref ID]... [--status active|parked|done]
+                              [--ref ID]... [--status active|parked|done] [--area TEXT]
                               [--append-notes] [--append-refs]
         janet thread complete [--topic TEXT]
         janet thread active   (--topic TEXT | --none)
-                              (topic is the only selector; with none, update and
-                              complete act on whatever is in focus)
+                              (topic is the only WRITE selector; with none, update and
+                              complete act on whatever is in focus. --area is a stored
+                              label, never inferred from the topic; --area '' unfiles)
 
         janet api             (--package ID | --path FILE) [--version V] [--tfm TFM]
                               [--query TEXT] [--id MEMBER]... [--kind Type|Method|Property|Field|Event]

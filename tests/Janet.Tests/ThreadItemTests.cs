@@ -399,6 +399,307 @@ public class ThreadItemTests : IDisposable
                 ThreadItems.SetActive(Seeded(), new ThreadSelector { Topic = "finished thing" })).Message,
             StringComparison.Ordinal);
 
+    // ---- areas, and reading through them -----------------------------------------------
+
+    /// <summary>
+    /// A list with areas set, and one item deliberately left unfiled.
+    /// </summary>
+    /// <remarks>
+    /// Unfiled is the ordinary case, not an edge one: the live list carried 62 items and no
+    /// areas at all when the field arrived, and none of them were backfilled. A fixture where
+    /// everything is labelled would test the easy half.
+    /// </remarks>
+    private string Filed()
+    {
+        string path = Empty();
+
+        ThreadItems.Add(path, "cache eviction", notes: "Ruled out the TTL.\nSecond line.", area: "RazorGraph");
+        ThreadItems.Add(path, "cache warming", area: "razorgraph");
+        ThreadItems.Add(path, "the startup brief", area: "JanetHome", active: true);
+        ThreadItems.Add(path, "something noticed in passing");
+
+        return path;
+    }
+
+    /// <summary>A topic returns that one item, with everything it holds.</summary>
+    /// <remarks>
+    /// Notes in full, which is the point of asking for one item rather than the list: the
+    /// report exists to answer "where was I" cheaply, and this is the expensive question asked
+    /// deliberately about a single item.
+    /// </remarks>
+    [Fact]
+    public void ATopicReturnsExactlyThatItemWithItsNotesInFull()
+    {
+        ThreadShowResult shown = ThreadItems.Show(Filed(), topic: "eviction");
+
+        ThreadItem item = Assert.Single(shown.Items);
+
+        Assert.Equal("cache eviction", item.Topic);
+        Assert.Equal("Ruled out the TTL.\nSecond line.", item.Notes);
+        Assert.Equal(1, shown.Count);
+    }
+
+    /// <summary>
+    /// 'active' names the focus of the LIST, not of the answer.
+    /// </summary>
+    /// <remarks>
+    /// The trap this exists for. ActiveTopic is computed over the unprojected list, so a
+    /// caller who asks about some other item still learns what is in focus. Computed after the
+    /// selector instead, it would be null here -- and a reader would correctly conclude from
+    /// that envelope that nothing is in focus, which is false. Nothing else catches it: every
+    /// test that existed before these selectors did passes no selector at all.
+    /// </remarks>
+    [Fact]
+    public void ActiveStillNamesTheFocusWhenADifferentItemWasSelected()
+    {
+        string path = Filed();
+
+        Assert.Equal("the startup brief", ThreadItems.Show(path, topic: "eviction").Active);
+        Assert.Equal("the startup brief", ThreadItems.Show(path, area: "RazorGraph").Active);
+        Assert.Equal("the startup brief", ThreadItems.Report(path, topic: "eviction").Active);
+    }
+
+    /// <summary>Ambiguity is refused, and every candidate named.</summary>
+    /// <remarks>
+    /// The same contract the writing verbs hold to. A reader that showed the first of two
+    /// matches would teach its caller that the text they typed identifies one item, which is
+    /// the belief that makes the next update rewrite the wrong one.
+    /// </remarks>
+    [Fact]
+    public void AnAmbiguousTopicIsRefusedWithEveryCandidateNamed()
+    {
+        string message = Assert.Throws<GraphException>(
+            () => ThreadItems.Show(Filed(), topic: "cache")).Message;
+
+        Assert.Contains("ambiguous", message, StringComparison.Ordinal);
+        Assert.Contains("cache eviction", message, StringComparison.Ordinal);
+        Assert.Contains("cache warming", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A selector that matches nothing is refused, not answered with an empty list.
+    /// </summary>
+    /// <remarks>
+    /// "No item matches what you typed" and "no such work is open" are different claims, and
+    /// an empty envelope makes the second one. This is also the boundary between the two kinds
+    /// of failure here: 'error' means the list could not be READ, and folding a caller's
+    /// mistake into it would make both unreadable. Show still never throws for a bad file --
+    /// see the startup tests below -- and startup passes no selector.
+    /// </remarks>
+    [Fact]
+    public void AnUnmatchedTopicIsRefusedRatherThanReturningEmpty()
+    {
+        string path = Filed();
+
+        Assert.Contains(
+            "No item matches topic",
+            Assert.Throws<GraphException>(() => ThreadItems.Show(path, topic: "no such thing")).Message,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "No item matches topic",
+            Assert.Throws<GraphException>(() => ThreadItems.Report(path, topic: "no such thing")).Message,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>An unknown area is refused too, and says which areas exist.</summary>
+    [Fact]
+    public void AnUnknownAreaIsRefusedAndNamesTheAreasInUse()
+    {
+        string message = Assert.Throws<GraphException>(
+            () => ThreadItems.Show(Filed(), area: "SomeOtherRepo")).Message;
+
+        Assert.Contains("No item is filed under an area", message, StringComparison.Ordinal);
+        Assert.Contains("JanetHome", message, StringComparison.Ordinal);
+        Assert.Contains(ThreadItems.Unfiled, message, StringComparison.Ordinal);
+    }
+
+    /// <summary>An area returns that area's items and nothing else.</summary>
+    /// <remarks>
+    /// Case-insensitive, and matched against the stored label rather than the topic: 'cache
+    /// warming' is filed under 'razorgraph' in the fixture precisely so that a matcher which
+    /// compared case-sensitively, or which fell back to the topic string, would come back with
+    /// one item instead of two.
+    /// </remarks>
+    [Fact]
+    public void AnAreaReturnsOnlyThatAreasItems()
+    {
+        ThreadShowResult shown = ThreadItems.Show(Filed(), area: "razorGRAPH");
+
+        Assert.Equal(["cache eviction", "cache warming"], shown.Items.Select(i => i.Topic));
+        Assert.Equal(2, shown.Count);
+    }
+
+    /// <summary>The unfiled items are a group like any other, and reachable as one.</summary>
+    /// <remarks>
+    /// This is what makes "do not backfill" a workable position rather than a way of losing
+    /// items: nothing was guessed into a neighbouring area, and nothing became unreachable for
+    /// having been left alone.
+    /// </remarks>
+    [Fact]
+    public void UnfiledItemsAreReachableAsTheirOwnGroup()
+    {
+        ThreadShowResult shown = ThreadItems.Show(Filed(), area: ThreadItems.Unfiled);
+
+        Assert.Equal(["something noticed in passing"], shown.Items.Select(i => i.Topic));
+        Assert.Equal(string.Empty, shown.Items[0].Area);
+    }
+
+    /// <summary>No selector is the old behaviour exactly.</summary>
+    /// <remarks>
+    /// The startup path takes this branch, so it is the one that must not have moved. Both
+    /// selectors are opt-in and neither has a default that filters.
+    /// </remarks>
+    [Fact]
+    public void NoSelectorReturnsTheListUnchanged()
+    {
+        string path = Filed();
+
+        ThreadShowResult shown = ThreadItems.Show(path);
+
+        Assert.Equal(
+            ["cache eviction", "cache warming", "the startup brief", "something noticed in passing"],
+            shown.Items.Select(i => i.Topic));
+
+        Assert.Equal(4, shown.Count);
+        Assert.Equal("the startup brief", shown.Active);
+        Assert.Null(shown.Error);
+    }
+
+    /// <summary>Nothing is capped. An explicit selector is a request for a known set.</summary>
+    [Fact]
+    public void AnAreaSelectorIsNeverTruncated()
+    {
+        string path = Empty();
+
+        foreach (int i in Enumerable.Range(0, 40))
+        {
+            ThreadItems.Add(path, $"topic {i:00}", area: "JanetHome");
+        }
+
+        Assert.Equal(40, ThreadItems.Show(path, area: "JanetHome").Items.Count);
+    }
+
+    /// <summary>
+    /// A '*' is a literal asterisk, in both selectors.
+    /// </summary>
+    /// <remarks>
+    /// The PowerShell matched with -like "*topic*", so a topic containing * or ? behaved as a
+    /// pattern by accident. That was removed rather than reproduced, and these selectors are
+    /// new code that could reintroduce it without anything noticing.
+    /// </remarks>
+    [Fact]
+    public void AWildcardInASelectorIsALiteral()
+    {
+        string path = Empty();
+
+        ThreadItems.Add(path, "a plain topic", area: "JanetHome");
+        ThreadItems.Add(path, "a * topic", area: "Star * Area");
+
+        Assert.Equal("a * topic", Assert.Single(ThreadItems.Show(path, topic: "*").Items).Topic);
+        Assert.Equal("a * topic", Assert.Single(ThreadItems.Show(path, area: "* Area").Items).Topic);
+
+        Assert.Throws<GraphException>(() => ThreadItems.Show(path, area: "Star*"));
+    }
+
+    /// <summary>
+    /// An area survives a write and a read.
+    /// </summary>
+    /// <remarks>
+    /// Normalise and Serialize are an allow-list -- they read and write exactly the keys they
+    /// name, and unlike research_update they preserve nothing else. A field added to the record
+    /// but to only one of those two is dropped by the next write with no error anywhere, which
+    /// is why this asserts the FILE and not just the returned object.
+    /// </remarks>
+    [Fact]
+    public void AnAreaSurvivesAWriteAndARead()
+    {
+        string path = Empty();
+
+        ThreadItems.Add(path, "cache eviction", area: "RazorGraph");
+
+        Assert.Contains("\"area\"", File.ReadAllText(path), StringComparison.Ordinal);
+        Assert.Equal("RazorGraph", ThreadItems.Parse(File.ReadAllText(path))[0].Area);
+        Assert.Equal("RazorGraph", ThreadItems.Show(path).Items[0].Area);
+
+        // And through a second write, which is where a one-sided allow-list loses it: the
+        // update rewrites every item from what Normalise read.
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, next: "look again");
+
+        Assert.Equal("RazorGraph", ThreadItems.Show(path).Items[0].Area);
+        Assert.Equal("look again", ThreadItems.Show(path).Items[0].Next);
+    }
+
+    /// <summary>An area can be set on an existing item, and cleared again.</summary>
+    [Fact]
+    public void AnAreaCanBeSetLaterAndUnset()
+    {
+        string path = Seeded();
+
+        ThreadUpdateResult set = ThreadItems.Update(
+            path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+
+        Assert.Contains("area", set.Changed);
+        Assert.Equal("RazorGraph", ThreadItems.Show(path).Items[0].Area);
+
+        // Empty clears, as it does for every other field here: an item filed by mistake has to
+        // be returnable to unfiled.
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "");
+
+        Assert.Equal(string.Empty, ThreadItems.Show(path).Items[0].Area);
+        Assert.Equal(ThreadItems.Unfiled, ThreadItems.AreaOf(ThreadItems.Show(path).Items[0]));
+    }
+
+    /// <summary>
+    /// An item with no area is not written with one.
+    /// </summary>
+    /// <remarks>
+    /// The no-backfill rule, enforced at the file. Writing "area": "" for every unlabelled item
+    /// would rewrite all of them the first time anything touched the list -- harmless in
+    /// content, but it would put the field on 62 items that nobody has labelled, which is the
+    /// appearance of a decision that was not made.
+    /// </remarks>
+    [Fact]
+    public void AnUnfiledItemIsNotGivenAnAreaKeyOnDisk()
+    {
+        string path = Empty();
+
+        ThreadItems.Add(path, "something noticed in passing");
+
+        Assert.DoesNotContain("\"area\"", File.ReadAllText(path), StringComparison.Ordinal);
+        Assert.Equal(string.Empty, ThreadItems.Show(path).Items[0].Area);
+    }
+
+    /// <summary>
+    /// A pre-existing list reads as unfiled, and stays that way.
+    /// </summary>
+    /// <remarks>
+    /// The migration, such as it is: the live list had 62 items and no areas when the field
+    /// arrived, and reading it must not invent any. Splitting the topic on its first colon
+    /// produced 12 groups for 16 topics and fragmented single projects across several, which is
+    /// why an inferred area is not a cheaper version of a stored one.
+    /// </remarks>
+    [Fact]
+    public void ExistingItemsReadAsUnfiledAndAreNeverInferred()
+    {
+        string path = Empty();
+
+        File.WriteAllText(
+            path,
+            """
+            [
+              { "topic": "RazorGraph: coverage misses lambdas", "status": "parked", "refs": [], "next": "", "notes": "" },
+              { "topic": "no colon here at all", "status": "parked", "refs": [], "next": "", "notes": "" }
+            ]
+            """);
+
+        IReadOnlyList<ThreadItem> items = ThreadItems.Show(path).Items;
+
+        Assert.All(items, i => Assert.Equal(string.Empty, i.Area));
+        Assert.All(items, i => Assert.Equal(ThreadItems.Unfiled, ThreadItems.AreaOf(i)));
+        Assert.Equal(2, ThreadItems.Show(path, area: ThreadItems.Unfiled).Count);
+    }
+
     // ---- the startup path --------------------------------------------------------------
 
     /// <summary>

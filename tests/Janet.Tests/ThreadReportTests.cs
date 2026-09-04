@@ -145,7 +145,9 @@ public class ThreadReportTests : IDisposable
     {
         JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(ThreadItems.Report(Seeded())))!.AsObject();
 
-        Assert.Equal(1, (int)envelope["contract"]!);
+        // 2 since 2026-09-03, when items gained 'area'. Pinned here as a literal rather than
+        // read from the code, so that a bump has to be stated in two places by a person.
+        Assert.Equal(2, (int)envelope["contract"]!);
 
         // The point of the format: no field anywhere holds a note body.
         foreach (JsonNode? item in envelope["items"]!.AsArray())
@@ -153,6 +155,50 @@ public class ThreadReportTests : IDisposable
             Assert.False(item!.AsObject().ContainsKey("notes"));
         }
     }
+
+    /// <summary>
+    /// Every item carries the area it is filed under, resolved.
+    /// </summary>
+    /// <remarks>
+    /// Resolved rather than raw, because this is the roster view: a reader scanning it should
+    /// see one group called (unfiled) and not a column of blanks that could equally mean "no
+    /// area" or "the field was dropped somewhere". What is STORED stays empty -- being
+    /// displayed does not file an item.
+    /// </remarks>
+    [Fact]
+    public void EveryReportedItemCarriesItsAreaResolved()
+    {
+        string path = Seeded();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+
+        ThreadReportResult report = ThreadItems.Report(path);
+
+        Assert.Equal("RazorGraph", report.Items.Single(i => i.Topic == "cache eviction").Area);
+        Assert.Equal(ThreadItems.Unfiled, report.Items.Single(i => i.Topic == "cache warming").Area);
+    }
+
+    /// <summary>The report narrows by area, and totals only what it actually returned.</summary>
+    [Fact]
+    public void TheReportNarrowsToOneAreaAndTotalsOnlyThat()
+    {
+        string path = Seeded();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+
+        ThreadReportResult report = ThreadItems.Report(path, area: "RazorGraph");
+
+        Assert.Equal("cache eviction", Assert.Single(report.Items).Topic);
+        Assert.Equal(1, report.Count);
+        Assert.Equal("Ruled out the obvious.".Length, report.NotesLength);
+    }
+
+    [Fact]
+    public void TheReportRefusesAnAreaNothingIsFiledUnder() =>
+        Assert.Contains(
+            "No item is filed under an area",
+            Assert.Throws<GraphException>(() => ThreadItems.Report(Seeded(), area: "SomeOtherRepo")).Message,
+            StringComparison.Ordinal);
 
     [Fact]
     public void TheReporterAgreesWithShowAboutWhatIsThere()

@@ -52,18 +52,102 @@ public class ThreadGoldenTests : IDisposable
                 produced.ContainsKey(field),
                 $"[{label}] envelope is missing '{field}', which callers of the PowerShell relied on");
 
+            string[] grew = [.. AddedItemFields(value, produced[field]).Except(AddedToItems)];
+
             Assert.True(
-                JsonNode.DeepEquals(value, produced[field]),
+                grew.Length == 0,
+                $"[{label}] items in '{field}' grew undeclared field(s): {string.Join(", ", grew)}");
+
+            Assert.True(
+                JsonNode.DeepEquals(value, WithoutDeclaredAdditions(produced[field])),
                 $"[{label}] '{field}' differs.\n  golden: {value?.ToJsonString()}\n  actual: {produced[field]?.ToJsonString()}");
         }
 
-        // The port adds exactly one field, declared in ThreadJson: how many requests shared the
-        // write. Anything else appearing here is drift, not a decision.
+        // Anything else appearing here is drift, not a decision.
         string[] added = [.. produced.Select(p => p.Key).Where(k => !expected.ContainsKey(k))];
 
         Assert.True(
-            added.Length == 0 || added is ["batched"],
-            $"[{label}] envelope grew unexpected field(s): {string.Join(", ", added)}");
+            added.Length == 0 || added.All(AddedToEnvelope.Contains),
+            $"[{label}] envelope grew unexpected field(s): {string.Join(", ", added.Except(AddedToEnvelope))}");
+    }
+
+    /// <summary>
+    /// The fields these envelopes are allowed to carry that the recorded answers do not.
+    /// </summary>
+    /// <remarks>
+    /// THIS LIST IS THE DECLARED-CORRECTION MECHANISM, and it is edited by hand, in a diff a
+    /// human reads. It is not regenerated, and neither are the goldens: tests/Janet.Goldens
+    /// re-runs the PowerShell as it stood at a277625, so regenerating would only re-record the
+    /// old shape -- a golden the implementation edits agrees with the implementation by
+    /// construction and proves nothing. Everything not named here still fails, which is what
+    /// keeps the correction a decision rather than a licence.
+    ///
+    /// 'batched' (envelope): how many requests shared the write. See ThreadJson.
+    ///
+    /// 'area' (item, 2026-09-03): the stored project label, added so that show and report can
+    /// narrow to one project's items -- the list is shared by every repo on this machine. The
+    /// envelope carries it resolved, so it reads '(unfiled)' for every item in these goldens:
+    /// none were backfilled, deliberately, because inferring an area from a topic is the thing
+    /// the field exists to avoid.
+    /// </remarks>
+    private static readonly string[] AddedToEnvelope = ["batched"];
+
+    private static readonly string[] AddedToItems = ["area"];
+
+    /// <summary>Keys the produced items carry that the recorded ones do not.</summary>
+    private static string[] AddedItemFields(JsonNode? golden, JsonNode? produced)
+    {
+        if (golden is not JsonArray recorded || produced is not JsonArray actual)
+        {
+            return [];
+        }
+
+        HashSet<string> known =
+        [
+            .. recorded.OfType<JsonObject>().SelectMany(item => item.Select(field => field.Key))
+        ];
+
+        return
+        [
+            .. actual.OfType<JsonObject>()
+                .SelectMany(item => item.Select(field => field.Key))
+                .Where(key => !known.Contains(key))
+                .Distinct(StringComparer.Ordinal)
+        ];
+    }
+
+    /// <summary>
+    /// The produced value with the declared item additions removed, so the rest is compared
+    /// exactly as it always was.
+    /// </summary>
+    private static JsonNode? WithoutDeclaredAdditions(JsonNode? produced)
+    {
+        if (produced is not JsonArray actual)
+        {
+            return produced;
+        }
+
+        JsonArray stripped = [];
+
+        foreach (JsonNode? element in actual)
+        {
+            if (element is not JsonObject item)
+            {
+                stripped.Add(element?.DeepClone());
+                continue;
+            }
+
+            JsonObject copy = item.DeepClone().AsObject();
+
+            foreach (string field in AddedToItems)
+            {
+                copy.Remove(field);
+            }
+
+            stripped.Add(copy);
+        }
+
+        return stripped;
     }
 
     /// <summary>

@@ -25,6 +25,15 @@
 
 .PARAMETER Active
     Also take focus, parking whatever held it.
+
+.PARAMETER Area
+    Which project or area this belongs to. Free text, and a STORED label rather than one
+    derived from the topic: splitting topics on their first colon was measured to produce 12
+    groups for 16 topics and to split single projects across several of them. Omit it and the
+    item is '(unfiled)', which is one real group and not a guess at which project it resembles.
+
+    Worth setting. The list is shared by every repo on this machine, so an unfiled item can
+    only be found by reading all of them.
 #>
 [CmdletBinding()]
 param(
@@ -32,6 +41,7 @@ param(
     [string]$Notes = '',
     [string]$Next = '',
     [string[]]$Refs = @(),
+    [string]$Area = '',
     [switch]$Active,
     [string]$Path = '',
     [switch]$Text
@@ -52,6 +62,7 @@ foreach ($value in @($Refs)) { if ($value) { $arguments += @('--ref', $value) } 
 
 if ($Notes) { $arguments += @('--notes', $Notes) }
 if ($Next) { $arguments += @('--next', $Next) }
+if ($Area) { $arguments += @('--area', $Area) }
 if ($Path) { $arguments += @('--path', $Path) }
 if ($Active) { $arguments += '--active' }
 

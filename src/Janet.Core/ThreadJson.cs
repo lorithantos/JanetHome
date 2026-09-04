@@ -45,8 +45,12 @@ public static class ThreadJson
     /// schema cannot drift apart silently -- a field added here without a bump there is caught,
     /// and so is the reverse. The older thread envelopes carry no such number; they are pinned
     /// by recorded goldens instead, which is why only this one stamps itself.
+    ///
+    /// 1 -> 2 on 2026-09-03: report items gained 'area', the stored project label the report
+    /// can now be narrowed by. A field added to the envelope is a format change, so this moved
+    /// and contracts\thread-report.schema.json moved with it.
     /// </remarks>
-    private const int ReportContract = 1;
+    private const int ReportContract = 2;
 
     public static string Serialize(ThreadAddResult result, bool pretty = false) => Render(new JsonObject
     {
@@ -97,6 +101,16 @@ public static class ThreadJson
         ["error"] = result.Error,
     }, pretty);
 
+    /// <summary>
+    /// One item in the read envelope.
+    /// </summary>
+    /// <remarks>
+    /// 'area' is APPENDED, after the five fields the PowerShell wrote, for the same reason
+    /// 'batched' was: the recorded order of what already existed stays exactly as it was, so a
+    /// consumer reading positionally -- or a golden comparing field by field -- sees an
+    /// addition rather than a rearrangement. It is the resolved label, so it is always a
+    /// non-empty string and a reader never has to know that unfiled is stored as "".
+    /// </remarks>
     private static JsonNode Item(ThreadItem item) => new JsonObject
     {
         ["topic"] = item.Topic,
@@ -104,6 +118,7 @@ public static class ThreadJson
         ["refs"] = Strings(item.Refs),
         ["next"] = item.Next,
         ["notes"] = item.Notes,
+        ["area"] = ThreadItems.AreaOf(item),
     };
 
     /// <summary>
@@ -135,7 +150,23 @@ public static class ThreadJson
         ["next"] = item.Next,
         ["notesLead"] = item.NotesLead,
         ["notesLength"] = item.NotesLength,
+        ["area"] = item.Area,
     };
+
+    /// <summary>
+    /// An area as it prefixes a topic in the text views, or nothing where the item is unfiled.
+    /// </summary>
+    /// <remarks>
+    /// Only shown when it says something. Most of the list is unfiled and will stay that way
+    /// until items are labelled deliberately, and a column reading '(unfiled)' on every row is
+    /// noise that pushes the topic -- the thing being read -- to the right for no gain. The
+    /// JSON envelopes carry it unconditionally; this is the human view, and they answer to
+    /// different rules.
+    /// </remarks>
+    private static string Filed(string area) =>
+        string.Equals(area, ThreadItems.Unfiled, StringComparison.Ordinal) || area.Length == 0
+            ? string.Empty
+            : $"[{area}] ";
 
     private static JsonArray Strings(IReadOnlyList<string> values) =>
         new([.. values.Select(v => (JsonNode)JsonValue.Create(v)!)]);
@@ -168,7 +199,7 @@ public static class ThreadJson
 
             string size = item.NotesLength > 0 ? $" ({item.NotesLength:N0} chars of notes)" : string.Empty;
 
-            lines.Add($"{icon} {item.Status.PadRight(7)} {item.Topic}{size}");
+            lines.Add($"{icon} {item.Status.PadRight(7)} {Filed(item.Area)}{item.Topic}{size}");
 
             if (item.Next.Length > 0)
             {
@@ -212,7 +243,7 @@ public static class ThreadJson
         foreach (ThreadItem item in result.Items)
         {
             string icon = item.IsActive ? ">>>" : item.IsDone ? " x " : "   ";
-            lines.Add($"{icon} {item.Status.PadRight(7)} {item.Topic}");
+            lines.Add($"{icon} {item.Status.PadRight(7)} {Filed(ThreadItems.AreaOf(item))}{item.Topic}");
 
             if (item.Refs.Count > 0)
             {

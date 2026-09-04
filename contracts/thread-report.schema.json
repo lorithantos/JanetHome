@@ -5,7 +5,8 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
-    "contract": 1,
+    "contract": 2,
+    "$comment.contract2": "1 -> 2 on 2026-09-03: items gained 'area', the stored project label that show and report can now be narrowed by. A field added to the envelope is a format change, so the number moved and so did the surface below.",
     "produces": "thread_report / janet thread report / scripts\\Get-ThreadReport.ps1",
     "script": "scripts\\Get-ThreadReport.ps1",
     "node": "script.get-thread-report",
@@ -18,7 +19,7 @@
   "required": ["contract", "count", "active", "items", "notesLength", "error"],
   "properties": {
     "contract": {
-      "const": 1,
+      "const": 2,
       "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
     },
     "count": {
@@ -44,8 +45,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["topic", "status", "refs", "next", "notesLead", "notesLength"],
+        "required": ["topic", "status", "refs", "next", "notesLead", "notesLength", "area"],
         "properties": {
+          "area": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Which project or area this item belongs to. A STORED label, never derived from the topic: splitting topics on their first colon was measured to produce 12 groups for 16 topics and to split single projects across several. Always present and never empty -- an item with none reads as the literal '(unfiled)', which is one real group rather than a guess at which project it resembles. Narrow to it with the report's own 'area' selector."
+          },
           "topic": {
             "type": "string",
             "description": "Identity. Items are addressed by topic, as a dictionary -- position was removed on 2026-08-14 because the display hides completed items while an index counted into the unfiltered file."

@@ -24,11 +24,29 @@
 
 .PARAMETER All
     Include completed items. They are kept, never deleted, and hidden by default.
+
+.PARAMETER Topic
+    Case-insensitive substring naming exactly ONE item, returned with its notes in full. An
+    ambiguous topic is refused with every candidate named, and one that matches nothing is
+    refused too rather than answered with an empty list -- 'no such item' and 'no open work'
+    are different claims. A '*' is a literal asterisk, not a wildcard.
+
+.PARAMETER Area
+    Narrows to one area, case-insensitive substring. '(unfiled)' is the group of items with no
+    area set; items are never guessed into a neighbouring one.
+
+    'active' still names the focus of the WHOLE list under either selector, so a narrowed
+    answer does not read as though nothing is in focus.
+
+.EXAMPLE
+    .\Show-ThreadItems.ps1 -Area JanetHome -Text
 #>
 [CmdletBinding()]
 param(
     [string]$Path = '',
     [switch]$All,
+    [string]$Topic = '',
+    [string]$Area = '',
     [switch]$Text,
     [switch]$Pretty
 )
@@ -43,6 +61,8 @@ $janet = Get-JanetCommand
 $arguments = @('thread', 'show')
 if ($Path) { $arguments += @('--path', $Path) }
 if ($All) { $arguments += '--all' }
+if ($Topic) { $arguments += @('--topic', $Topic) }
+if ($Area) { $arguments += @('--area', $Area) }
 if ($Text) { $arguments += '--text' }
 if ($Pretty) { $arguments += '--pretty' }
 

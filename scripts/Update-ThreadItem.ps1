@@ -23,6 +23,12 @@
 .PARAMETER AppendRefs
     Add to the existing refs rather than replacing them. Repeats are kept, deliberately: a
     repeated ref is the caller's to decide about.
+
+.PARAMETER Area
+    Which project or area the item belongs to, or '' to unfile it. This is how an existing item
+    gets labelled: nothing was backfilled when the field was added, because inferring an area
+    from a topic is exactly what the field exists to avoid, so most items read as '(unfiled)'
+    until someone says otherwise. Omitted leaves it alone; -Area '' clears it.
 #>
 [CmdletBinding()]
 param(
@@ -30,6 +36,7 @@ param(
     [string]$Notes = $null,
     [string]$Next = $null,
     [string[]]$Refs = $null,
+    [string]$Area = $null,
     [ValidateSet('active', 'parked', 'done')][string]$Status = '',
     [switch]$AppendNotes,
     [switch]$AppendRefs,
@@ -53,6 +60,8 @@ if ($PSBoundParameters.ContainsKey('Next')) { $arguments += @('--next', $Next) }
 if ($PSBoundParameters.ContainsKey('Refs')) {
     foreach ($value in @($Refs)) { $arguments += @('--ref', $value) }
 }
+
+if ($PSBoundParameters.ContainsKey('Area')) { $arguments += @('--area', $Area) }
 
 if ($Topic) { $arguments += @('--topic', $Topic) }
 if ($Status) { $arguments += @('--status', $Status) }
