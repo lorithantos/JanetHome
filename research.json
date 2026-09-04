@@ -47,7 +47,7 @@
         "PATH CORRECTED 2026-09-01 to C:\\repos\\RazorGraphTool, verified to exist. It previously named a location on the PREVIOUS MACHINE, and several nodes carried that dead path for weeks without anything failing -- see note.janet-machine-move for the full list, for the three silent-failure shapes involved, and for what still has no home on this machine."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots", "note.janet-machine-move"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots", "note.janet-machine-move", "file.skill-agent-kickoff"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -596,7 +596,7 @@
         "EXTERNALTYPE IS ATTRIBUTES ONLY, which is not what the name suggests and matters the moment you ask 'what framework types does this code use'. Measured on the gamehub graph 2026-09-02: all 13 ExternalType nodes are attributes -- NotNullWhen, MemberNotNull, StructLayout, STAThread, the xUnit ones -- plus one generated-code marker. Nav.Benchmark demonstrably calls Parallel.ForEach and holds a ConcurrentBag, the project IS indexed, and neither type has a node. So a static call or a generic instantiation on a framework type is invisible here. Asking find_nodes ExternalType nameContains 'Task' returns zero on a codebase that would return zero either way, and the empty result reads identically whether the code is clean or the extractor cannot see it. For 'does this use threads / EF / HttpClient', the graph answers only the attribute-shaped part -- it found STAThreadAttribute on the WPF entry point, which grep's pattern had missed -- and text search answers the rest. Use both and say which found what; a clean ExternalType result is not evidence of absence."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.ensure-razorgraph-server", "script.invoke-mcp-tool", "script.find-divergent-state-roots", "note.janet-machine-move", "note.gamehub-design-record"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.ensure-razorgraph-server", "script.invoke-mcp-tool", "script.find-divergent-state-roots", "note.janet-machine-move", "note.gamehub-design-record", "file.skill-agent-kickoff"]
     },
 
     {
@@ -610,7 +610,7 @@
         "THE FALLBACK IS LOAD-BEARING, not a nicety. $env:JanetBase is set by Invoke-JanetStartup.ps1 in the session that runs it and is persisted at NEITHER User NOR Machine scope (measured 2026-09-03). A skill invoked from another project before startup has run therefore resolves $janet through the hardcoded fallback every time, so a wrong fallback silently points every query in the file at a drive that does not exist."
       ],
       "tags": ["skills", "deployment", "retrieval", "agent"],
-      "links": ["script.invoke-build-deploy", "pattern.progressive-disclosure", "file.skill-crash-analysis", "note.janet-machine-move"]
+      "links": ["script.invoke-build-deploy", "pattern.progressive-disclosure", "file.skill-crash-analysis", "note.janet-machine-move", "file.skill-agent-kickoff"]
     },
 
     {
@@ -734,7 +734,7 @@
         "A GRAPH BUILT AT SESSION START GOES STALE AND NOTHING SAYS SO. Observed 2026-08-30: a graph built once was queried well for the analysis questions, then silently drifted from the source across a day of edits -- new module, new types, changed signatures -- and the session gradually stopped reaching for it and went back to grep, without ever deciding to. The pull toward text search is not laziness, it is a stale graph genuinely answering worse. Rebuild with build_solution after any substantial edit, and treat 'when did I last build this' as part of reading any answer. PARTLY CLOSED 2026-09-01: script.invoke-dotnet-check now refreshes BOTH conventions after a successful build -- the .graph + scripts/graph.ps1 one it always handled, and, new at envelope contract 6, a graph held in a razorgraph server declared in the repo's .mcp.json, matched by source path and rebuilt in place under the same graphId. The envelope's 'via' says which one answered. What is still open is a graph nobody asked for: no match means status 'absent', deliberately, so a session that never built one gets no refresh and no warning."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval", "refactoring"],
-      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json", "skill.crash-escape-analysis", "note.subagent-delegation"]
+      "links": ["note.razorgraph-mcp-server", "skill.christmas-tree-flattening", "note.razorgraph-js-scoping", "pattern.graph-first-analysis", "script.search-json", "skill.crash-escape-analysis", "note.subagent-delegation", "file.skill-agent-kickoff"]
     },
 
     {
@@ -1648,7 +1648,7 @@
         "ORCHESTRATING IS THE DEFAULT POSTURE, not an escalation for large jobs. Lori, 2026-09-03: 'Orchestrator should be the default at this point.' The question is not whether a task is big enough to delegate, but whether there is a reason it must stay in the main session. Two misses on the same day -- writing a setup script, and repairing corrupted catalog nodes -- were each dispatched only after the fact, and both would have gone out correctly by asking it that way round."
       ],
       "tags": ["agent", "context-budget", "progressive-disclosure", "session", "retrieval"],
-      "links": ["pattern.progressive-disclosure", "skill.graph-first-code-analysis", "pattern.deterministic-edits", "script.git", "note.thread-item-projection"]
+      "links": ["pattern.progressive-disclosure", "skill.graph-first-code-analysis", "pattern.deterministic-edits", "script.git", "note.thread-item-projection", "file.skill-agent-kickoff"]
     },
 
     {
@@ -1680,7 +1680,7 @@
         "The SKILL.md check is a warning, not a gate: it greps each skill file for the base path and reports if absent, because a stale hardcoded fallback still resolves correctly whenever JanetBase is set. It catches the case where JanetBase is later cleared, which is exactly how this broke."
       ],
       "tags": ["setup", "powershell", "skills", "config", "maintenance", "startup"],
-      "links": ["file.skill-deploy", "file.skill-crash-analysis", "note.janet-machine-move", "pattern.progressive-disclosure", "script.invoke-janet-startup"]
+      "links": ["file.skill-deploy", "file.skill-crash-analysis", "note.janet-machine-move", "pattern.progressive-disclosure", "script.invoke-janet-startup", "file.skill-agent-kickoff"]
     },
 
     {
@@ -1697,6 +1697,20 @@
       ],
       "tags": ["contract", "context-budget", "csharp", "agent", "failure-modes", "thread-items"],
       "links": ["script.show-thread-items", "script.get-thread-report", "file.janet-core", "note.janet-mcp-port", "script.test-output-contracts", "note.thread-item-projection", "pattern.thread-items"]
+    },
+
+    {
+      "id": "file.skill-agent-kickoff",
+      "kind": "file",
+      "path": "skills\\agent-kickoff\\SKILL.md",
+      "summary": "The agent-kickoff Claude Code skill: a thin trigger that fires when a session is about to call the Agent tool, and shapes the prompt it writes -- when to delegate (volume of tool output, not task size), a template whose RazorGraph block is mandatory (exact mcp__razorgraph__ tool names to load via ToolSearch, graphId from list_graphs or build_solution against the .slnx, graph first and grep second, the section-7 two questions), the Janet rules an agent does not inherit (research first, thread_add with --area, never hand-edit research.json, lint any .ps1, CRLF and ASCII), a mutation-check rule for new tests, a report shape, and a boundary. Ends with a six-line checklist the orchestrator runs before sending. Canonical file lives here; ~\\.claude\\skills\\agent-kickoff is a junction to it, created by Install-JanetEnvironment.ps1, which wires every directory under skills\\.",
+      "caveats": [
+        "The harness enumerates skill names and descriptions once at session start, so this skill is invisible until the session after it was wired; verify it enumerates in a NEW session, not the one that created it. Content edits take effect on the next invoke.",
+        "The graphId in the template is a bracket the orchestrator fills from list_graphs, not a constant: on 2026-09-04 the server held janet (JanetHome.slnx), gamehub and imgsel, and no saved-graph JSON existed on disk for any of them -- so 'load_graph a saved graph' is the fallback only where someone has run save_graph, and build_solution is the real one.",
+        "The razorgraph tools exist only in a session whose .mcp.json declares the razorgraph server (JanetHome, RazorGraphTool). The template tells the agent to report their absence before falling back to text, because a silent fallback to grep is exactly the failure this skill exists to prevent."
+      ],
+      "tags": ["skills", "agent", "retrieval", "code-analysis"],
+      "links": ["note.subagent-delegation", "pattern.graph-first-analysis", "skill.graph-first-code-analysis", "note.razorgraph-mcp-server", "script.install-janet-environment", "file.skill-deploy"]
     }
   ]
 }
