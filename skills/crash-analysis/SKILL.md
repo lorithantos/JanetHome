@@ -10,7 +10,7 @@ distilled from, and its blind spots live in the JanetHome research graph —
 query it instead of trusting this file's age.
 
 ```powershell
-$janet = if ($env:JanetBase) { $env:JanetBase } else { 'D:\Repos\JanetHome' }
+$janet = if ($env:JanetBase) { $env:JanetBase } else { 'C:\repos\lorithantos\JanetHome' }
 ```
 
 ## Invariants (the only content that belongs here)
