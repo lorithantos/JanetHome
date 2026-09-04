@@ -31,6 +31,11 @@
     refused too rather than answered with an empty list -- 'no such item' and 'no open work'
     are different claims. A '*' is a literal asterisk, not a wildcard.
 
+    This script is UNBOUNDED, like the CLI it shims: an unnarrowed list of any size comes back
+    whole, so redirect to a file when it is large. The thread_show MCP tool is not -- a result
+    over the result budget (100,000 characters, JANET_RESULT_BUDGET overrides) is refused with
+    a hint naming -Topic and -Area, never cut.
+
 .PARAMETER Area
     Narrows to one area, case-insensitive substring. '(unfiled)' is the group of items with no
     area set; items are never guessed into a neighbouring one.

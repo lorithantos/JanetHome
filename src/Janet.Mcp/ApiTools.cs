@@ -28,7 +28,9 @@ public static class ApiTools
         "kind, id) is never capped because it is a request for a known set. Members documented " +
         "with <inheritdoc/> are resolved by following the chain, and the 'inheritdoc' field says " +
         "where the prose came from -- a bare <inheritdoc/> with no cref cannot be resolved from " +
-        "an XML file alone and honestly reports as undocumented.")]
+        "an XML file alone and honestly reports as undocumented. A result over the result budget " +
+        "(100,000 characters by default) is REFUSED rather than cut, with a message naming the " +
+        "size and the selectors to use instead.")]
     public static string DocQuery(
         [Description("NuGet package id, resolved from the local package cache. Prefix match; newest version and newest target framework win.")]
         string? package = null,
@@ -95,7 +97,9 @@ public static class ApiTools
         "assembly cannot resolve its dependencies, and the answer comes back partial with " +
         "'siblingWarning' saying so and 'typesUnloadable'/'membersDropped' counting what was " +
         "lost. Inherited and static members are excluded by default, because a class inherits " +
-        "dozens and the interesting ones are its own. 'truncated' reports a capped list.")]
+        "dozens and the interesting ones are its own. 'truncated' reports a capped list. A result " +
+        "over the result budget (100,000 characters by default) is REFUSED rather than cut, with " +
+        "a message naming the size and the selectors to use instead.")]
     public static string Assembly(
         [Description("Path to the .dll, or a bare assembly name to find under searchRoot.")]
         string assembly,

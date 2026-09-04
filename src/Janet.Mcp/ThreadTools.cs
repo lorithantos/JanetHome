@@ -28,7 +28,10 @@ public static class ThreadTools
         "matches nothing or several items, and an area nothing is filed under, are refused with " +
         "a message saying what to do -- they are not answered with an empty list. The 'error' " +
         "field reports a list that could not be read; it is a fact about the list, not a failure " +
-        "of this call, so check it rather than assuming an empty result means no work is open.")]
+        "of this call, so check it rather than assuming an empty result means no work is open. " +
+        "A result over the result budget (100,000 characters by default) is REFUSED, never cut, " +
+        "with a message naming the size and the narrowing to make; an unnarrowed read of this " +
+        "machine's list is over it.")]
     public static string Show(
         [Description("Include completed items as well as open ones.")] bool all = false,
         [Description(
@@ -46,8 +49,8 @@ public static class ThreadTools
     [Description(
         "START HERE when resuming: the topics, which one is in focus, and how large each item's " +
         "notes are -- WITHOUT the note bodies. Answers 'where was I' for a fraction of the cost; " +
-        "thread_show on the same list returns every note in full and can exceed a tool result " +
-        "limit outright. Each item carries notesLead (the first non-empty line) and notesLength " +
+        "thread_show on the same list returns every note in full and is refused over the result " +
+        "budget unless narrowed. Each item carries notesLead (the first non-empty line) and notesLength " +
         "(the full size in characters), and the envelope totals what was withheld, so nothing is " +
         "omitted silently. Read one item in full with thread_show once you know which one you " +
         "want. Each item carries the area it is filed under; pass area to see one project's " +

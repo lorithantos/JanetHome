@@ -43,7 +43,10 @@ public static class CheckTools
         "removed, a reference swapped, a target framework moved -- because an incremental run " +
         "that skipped a project entirely and one that had nothing to say about it produce the " +
         "identical green. 'succeeded' means exactly one thing: the build succeeded and every " +
-        "test passed.")]
+        "test passed.\n\n" +
+        "Errors and failures are reported in full, so a result over the result budget (100,000 " +
+        "characters by default) is REFUSED rather than cut; the refusal says how to narrow, and " +
+        "the CLI twin `janet check` has no limit and can be redirected to a file.")]
     public static string Check(
         [Description("A .sln/.slnx/.csproj, or a directory holding exactly one. Defaults to the current directory.")]
         string? target = null,

@@ -21,7 +21,9 @@ public static class ResearchTools
         "writing a tool -- the answer is often already a node. With no arguments it returns a " +
         "cheap orientation view (counts by kind plus the tag index) rather than the whole " +
         "catalog. Free-text queries come back as a ranked shortlist; check 'truncated' before " +
-        "concluding the result set is complete.")]
+        "concluding the result set is complete. A result over the result budget (100,000 " +
+        "characters by default) is REFUSED rather than cut, with a message naming the size and " +
+        "the narrowing to make -- all=true over the whole catalog is over it.")]
     public static string Query(
         GraphContext context,
         [Description("Free text, matched over id, summary, and tags. Terms score independently.")]

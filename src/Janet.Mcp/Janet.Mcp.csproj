@@ -37,4 +37,13 @@
     <ProjectReference Include="..\Janet.Core\Janet.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The narrowing table and the size arm of Surfaced are internal: they are this server's
+      business, not an API. The tests still need to enumerate one and call the other, so the
+      test assembly alone is let in.
+    -->
+    <InternalsVisibleTo Include="Janet.Tests" />
+  </ItemGroup>
+
 </Project>

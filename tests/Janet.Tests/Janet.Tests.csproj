@@ -12,6 +12,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Janet.Core\Janet.Core.csproj" />
+    <!--
+      The server too, since 2026-09-03: a test enumerates its [McpServerTool] methods and holds
+      each to a row in the narrowing table, and another exercises the result-budget refusal.
+      It is an exe project; the .NET SDK references one like any library, and the ASP.NET Core
+      framework reference flows through.
+    -->
+    <ProjectReference Include="..\..\src\Janet.Mcp\Janet.Mcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
