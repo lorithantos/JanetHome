@@ -85,6 +85,13 @@ far down to go.
 - `fileWrittenSince: true` means the file changed after the graph was built.
   The span is then a guess about a file that has moved. Rebuild rather than
   reading it.
+- `builtAt` on the response is the warrant for the whole span. Code in progress
+  breaks a span, so check it against your own edits before opening a file --
+  and read `builtAt`, not `list_graphs`' `loadedAt`, which only says when the
+  graph entered the server.
+- `freshnessCaveat` present means the graph carries no build stamp at all.
+  Then an absent `fileWrittenSince` proves nothing rather than meaning
+  "unchanged", and no span on that graph is warranted. Rebuild.
 
 There is deliberately no tool that hands back the source. The harness's own
 Read already returns line-numbered text with permissioning and file tracking,
