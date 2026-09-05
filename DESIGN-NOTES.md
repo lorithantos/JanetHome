@@ -24,11 +24,18 @@ you can test it, and a broken entry is a hard failure instead of a quiet degrada
 ```json
 {
   "read":    [ { "path": "...", "why": "..." } ],
-  "run":     [ { "cmd": "...", "captureAs": "..." } ],
+  "run":     [ { "cmd": "...", "args": ["..."], "captureAs": "..." } ],
   "order":   "sequential",
   "onMissing": "fail"
 }
 ```
+
+`args` is optional: an array of strings handed to `cmd` as typed (`-Name value` binds by
+name, a lone `-Switch` is a switch, the rest is positional), so one script can run narrowed
+differently from each repo's manifest -- the thread report here takes `["-Area", "JanetHome", "-NoLead"]`.
+Anything that is not an array of strings, or names a parameter the command does not declare,
+fails validation like any other unresolved entry. Added 2026-09-04, when a manifest `cmd` was
+still a bare path and the only way to pass an argument was a one-line forwarder script.
 
 **The lesson underneath it:** prefer contracts that fail loudly over documents that
 degrade quietly. This generalizes well past agent startup.

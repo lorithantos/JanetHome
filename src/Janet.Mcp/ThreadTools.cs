@@ -55,7 +55,12 @@ public static class ThreadTools
         "omitted silently. Read one item in full with thread_show once you know which one you " +
         "want. Each item carries the area it is filed under; pass area to see one project's " +
         "items only, which is usually what you want, since this list is shared by every repo on " +
-        "this machine. Completed items are excluded unless all=true.")]
+        "this machine. The envelope's 'areas' is the map of the WHOLE open list -- one {area, open} " +
+        "row per area in use, sorted by name -- and like 'active' it ignores the narrowing, so a " +
+        "report of one project still says how much is open elsewhere and under which labels. " +
+        "Completed items are excluded unless all=true, and never counted in 'areas'. " +
+        "lead=false omits each item's notesLead key (notesLength stays), for when the map is " +
+        "all you need.")]
     public static string Report(
         [Description("Include completed items as well as open ones.")] bool all = false,
         [Description(
@@ -65,8 +70,12 @@ public static class ThreadTools
         [Description(
             "Area to narrow to, case-insensitive substring. '(unfiled)' is the group of items " +
             "with no area set.")]
-        string? area = null) =>
-        ThreadJson.Serialize(ThreadItems.Report(null, all, topic, area));
+        string? area = null,
+        [Description(
+            "Carry each item's notesLead (first non-empty line of its notes, capped at 200). " +
+            "false omits the key; notesLength is carried either way.")]
+        bool lead = true) =>
+        ThreadJson.Serialize(ThreadItems.Report(null, all, topic, area, lead));
 
     [McpServerTool(Name = "thread_add")]
     [Description(

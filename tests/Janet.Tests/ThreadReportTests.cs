@@ -145,9 +145,10 @@ public class ThreadReportTests : IDisposable
     {
         JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(ThreadItems.Report(Seeded())))!.AsObject();
 
-        // 2 since 2026-09-03, when items gained 'area'. Pinned here as a literal rather than
-        // read from the code, so that a bump has to be stated in two places by a person.
-        Assert.Equal(2, (int)envelope["contract"]!);
+        // 3 since 2026-09-04, when the envelope gained 'areas' (2 on 2026-09-03, when items
+        // gained 'area'). Pinned here as a literal rather than read from the code, so that a bump
+        // has to be stated in two places by a person.
+        Assert.Equal(3, (int)envelope["contract"]!);
 
         // The point of the format: no field anywhere holds a note body.
         foreach (JsonNode? item in envelope["items"]!.AsArray())
@@ -191,6 +192,185 @@ public class ThreadReportTests : IDisposable
         Assert.Equal("cache eviction", Assert.Single(report.Items).Topic);
         Assert.Equal(1, report.Count);
         Assert.Equal("Ruled out the obvious.".Length, report.NotesLength);
+    }
+
+    /// <summary>
+    /// The map: one row per area with open items, counted, sorted by name case-insensitively.
+    /// </summary>
+    /// <remarks>
+    /// Three areas so the ordering is actually tested: '(unfiled)' sorts first on its
+    /// parenthesis, and 'gamehub' before 'RazorGraph' only if the comparison ignores case --
+    /// ordinal would put every capital before every lower-case letter.
+    /// </remarks>
+    [Fact]
+    public void TheAreasMapCountsOpenItemsPerAreaInNameOrder()
+    {
+        string path = Seeded();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+        ThreadItems.Add(path, "gamehub scoring", area: "gamehub");
+        ThreadItems.Add(path, "gamehub lobby", area: "gamehub");
+
+        ThreadReportResult report = ThreadItems.Report(path);
+
+        Assert.Equal(
+            [("(unfiled)", 1), ("gamehub", 2), ("RazorGraph", 1)],
+            report.Areas.Select(a => (a.Area, a.Open)));
+    }
+
+    /// <summary>'(unfiled)' is a row only while an unlabelled item is OPEN.</summary>
+    /// <remarks>
+    /// The seed's completed item is unfiled, so this also pins that done items never reach the
+    /// map -- not even under all=true, which widens the items and must not widen the counts. A
+    /// zero row would read as a category that exists, which is the guess the field avoids.
+    /// </remarks>
+    [Fact]
+    public void UnfiledAppearsInTheMapOnlyWhileSuchItemsAreOpen()
+    {
+        string path = Seeded();
+
+        Assert.Contains(ThreadItems.Report(path).Areas, a => a.Area == ThreadItems.Unfiled);
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache warming" }, area: "RazorGraph");
+
+        Assert.DoesNotContain(ThreadItems.Report(path).Areas, a => a.Area == ThreadItems.Unfiled);
+        Assert.DoesNotContain(ThreadItems.Report(path, all: true).Areas, a => a.Area == ThreadItems.Unfiled);
+        Assert.Equal(2, Assert.Single(ThreadItems.Report(path, all: true).Areas).Open);
+    }
+
+    /// <summary>
+    /// The map is over the whole list, whatever the selectors narrowed the items to.
+    /// </summary>
+    /// <remarks>
+    /// This is the reason the field exists: startup narrows the report to the session's own
+    /// area, and the other projects' backlog has to survive as a summary rather than vanish.
+    /// Same rule as 'active', pinned the same way -- narrowed and unnarrowed answers agree.
+    /// </remarks>
+    [Fact]
+    public void TheAreasMapIgnoresTheNarrowing()
+    {
+        string path = Seeded();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+
+        ThreadReportResult whole = ThreadItems.Report(path);
+        ThreadReportResult narrowed = ThreadItems.Report(path, area: "RazorGraph");
+        ThreadReportResult one = ThreadItems.Report(path, topic: "warming");
+
+        Assert.Equal("cache eviction", Assert.Single(narrowed.Items).Topic);
+        Assert.Equal(whole.Areas, narrowed.Areas);
+        Assert.Equal(whole.Areas, one.Areas);
+        Assert.Equal(2, whole.Areas.Count);
+    }
+
+    [Fact]
+    public void AnEmptyOrUnreadableListHasAnEmptyMapRatherThanNone()
+    {
+        Assert.Empty(ThreadItems.Report(Empty()).Areas);
+
+        string corrupt = Empty();
+        File.WriteAllText(corrupt, "{ not json");
+
+        Assert.Empty(ThreadItems.Report(corrupt).Areas);
+    }
+
+    /// <summary>
+    /// The envelope and the checked-in contract describe the same shape.
+    /// </summary>
+    /// <remarks>
+    /// Test-OutputContracts.ps1 is the real gate: it validates live samples against the schema
+    /// with a JSON Schema validator this project does not reference. What this test can hold
+    /// without one is the part that drifts first -- the contract number in three places, and the
+    /// key sets of the envelope, an item and an area row against the schema's 'properties' and
+    /// 'required' -- so a field added to the code without the schema fails here, in the unit
+    /// run, before the commit gate. It reads the LIVE schema out of the repo deliberately: a
+    /// copy beside the tests would be one more thing to drift.
+    /// </remarks>
+    [Fact]
+    public void TheEnvelopeAgreesWithTheCheckedInContract()
+    {
+        string path = Seeded();
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+
+        JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(ThreadItems.Report(path)))!.AsObject();
+        JsonObject schema = JsonNode.Parse(File.ReadAllText(ContractPath("thread-report.schema.json")))!.AsObject();
+
+        int declared = (int)schema["$janet"]!["contract"]!;
+        Assert.Equal(declared, (int)schema["properties"]!["contract"]!["const"]!);
+        Assert.Equal(declared, (int)envelope["contract"]!);
+
+        AssertSameKeys(schema, envelope, "envelope");
+        AssertSameKeys(schema["properties"]!["areas"]!["items"]!.AsObject(), envelope["areas"]!.AsArray().First()!.AsObject(), "areas[]");
+        AssertSameKeys(schema["properties"]!["items"]!["items"]!.AsObject(), envelope["items"]!.AsArray().First()!.AsObject(), "items[]");
+    }
+
+    /// <summary>
+    /// Without leads, every item still states its notes' size and the key is absent, not empty.
+    /// </summary>
+    /// <remarks>
+    /// Added by measurement on 2026-09-04: narrowing the startup report to one area left the
+    /// brief at 9,969 characters against a budget of about 8,000, and the leads were 1,827 of
+    /// it. The key is OMITTED rather than written empty because an empty lead already means
+    /// "this item has no notes", and the two must not be confusable.
+    /// </remarks>
+    [Fact]
+    public void WithoutLeadsEveryItemStillStatesItsNotesLengthAndOmitsTheKey()
+    {
+        string path = Seeded();
+
+        ThreadReportResult report = ThreadItems.Report(path, lead: false);
+        JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(report))!.AsObject();
+
+        Assert.All(report.Items, i => Assert.Null(i.NotesLead));
+        Assert.Equal("Ruled out the obvious.".Length, report.Items.Single(i => i.Topic == "cache eviction").NotesLength);
+        Assert.All(envelope["items"]!.AsArray(), i => Assert.False(i!.AsObject().ContainsKey("notesLead")));
+        Assert.All(envelope["items"]!.AsArray(), i => Assert.True(i!.AsObject().ContainsKey("notesLength")));
+
+        // And the default still carries it, so the omission is a request rather than a regression.
+        Assert.All(
+            JsonNode.Parse(ThreadJson.Serialize(ThreadItems.Report(path)))!["items"]!.AsArray(),
+            i => Assert.True(i!.AsObject().ContainsKey("notesLead")));
+    }
+
+    [Fact]
+    public void TheLeadlessEnvelopeAgreesWithTheCheckedInContractToo()
+    {
+        JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(ThreadItems.Report(Seeded(), lead: false)))!.AsObject();
+        JsonObject schema = JsonNode.Parse(File.ReadAllText(ContractPath("thread-report.schema.json")))!.AsObject();
+
+        AssertSameKeys(schema["properties"]!["items"]!["items"]!.AsObject(), envelope["items"]!.AsArray().First()!.AsObject(), "items[] without leads");
+    }
+
+    private static void AssertSameKeys(JsonObject schemaObject, JsonObject produced, string where)
+    {
+        string[] properties = [.. schemaObject["properties"]!.AsObject().Select(p => p.Key).Order(StringComparer.Ordinal)];
+        string[] required = [.. schemaObject["required"]!.AsArray().Select(r => (string)r!).Order(StringComparer.Ordinal)];
+        string[] emitted = [.. produced.Select(p => p.Key).Order(StringComparer.Ordinal)];
+
+        // additionalProperties:false bounds the emitted keys above by 'properties'; 'required'
+        // bounds them below. Anything outside either band is a field one side has and the other
+        // has not. The only key allowed in the gap is notesLead, optional since contract 3.
+        string[] optional = [.. properties.Except(required)];
+        Assert.True(optional.Length == 0 || optional.SequenceEqual(["notesLead"]), $"{where}: schema leaves [{string.Join(", ", optional)}] optional; only notesLead may be");
+        Assert.True(required.All(emitted.Contains), $"{where}: schema requires [{string.Join(", ", required)}] but the envelope carries [{string.Join(", ", emitted)}]");
+        Assert.True(emitted.All(properties.Contains), $"{where}: the envelope carries [{string.Join(", ", emitted)}] but the schema declares only [{string.Join(", ", properties)}]");
+    }
+
+    /// <summary>A file under the repo's contracts\ directory, found by walking up from the test binary.</summary>
+    private static string ContractPath(string name)
+    {
+        for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            string candidate = Path.Combine(directory.FullName, "contracts", name);
+
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new FileNotFoundException($"No contracts\\{name} above {AppContext.BaseDirectory}.");
     }
 
     [Fact]

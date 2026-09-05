@@ -121,7 +121,8 @@ static int Thread(Args args)
         // envelope is asserted byte-for-byte against recorded output and has a live consumer.
         case "report":
             ThreadReportResult reported = ThreadItems.Report(
-                path, args.Flag("--all"), args.Value("--topic"), args.Value("--area"));
+                path, args.Flag("--all"), args.Value("--topic"), args.Value("--area"),
+                lead: !args.Flag("--no-lead"));
 
             Console.Out.WriteLine(args.Flag("--text")
                 ? ThreadJson.Render(reported)
@@ -697,12 +698,15 @@ static int Usage()
                               reported on stderr, never rewritten)
 
         janet thread show     [--all] [--topic TEXT] [--area TEXT] [--text] [--pretty]
-        janet thread report   [--all] [--topic TEXT] [--area TEXT] [--text] [--pretty]
-                              (topics, focus and note SIZES -- the map, not the bodies)
+        janet thread report   [--all] [--topic TEXT] [--area TEXT] [--no-lead] [--text] [--pretty]
+                              (topics, focus and note SIZES -- the map, not the bodies;
+                               --no-lead drops each item's notesLead and keeps notesLength)
                               (--topic names ONE item and refuses an ambiguous or absent
                                one; --area narrows to a group, '(unfiled)' being the
                                group of items with no area. Neither is capped, and
-                               'active' still names the focus of the whole list)
+                               'active' still names the focus of the whole list, as
+                               does 'areas': one {area, open} row per area with open
+                               items, over the whole list, whatever --area narrowed to)
         janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]...
                               [--area TEXT] [--active]
         janet thread update   [--topic TEXT] [--notes TEXT] [--next TEXT]

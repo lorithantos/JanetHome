@@ -24,8 +24,8 @@ public sealed class Args
         "--all", "--expand", "--full", "--text", "--pretty", "--append", "--dry-run", "--http",
         "--help", "--no-trace",
 
-        // Thread items.
-        "--active", "--none", "--append-notes", "--append-refs",
+        // Thread items. --no-lead is the reporter's: drop notesLead, keep notesLength.
+        "--active", "--none", "--append-notes", "--append-refs", "--no-lead",
 
         // API and assembly introspection. --compact is the opposite of --pretty and exists
         // because the two scripts disagreed: Get-ApiDoc printed compressed JSON and

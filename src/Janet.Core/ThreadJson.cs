@@ -49,8 +49,12 @@ public static class ThreadJson
     /// 1 -> 2 on 2026-09-03: report items gained 'area', the stored project label the report
     /// can now be narrowed by. A field added to the envelope is a format change, so this moved
     /// and contracts\thread-report.schema.json moved with it.
+    ///
+    /// 2 -> 3 on 2026-09-04: the envelope gained 'areas', the per-area open-count map over the
+    /// whole list, so that a report narrowed by area still says where the rest of the backlog
+    /// is. Same rule, same two files.
     /// </remarks>
-    private const int ReportContract = 2;
+    private const int ReportContract = 3;
 
     public static string Serialize(ThreadAddResult result, bool pretty = false) => Render(new JsonObject
     {
@@ -131,27 +135,53 @@ public static class ThreadJson
     ///
     /// Deliberately NOT the same shape as Show's envelope. A reader must not be able to mistake
     /// one for the other and conclude from an absent 'notes' field that an item has no notes.
+    ///
+    /// 'areas' sits before 'items' because it is the map the items are drawn from: a reader
+    /// narrowed to one area meets the other areas' counts before the list that omits them.
     /// </remarks>
     public static string Serialize(ThreadReportResult result, bool pretty = false) => Render(new JsonObject
     {
         ["contract"] = ReportContract,
         ["count"] = result.Count,
         ["active"] = result.Active,
+        ["areas"] = new JsonArray([.. result.Areas.Select(AreaCount)]),
         ["items"] = new JsonArray([.. result.Items.Select(ReportItem)]),
         ["notesLength"] = result.NotesLength,
         ["error"] = result.Error,
     }, pretty);
 
-    private static JsonNode ReportItem(ThreadReportItem item) => new JsonObject
+    private static JsonNode AreaCount(ThreadAreaCount area) => new JsonObject
     {
-        ["topic"] = item.Topic,
-        ["status"] = item.Status,
-        ["refs"] = Strings(item.Refs),
-        ["next"] = item.Next,
-        ["notesLead"] = item.NotesLead,
-        ["notesLength"] = item.NotesLength,
-        ["area"] = item.Area,
+        ["area"] = area.Area,
+        ["open"] = area.Open,
     };
+
+    /// <summary>One report item. 'notesLead' is OMITTED, not nulled, when the caller declined leads.</summary>
+    /// <remarks>
+    /// An absent key is a statement -- "not carried" -- where an empty string would be a claim
+    /// about the item ("no notes"). notesLength beside it says how much was left behind either
+    /// way, which is the same rule the envelope total follows.
+    /// </remarks>
+    private static JsonNode ReportItem(ThreadReportItem item)
+    {
+        JsonObject node = new()
+        {
+            ["topic"] = item.Topic,
+            ["status"] = item.Status,
+            ["refs"] = Strings(item.Refs),
+            ["next"] = item.Next,
+        };
+
+        if (item.NotesLead is not null)
+        {
+            node["notesLead"] = item.NotesLead;
+        }
+
+        node["notesLength"] = item.NotesLength;
+        node["area"] = item.Area;
+
+        return node;
+    }
 
     /// <summary>
     /// An area as it prefixes a topic in the text views, or nothing where the item is unfiled.
@@ -206,7 +236,7 @@ public static class ThreadJson
                 lines.Add($"            next: {item.Next}");
             }
 
-            if (item.NotesLead.Length > 0)
+            if (!string.IsNullOrEmpty(item.NotesLead))
             {
                 lines.Add($"            {item.NotesLead}");
             }
@@ -214,6 +244,13 @@ public static class ThreadJson
 
         lines.Add(string.Empty);
         lines.Add($"{result.Items.Count} items; {result.NotesLength:N0} characters of notes not shown.");
+
+        // The whole-list map, so a narrowed view says what it left out. Absent when nothing is
+        // open anywhere, since the line would then only restate "No thread items."
+        if (result.Areas.Count > 0)
+        {
+            lines.Add("open by area: " + string.Join(", ", result.Areas.Select(a => $"{a.Area} {a.Open}")));
+        }
 
         return string.Join(Environment.NewLine, lines);
     }

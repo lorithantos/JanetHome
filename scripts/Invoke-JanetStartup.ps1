@@ -9,6 +9,15 @@
     This is checkable instead: every 'read' path and every 'run' command either
     resolves or startup fails, per the manifest's onMissing setting.
 
+    A 'run' entry is { cmd, captureAs, why } plus an optional 'args': an array of
+    strings passed to the command as typed -- '-Name value' binds by name, a lone
+    '-Switch' is a switch, anything else is positional.  Path resolution is on
+    'cmd' alone.  'args' that is not an array of strings, or that names a
+    parameter the command does not declare, is a problem and therefore a hard
+    stop under onMissing 'fail'.  Since 2026-09-04, when the thread report entry
+    gained ["-Area", "<this repo>"] so the brief carries one project's items and a
+    per-area map of the rest instead of every open item on the machine.
+
     Validation happens before anything executes, so a broken manifest reports all
     its problems at once rather than failing halfway through with side effects on
     disk.
@@ -72,7 +81,8 @@
 
 .EXAMPLE
     & "$env:JanetBase\scripts\Invoke-JanetStartup.ps1" -SkipRun
-    Lints the manifest: every path resolves, every command exists. No execution.
+    Lints the manifest: every path resolves, every command exists, every 'args'
+    is an array of strings naming parameters the command declares. No execution.
 #>
 [CmdletBinding()]
 param(
@@ -224,19 +234,91 @@ foreach ($entry in $readEntries) {
     }
 }
 
+function Resolve-RunArguments {
+    # Validates a run entry's optional 'args' and splits it into the two splats the
+    # invocation needs.  Returns an object, so nothing unrolls; read .problems first.
+    #
+    # 'args' is optional.  Present, it must be an array of strings -- anything else
+    # is a problem, never a coercion.  A bare string would splat as one token and
+    # happen to work for a lone switch, which is exactly the shape that stops
+    # working the day a value is added; a number or object would bind as something
+    # the target never asked for.  Read through PSObject.Properties rather than
+    # Get-Prop: a one-element array returned from a function unrolls to its
+    # element, and the type check here is the point.
+    #
+    # ARRAY SPLATTING IS POSITIONAL.  Measured 2026-09-04: & script @('-Area','X')
+    # bound the string '-Area' to the first parameter and 'X' to the second, and
+    # nothing failed.  Only the automatic $args keeps parameter names through a
+    # splat, and a manifest cannot produce that.  So the tokens are read the way
+    # the command line reads them -- '-Name value' binds by name, a lone '-Switch'
+    # is a switch, anything else is positional -- and each name is checked against
+    # the target's own parameter metadata.  A misspelled name is therefore a
+    # problem at lint time, not a string quietly bound to the wrong parameter at
+    # run time.  A positional value that itself begins with '-' is not supported;
+    # nothing in this repo needs one, and saying so beats guessing.
+    param($Entry, [string]$Cmd, [string]$FullPath, [bool]$Exists)
+    $result = [PSCustomObject]@{
+        tokens     = @()
+        named      = [ordered]@{}
+        positional = @()
+        problems   = @()
+    }
+    $prop = $Entry.PSObject.Properties['args']
+    if ($null -eq $prop -or $null -eq $prop.Value) { return $result }
+    $value = $prop.Value
+    if ($value -isnot [array]) {
+        $result.problems += "run: 'args' for '$Cmd' must be an array of strings, not a $($value.GetType().Name)"
+        return $result
+    }
+    $notStrings = @($value | Where-Object { $_ -isnot [string] })
+    if ($notStrings.Count -gt 0) {
+        $kinds = ($notStrings | ForEach-Object { if ($null -eq $_) { 'null' } else { $_.GetType().Name } }) -join ', '
+        $result.problems += "run: 'args' for '$Cmd' must be an array of strings; found $kinds"
+        return $result
+    }
+    $result.tokens = @([string[]]$value)
+    # A missing command is already reported; there is no metadata to check against.
+    if (-not $Exists) { return $result }
+    $parameters = (Get-Command $FullPath -ErrorAction Stop).Parameters
+    for ($i = 0; $i -lt $result.tokens.Count; $i++) {
+        $token = $result.tokens[$i]
+        if ($token -notmatch '^-([A-Za-z]\w*)$') { $result.positional += $token; continue }
+        $name = $Matches[1]
+        if (-not $parameters.ContainsKey($name)) {
+            $result.problems += "run: '$Cmd' declares no parameter '-$name' (args: $($result.tokens -join ' '))"
+            continue
+        }
+        $meta = $parameters[$name]
+        if ($meta.ParameterType -eq [switch]) { $result.named[$meta.Name] = $true; continue }
+        if ($i + 1 -ge $result.tokens.Count) {
+            $result.problems += "run: '-$name' for '$Cmd' is not a switch and has no value after it"
+            continue
+        }
+        $i++
+        $result.named[$meta.Name] = $result.tokens[$i]
+    }
+    return $result
+}
+
 $runs = @()
 foreach ($entry in $runEntries) {
     $cmd = Get-Prop $entry 'cmd'
     if (-not $cmd) { $problems += "run: entry with no 'cmd'"; continue }
+    # Path resolution is on 'cmd' alone; 'args' never touches it.
     $fullPath = Join-Path $repoRoot $cmd
     $exists = Test-Path $fullPath -PathType Leaf
     if (-not $exists) { $problems += "run: missing command '$cmd'" }
+    $arguments = Resolve-RunArguments $entry $cmd $fullPath $exists
+    foreach ($problem in $arguments.problems) { $problems += $problem }
     $runs += [PSCustomObject]@{
-        cmd       = $cmd
-        full      = $fullPath
-        why       = (Get-Prop $entry 'why' '')
-        captureAs = (Get-Prop $entry 'captureAs' '')
-        exists    = $exists
+        cmd        = $cmd
+        full       = $fullPath
+        args       = @($arguments.tokens)
+        named      = $arguments.named
+        positional = @($arguments.positional)
+        why        = (Get-Prop $entry 'why' '')
+        captureAs  = (Get-Prop $entry 'captureAs' '')
+        exists     = $exists
     }
 }
 
@@ -311,7 +393,7 @@ $runResults = @()
 foreach ($run in $runs) {
     if ($SkipRun -or -not $run.exists) {
         $runResults += [PSCustomObject]@{
-            cmd = $run.cmd; captureAs = $run.captureAs
+            cmd = $run.cmd; args = $run.args; captureAs = $run.captureAs
             status = $(if ($SkipRun) { 'skipped' } else { 'missing' })
             output = ''
         }
@@ -320,8 +402,14 @@ foreach ($run in $runs) {
 
     # Startup must not be able to hang the session on one bad script, so failures
     # are captured and reported rather than thrown (section 8).
+    #
+    # Two splats: the hashtable binds by name, the array fills what is left
+    # positionally.  See Resolve-RunArguments for why the tokens cannot simply be
+    # splatted as the array they arrived as.
+    $named = $run.named
+    $positional = @($run.positional)
     try {
-        $output = (& $run.full 6>&1 | Out-String).TrimEnd()
+        $output = (& $run.full @named @positional 6>&1 | Out-String).TrimEnd()
         $status = 'ok'
     }
     catch {
@@ -331,7 +419,7 @@ foreach ($run in $runs) {
 
     if ($run.captureAs) { $captured[$run.captureAs] = $output }
     $runResults += [PSCustomObject]@{
-        cmd = $run.cmd; captureAs = $run.captureAs
+        cmd = $run.cmd; args = $run.args; captureAs = $run.captureAs
         status = $status; output = $output
     }
 }
@@ -353,6 +441,9 @@ $readOut = $reads | ForEach-Object {
 # future startup command's output, and the duplicate carries nothing.
 $runOut = $runResults | ForEach-Object {
     $o = [ordered]@{ cmd = $_.cmd; captureAs = $_.captureAs; status = $_.status }
+    # Only when the manifest passed any: a reader of 'captured.threadReport' needs
+    # to know it was narrowed, and an empty array on every other entry says nothing.
+    if (@($_.args).Count -gt 0) { $o.args = @($_.args) }
     if ($Full -or -not $_.captureAs) { $o.output = $_.output }
     [PSCustomObject]$o
 }
@@ -446,6 +537,7 @@ Write-Host ''
 foreach ($res in $runResults) {
     $label = if ($res.captureAs) { $res.captureAs } else { $res.cmd }
     Write-Host $label.ToUpperInvariant() -ForegroundColor Cyan
+    if (@($res.args).Count -gt 0) { Write-Host "  $($res.cmd) $($res.args -join ' ')" -ForegroundColor DarkGray }
     switch ($res.status) {
         'ok'      { if ($res.output) { Write-Host $res.output } else { Write-Host '(no output)' -ForegroundColor DarkGray } }
         'skipped' { Write-Host '(skipped)' -ForegroundColor DarkGray }

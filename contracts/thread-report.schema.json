@@ -5,8 +5,9 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
-    "contract": 2,
+    "contract": 3,
     "$comment.contract2": "1 -> 2 on 2026-09-03: items gained 'area', the stored project label that show and report can now be narrowed by. A field added to the envelope is a format change, so the number moved and so did the surface below.",
+    "$comment.contract3": "2 -> 3 on 2026-09-04: the envelope gained 'areas', one {area, open} entry per area with open items over the WHOLE list, whatever the area selector narrowed to. Startup now narrows the report to the session's own area (the manifest's run entry passes -Area), and without this map the other projects' backlog would vanish from the brief rather than be summarised. Same rule as contract 2: a field added is a format change. The same bump made items[].notesLead OPTIONAL: narrowing alone left the JanetHome brief at 9,969 characters against a budget of about 8,000, and the leads were 1,827 of the report, so the startup entry now passes -NoLead as well. One bump, two changes, because they landed together.",
     "produces": "thread_report / janet thread report / scripts\\Get-ThreadReport.ps1",
     "script": "scripts\\Get-ThreadReport.ps1",
     "node": "script.get-thread-report",
@@ -16,10 +17,10 @@
 
   "type": "object",
   "additionalProperties": false,
-  "required": ["contract", "count", "active", "items", "notesLength", "error"],
+  "required": ["contract", "count", "active", "areas", "items", "notesLength", "error"],
   "properties": {
     "contract": {
-      "const": 2,
+      "const": 3,
       "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
     },
     "count": {
@@ -30,6 +31,27 @@
     "active": {
       "type": ["string", "null"],
       "description": "Topic in focus, or null. Nothing active is an ordinary state, not a fault -- do not read null as an error."
+    },
+    "areas": {
+      "type": "array",
+      "description": "The map of the WHOLE open list: one entry per area with at least one open item, sorted by area name case-insensitively, computed before either selector -- like 'active', it describes the list and not this answer. Present whether or not area narrowed, and empty only when nothing is open anywhere. '(unfiled)' appears as a row like any other when unlabelled items are open, and is absent rather than zero when none are. Completed items are never counted, whatever all= says: the map answers where the rest of the backlog is, and finished work is not backlog.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["area", "open"],
+        "properties": {
+          "area": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The resolved area label, as items[].area spells it, so it can be passed straight back as the area selector."
+          },
+          "open": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Open (active or parked) items filed under this area. Never zero: an area with nothing open has no row."
+          }
+        }
+      }
     },
     "notesLength": {
       "type": "integer",
@@ -45,7 +67,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["topic", "status", "refs", "next", "notesLead", "notesLength", "area"],
+        "required": ["topic", "status", "refs", "next", "notesLength", "area"],
         "properties": {
           "area": {
             "type": "string",
@@ -72,7 +94,7 @@
           },
           "notesLead": {
             "type": "string",
-            "description": "First NON-EMPTY line of the notes, trimmed, capped at 200 characters with a trailing ellipsis when cut. First non-empty rather than first, because notes built by appending begin with a blank line."
+            "description": "First NON-EMPTY line of the notes, trimmed, capped at 200 characters with a trailing ellipsis when cut. First non-empty rather than first, because notes built by appending begin with a blank line. OPTIONAL since contract 3: absent (the key, not an empty string) when the caller declined leads -- --no-lead, -NoLead, lead=false -- so that an item with no notes and an item whose lead was withheld cannot be confused. notesLength is carried either way."
           },
           "notesLength": {
             "type": "integer",

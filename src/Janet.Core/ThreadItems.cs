@@ -99,6 +99,9 @@ public sealed record ThreadShowResult(
 /// <remarks>
 /// NotesLead is the first non-empty line, trimmed and capped; NotesLength is the full size in
 /// characters, so the reader can tell a one-line note from a five-day log without carrying it.
+/// NotesLead is null when the caller asked for the map without leads (lead: false), and the
+/// serializer then omits the key rather than writing an empty string that would read as "this
+/// item has no notes". NotesLength is always carried, so the size withheld is still stated.
 /// Reporting the length rather than a bare truncation flag is the catalog's convention -- a
 /// response that truncates says so, and says by how much.
 ///
@@ -108,7 +111,15 @@ public sealed record ThreadShowResult(
 /// </remarks>
 public sealed record ThreadReportItem(
     string Topic, string Status, string Area, IReadOnlyList<string> Refs, string Next,
-    string NotesLead, int NotesLength);
+    string? NotesLead, int NotesLength);
+
+/// <summary>One area and how many OPEN items are filed under it.</summary>
+/// <remarks>
+/// Open, never total: the map exists so a narrowed report still says where the rest of the
+/// backlog is, and completed items are not backlog. Area is the resolved label, so the group of
+/// unlabelled items appears here as <see cref="ThreadItems.Unfiled"/> like any other.
+/// </remarks>
+public sealed record ThreadAreaCount(string Area, int Open);
 
 /// <summary>
 /// The list as a map rather than as its contents.
@@ -122,9 +133,16 @@ public sealed record ThreadReportItem(
 ///
 /// The question it answers is "where was I", which is what the text view has always answered
 /// (see ThreadJson.Render, first line only). This is that view for a machine reader.
+///
+/// Areas is the per-area map of the WHOLE open list -- one entry per area in use, with its open
+/// count, sorted by name -- and like Active it ignores the selectors. Added 2026-09-04 so that a
+/// report narrowed to one project still carries the shape of the backlog it left out: the
+/// startup brief narrows to the session's own area, and without this the other projects' work
+/// would simply vanish from it, which is the silent omission the envelope otherwise avoids.
 /// </remarks>
 public sealed record ThreadReportResult(
-    int Count, string? Active, IReadOnlyList<ThreadReportItem> Items, int NotesLength, string? Error);
+    int Count, string? Active, IReadOnlyList<ThreadAreaCount> Areas, IReadOnlyList<ThreadReportItem> Items,
+    int NotesLength, string? Error);
 
 /// <summary>
 /// The thread-item list: investigation topics with explicit focus.
@@ -614,19 +632,36 @@ public static class ThreadItems
     public static ThreadShowResult Show(
         string? path, bool all = false, string? topic = null, string? area = null)
     {
-        IReadOnlyList<ThreadItem> items;
-        string? error = null;
+        (IReadOnlyList<ThreadItem> items, string? error) = TryRead(path);
 
+        return Project(items, error, all, topic, area);
+    }
+
+    /// <summary>
+    /// The list, or an empty one plus the reason it could not be read.
+    /// </summary>
+    /// <remarks>
+    /// Split from <see cref="Show"/> so that <see cref="Report"/> can read the file ONCE and
+    /// derive both its narrowed answer and its whole-list map from the same bytes. Two reads
+    /// could straddle another session's write and hand back a map that disagrees with the items
+    /// beside it.
+    /// </remarks>
+    private static (IReadOnlyList<ThreadItem> Items, string? Error) TryRead(string? path)
+    {
         try
         {
-            items = Read(path);
+            return (Read(path), null);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
-            items = [];
-            error = ex.Message;
+            return ([], ex.Message);
         }
+    }
 
+    /// <summary>Show's projection of an already-read list: focus, then filter, then select.</summary>
+    private static ThreadShowResult Project(
+        IReadOnlyList<ThreadItem> items, string? error, bool all, string? topic, string? area)
+    {
         // Over the UNPROJECTED list, and this is the whole point of the field. 'active' means
         // "the focus of the list", not "the focus of this answer": computing it after a
         // selector had run would report null whenever the caller asked about some other item,
@@ -765,19 +800,49 @@ public static class ThreadItems
     /// unchanged, and a bad one throws from here for the same reason it throws from there.
     ///
     /// 'notesLength' totals the items ACTUALLY RETURNED, so a narrowed report states what its
-    /// own answer withheld rather than what the whole list holds.
+    /// own answer withheld rather than what the whole list holds. 'areas' is the opposite: it
+    /// is computed over the whole open list, before either selector, so the narrowed answer
+    /// still carries a map of what it left out -- the same rule 'active' follows.
+    ///
+    /// 'lead' false drops notesLead from every item. Measured 2026-09-04 on this machine's
+    /// list narrowed to JanetHome: the leads were 1,827 of a 5,430-character report inside a
+    /// 9,969-character startup brief, and the brief's budget is about 8,000. notesLength stays,
+    /// so what was withheld is still counted; 'next' stays, because it is the field the report
+    /// exists to deliver.
     /// </remarks>
     public static ThreadReportResult Report(
-        string? path, bool all = false, string? topic = null, string? area = null)
+        string? path, bool all = false, string? topic = null, string? area = null, bool lead = true)
     {
-        ThreadShowResult shown = Show(path, all, topic, area);
+        (IReadOnlyList<ThreadItem> items, string? error) = TryRead(path);
+
+        ThreadShowResult shown = Project(items, error, all, topic, area);
 
         return new ThreadReportResult(
             shown.Count,
             shown.Active,
+            AreaCounts(items),
             [.. shown.Items.Select(i => new ThreadReportItem(
-                i.Topic, i.Status, AreaOf(i), i.Refs, i.Next, Lead(i.Notes), i.Notes.Length))],
+                i.Topic, i.Status, AreaOf(i), i.Refs, i.Next, lead ? Lead(i.Notes) : null, i.Notes.Length))],
             shown.Items.Sum(i => i.Notes.Length),
             shown.Error);
     }
+
+    /// <summary>
+    /// One entry per area with OPEN items, sorted by name, over the whole list.
+    /// </summary>
+    /// <remarks>
+    /// Open items only, whatever 'all' says: the map answers "where is the rest of the backlog",
+    /// and finished work is not backlog. Grouped on the RESOLVED area so the unlabelled items
+    /// are one group named <see cref="Unfiled"/>, and absent entirely when none are open -- a
+    /// zero row would read as a category that exists, which is the guess this field avoids.
+    /// Ordered case-insensitively, the way <see cref="InArea"/> lists the areas in use, so the
+    /// two views of the same set agree.
+    /// </remarks>
+    public static IReadOnlyList<ThreadAreaCount> AreaCounts(IReadOnlyList<ThreadItem> items) =>
+    [
+        .. Live(items)
+            .GroupBy(AreaOf, StringComparer.Ordinal)
+            .Select(g => new ThreadAreaCount(g.Key, g.Count()))
+            .OrderBy(a => a.Area, StringComparer.OrdinalIgnoreCase)
+    ];
 }
