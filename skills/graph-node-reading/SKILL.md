@@ -47,11 +47,17 @@ those rather than trusting this file's age.
 2. **Read `incoming.byType`.** Very often you are done. A count answers "is this
    tested", "is this used", "how many implementations" without a single row.
 3. **Read `availableFields`.** It is a menu derived from *this* node: the edge
-   types it actually carries. It is not a static list, so it also tells you what
-   the node does *not* have.
+   types it carries, and the list properties it carries. It is not a static
+   list, so it also tells you what the node does *not* have.
 4. **Expand one thing.** `edges: "incoming"` plus `edgeType: "Calls"` when the
    counts say there is one Calls edge among 130 Covers. Ask for the list you
    named, not for everything.
+
+The node's own payload works the same way. Scalars come back inline, because
+they are what orients you and they are cheap. List properties -- a type's
+`methods`, a method's `throws` -- come back under `collections` as counts, and
+`fields` expands one by name or `"all"`. A type's `methods` list usually
+duplicates its outgoing `Contains` edges, so you rarely want it.
 
 ## What the fields mean
 
@@ -100,8 +106,13 @@ graph is an index; the span is what makes the index usable.
 
 ## Rules
 
-- **Never open with `edges: "all"`.** That is the old behaviour the narrowing
-  replaced. If you find yourself reaching for it, you have not read the counts.
+- **Never open with `edges: "all"` or `fields: "all"`.** That is the old
+  behaviour the narrowing replaced. If you find yourself reaching for either,
+  you have not read the counts.
+- **The rule underneath all of it**, worth carrying to any tool you build: send
+  the shape by default and the contents on request, and make the result say
+  what it is holding back. A count is not a partial answer; an unlabelled
+  omission is.
 - **A count is evidence; a zero is not proof.** `covering_tests` and the
   coverage counts are reachability. Zero means "no test reaches this by Calls or
   interface dispatch", and the tool's `caveat` names what it cannot follow.
