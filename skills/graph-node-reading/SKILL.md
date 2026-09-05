@@ -69,6 +69,28 @@ claims about itself. An early build applied the filter before the summary, and
 the first real call reported `outgoing.total: 0` on a node with an outgoing
 edge. A smaller answer is fine; a confidently wrong one is not.
 
+## Reading the source the node points at
+
+The node tells you what to read, not just where to look. Take
+`lineDocs ?? lineStart` through `lineEnd` and you have the declaration and its
+documentation, exactly -- no opening a file at a line number and guessing how
+far down to go.
+
+- `lineDocs` absent means **undocumented**, on a graph built 2026-09-05 or
+  later. On an older graph it means nothing was recorded. Check `loadedAt`
+  before reading absence as a fact.
+- Attributes sit between `lineDocs` and `lineStart`, because `lineStart` points
+  at the declaration rather than at the `[`. An attributed but undocumented
+  member therefore has attributes just above `lineStart` that no line names.
+- `fileWrittenSince: true` means the file changed after the graph was built.
+  The span is then a guess about a file that has moved. Rebuild rather than
+  reading it.
+
+There is deliberately no tool that hands back the source. The harness's own
+Read already returns line-numbered text with permissioning and file tracking,
+and a second reader inside the graph server would be a worse copy of it. The
+graph is an index; the span is what makes the index usable.
+
 ## Rules
 
 - **Never open with `edges: "all"`.** That is the old behaviour the narrowing
