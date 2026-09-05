@@ -28,6 +28,18 @@
             "statusMessage": "Asking the catalog first..."
           }
         ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$d = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }; $s = Join-Path $d 'scripts\\Invoke-DelegationGuard.ps1'; if (Test-Path $s) { & $s }",
+            "timeout": 20,
+            "statusMessage": "Checking the delegation prompt for RazorGraph..."
+          }
+        ]
       }
     ],
     "PostToolUse": [

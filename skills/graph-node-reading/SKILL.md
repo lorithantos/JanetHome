@@ -113,9 +113,15 @@ graph is an index; the span is what makes the index usable.
   the shape by default and the contents on request, and make the result say
   what it is holding back. A count is not a partial answer; an unlabelled
   omission is.
-- **A count is evidence; a zero is not proof.** `covering_tests` and the
-  coverage counts are reachability. Zero means "no test reaches this by Calls or
-  interface dispatch", and the tool's `caveat` names what it cannot follow.
+- **A count is evidence; a zero is not proof.** Coverage counts are
+  reachability. Zero means "no test reaches this by calls, interface dispatch,
+  or a base-class override", and the tool's `caveat` names what it cannot
+  follow.
+- **Coverage answers are paged, and the histogram is usually the answer.**
+  `depthCounts` describes the whole set whatever page you took. Depth 1 is
+  direct exercise; the deep bands are blast radius. Read the histogram, filter
+  with `depth`, and only then page with `offset: nextOffset`. `nextOffset` is
+  absent when you have seen everything.
 - **An unknown `edgeType` is refused, not answered empty.** The refusal lists
   what the node has. Read it rather than guessing again.
 - **`limit` caps rows, not truth.** `total` still tells you the size of what you
