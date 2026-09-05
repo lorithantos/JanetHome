@@ -102,7 +102,7 @@
     },
     {
       "text": "ADVISORY: subagent prompts for code analysis must carry explicit RazorGraph instructions -- tool names to load via ToolSearch, the graphId or saved-graph path, and the graph-first rule itself.",
-      "why": "Spawned agents inherit the tool surface but not the operating rules: nothing tells them the graph server exists, so they fall back to grep and speculation. Observed 2026-08-11 -- three exploration agents ran text-first until instructed mid-flight; their graph-verified second passes found facts the text passes missed (a live same-seed pairing site, complete consumer sets). The rule the session honours does not propagate by osmosis; it must be written into every prompt that delegates analysis."
+      "why": "Spawned agents inherit the tool surface but not the operating rules: nothing tells them the graph server exists, so they fall back to grep and speculation. Observed 2026-08-11 -- three exploration agents ran text-first until instructed mid-flight; their graph-verified second passes found facts the text passes missed (a live same-seed pairing site, complete consumer sets). The rule the session honours does not propagate by osmosis; it must be written into every prompt that delegates analysis. Recurred 2026-09-05 across four prompts in one session, which is what escalated this from advice to a gate -- the incident, and the root it shares with the controller's own graph use, are on note.subagent-delegation; the block to paste is skills\\agent-kickoff\\SKILL.md."
     },
     {
       "text": "ADVISORY: before an expensive query, name what you are trying to learn and the cheapest query that distinguishes the hypotheses.",
@@ -111,6 +111,10 @@
     {
       "text": "ADVISORY: add a thread item for work you surface but are not doing now; switch focus deliberately, and complete rather than abandon.",
       "why": "Debugging is depth-first and working memory is not, so the list is the unwind path. It replaced a push/pop stack on 2026-08-08: adding no longer displaces what is active, items can be amended in place, and completing retains the item instead of deleting it -- so recording work costs nothing and finishing it leaves a record (section 3)."
+    },
+    {
+      "text": "ADVISORY: when you wire a value through a seam, pin that the CONSUMER uses it. A test that the value can be read is not a test that it governs, and only a mutation puts the difference beyond doubt.",
+      "why": "2026-09-05, gamehub: config/combat.ini's [rates] section was wired through Combat and DemoWorld, tests were added, and the suite went green at 891. Nothing pinned that the world's rates came from the config it was HANDED, so a mutation putting a literal back into GuardRetreatWorld's constructor survived every one of them. The tests proved the value could be read and said nothing about what governed the fight -- the same defect the section already had, one layer up, which is what the work was supposed to fix. General shape: a value has a producer and a consumer, wiring is the edge between them, and asserting on the producer leaves the edge untested. The test that closed it builds the world on a sweep row restating the rates -- the seam's own mechanism rather than a fixture invented for the test, so it keeps working when the seam moves. Found by mutation, not by reading: break the subject, confirm the test fails, restore, report which mutation was used. A survivor is a finding to report, never a test to contrive around. Second dated instance of mutation checks earning their cost, after 2026-09-03 where two tests in one branch were green while proving nothing."
     },
     {
       "text": "ADVISORY: for multi-file mechanical edits, emit a JSON plan and run Invoke-SurgicalEdit.ps1 rather than hand-editing.",
