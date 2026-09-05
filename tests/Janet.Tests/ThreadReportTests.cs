@@ -373,12 +373,88 @@ public class ThreadReportTests : IDisposable
         throw new FileNotFoundException($"No contracts\\{name} above {AppContext.BaseDirectory}.");
     }
 
+    /// <summary>
+    /// An area nothing is filed under reports as an ordinary empty envelope, not a throw.
+    /// </summary>
+    /// <remarks>
+    /// Reversed on 2026-09-04 -- this asserted the throw until then. Startup narrows the report
+    /// to the session's own project, so opening a session in a repo with nothing on the list
+    /// turned the whole run entry into status=error with an exception text where a report
+    /// belonged. Lori's call: a repo with nothing in it should return a json like everything
+    /// else.
+    ///
+    /// The whole envelope is asserted, not just the count, because an empty answer is only
+    /// honest if every OTHER field still reads correctly: 'error' null says the list was read
+    /// fine (an empty answer and an unreadable list are different facts), notesLength zero says
+    /// nothing was withheld, and 'areas' still names every area with open work -- which is the
+    /// field that makes the empty answer informative rather than merely silent, and the reason
+    /// Show, which has no such field, keeps throwing.
+    /// </remarks>
     [Fact]
-    public void TheReportRefusesAnAreaNothingIsFiledUnder() =>
+    public void TheReportAnswersAnAreaNothingIsFiledUnderWithAnEmptyEnvelope()
+    {
+        string path = Seeded();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+        ThreadItems.Add(path, "gamehub scoring", area: "gamehub");
+
+        ThreadReportResult report = ThreadItems.Report(path, area: "SomeOtherRepo");
+
+        Assert.Equal(0, report.Count);
+        Assert.Empty(report.Items);
+        Assert.Null(report.Error);
+        Assert.Equal(0, report.NotesLength);
+
+        Assert.Equal(
+            [("(unfiled)", 1), ("gamehub", 1), ("RazorGraph", 1)],
+            report.Areas.Select(a => (a.Area, a.Open)));
+    }
+
+    /// <summary>
+    /// Show still refuses the very area the report now tolerates.
+    /// </summary>
+    /// <remarks>
+    /// The guard on the split, asserted on ONE list so the two answers cannot be explained by
+    /// different inputs. Show's envelope has no areas map, so an empty answer there would say
+    /// nothing at all and the throw's "Areas in use: ..." is strictly better. If someone ever
+    /// makes Show tolerant for symmetry, this is what says no.
+    /// </remarks>
+    [Fact]
+    public void ShowStillRefusesTheAreaTheReportNowTolerates()
+    {
+        string path = Seeded();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+
+        Assert.Empty(ThreadItems.Report(path, area: "SomeOtherRepo").Items);
+
         Assert.Contains(
-            "No item is filed under an area",
-            Assert.Throws<GraphException>(() => ThreadItems.Report(Seeded(), area: "SomeOtherRepo")).Message,
+            "Areas in use: (unfiled), RazorGraph",
+            Assert.Throws<GraphException>(() => ThreadItems.Show(path, area: "SomeOtherRepo")).Message,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A list with nothing in it at all still reports, whatever area was asked for.
+    /// </summary>
+    /// <remarks>
+    /// A separate path from the test above and worth its own: the refusal built a DIFFERENT
+    /// message here ("The list is empty, so no area is in use yet"), because there were no
+    /// known areas to name. Tolerating one branch and not the other would leave the brief
+    /// failing on exactly the machine that has never used the thread list.
+    /// </remarks>
+    [Fact]
+    public void AnEmptyListNarrowedToAnyAreaReportsRatherThanThrows()
+    {
+        ThreadReportResult report = ThreadItems.Report(Empty(), area: "SomeOtherRepo");
+
+        Assert.Equal(0, report.Count);
+        Assert.Empty(report.Items);
+        Assert.Empty(report.Areas);
+        Assert.Null(report.Error);
+        Assert.Equal(0, report.NotesLength);
+        Assert.Null(report.Active);
+    }
 
     [Fact]
     public void TheReporterAgreesWithShowAboutWhatIsThere()

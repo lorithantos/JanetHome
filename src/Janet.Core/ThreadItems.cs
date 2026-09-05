@@ -611,12 +611,15 @@ public static class ThreadItems
     /// unreadable. A corrupt or unreadable list is reported in-band through 'error', because
     /// this runs in the startup path and a mangled temp file must not stop a session from
     /// beginning -- 'error' means, and only means, "the list could not be read". A topic that
-    /// matches nothing, or an area nothing is filed under, is a CALLER error: there is no
-    /// degraded answer to give, and returning an empty list would say "no such work is open",
-    /// which is a different and false claim. Those throw <see cref="GraphException"/>, which
-    /// Surfaced.Filter re-throws as McpException so the message survives the MCP boundary
-    /// intact. Startup passes no selector, so the never-throws property is preserved exactly
-    /// where it is load-bearing.
+    /// matches nothing, or an area nothing is filed under, is a CALLER error HERE: there is no
+    /// degraded answer Show could give, and returning an empty list would say "no such work is
+    /// open", which is a different and false claim. Those throw <see cref="GraphException"/>,
+    /// which Surfaced.Filter re-throws as McpException so the message survives the MCP boundary
+    /// intact.
+    ///
+    /// Show refuses an unknown area and <see cref="Report"/> does not, since 2026-09-04, and
+    /// the asymmetry is deliberate rather than an oversight -- see Report's own remarks for
+    /// why the two envelopes can afford different answers to the same miss.
     ///
     /// A read failure wins over a selector: with nothing read there is nothing to select from,
     /// and "no item matches 'x'" would name the wrong cause.
@@ -659,8 +662,18 @@ public static class ThreadItems
     }
 
     /// <summary>Show's projection of an already-read list: focus, then filter, then select.</summary>
+    /// <param name="refuseUnknownArea">
+    /// False lets an area nothing is filed under narrow to nothing instead of throwing. Only
+    /// <see cref="Report"/> passes false: its envelope carries the areas map, so an empty answer
+    /// there still says where the work is. <see cref="Show"/> keeps the default.
+    /// </param>
     private static ThreadShowResult Project(
-        IReadOnlyList<ThreadItem> items, string? error, bool all, string? topic, string? area)
+        IReadOnlyList<ThreadItem> items,
+        string? error,
+        bool all,
+        string? topic,
+        string? area,
+        bool refuseUnknownArea = true)
     {
         // Over the UNPROJECTED list, and this is the whole point of the field. 'active' means
         // "the focus of the list", not "the focus of this answer": computing it after a
@@ -679,7 +692,7 @@ public static class ThreadItems
 
         if (!string.IsNullOrWhiteSpace(area))
         {
-            shown = InArea(shown, area);
+            shown = InArea(shown, area, refuseUnknownArea);
         }
 
         if (!string.IsNullOrWhiteSpace(topic))
@@ -691,7 +704,7 @@ public static class ThreadItems
     }
 
     /// <summary>
-    /// Narrows to one area, refusing an area nothing is filed under.
+    /// Narrows to one area, refusing an area nothing is filed under unless told to tolerate it.
     /// </summary>
     /// <remarks>
     /// A NARROWING selector, so case-insensitive Contains -- the house split is that an
@@ -701,14 +714,25 @@ public static class ThreadItems
     /// stay one group rather than being distributed into plausible neighbours.
     ///
     /// A miss names the areas actually in use, because the likeliest cause is a label that
-    /// reads differently from how it was stored.
+    /// reads differently from how it was stored. That message is the best answer available to
+    /// a caller whose envelope has nowhere to put "and here is where the work actually is";
+    /// <paramref name="refuseUnknown"/> false is for the caller whose envelope does.
     /// </remarks>
-    private static IReadOnlyList<ThreadItem> InArea(IReadOnlyList<ThreadItem> items, string area)
+    /// <param name="items">Already filtered by 'all'.</param>
+    /// <param name="area">Case-insensitive substring matched against the resolved area.</param>
+    /// <param name="refuseUnknown">
+    /// True throws on a miss; false returns the empty list. Decided 2026-09-04 by observation:
+    /// startup narrows the report to the session's own project, so opening a session in a repo
+    /// with nothing on the list turned the whole run entry into status=error with an exception
+    /// text where a report belonged.
+    /// </param>
+    private static IReadOnlyList<ThreadItem> InArea(
+        IReadOnlyList<ThreadItem> items, string area, bool refuseUnknown = true)
     {
         IReadOnlyList<ThreadItem> matched =
             [.. items.Where(i => AreaOf(i).Contains(area, StringComparison.OrdinalIgnoreCase))];
 
-        if (matched.Count > 0)
+        if (matched.Count > 0 || !refuseUnknown)
         {
             return matched;
         }
@@ -796,8 +820,18 @@ public static class ThreadItems
     /// <remarks>
     /// Reads through Show so the two cannot disagree about what "live" means, about which item
     /// is in focus, about which selector matched, or about how a corrupt file is reported. The
-    /// only difference is what is carried back. That includes the selectors: they are Show's,
-    /// unchanged, and a bad one throws from here for the same reason it throws from there.
+    /// only difference is what is carried back -- and, since 2026-09-04, what an unmatched
+    /// AREA does. An unresolvable 'topic' still throws from here for the same reason it throws
+    /// from there: there is exactly one right answer to "show me this item", and no envelope
+    /// can stand in for it. An area with nothing filed under it is not that. It is a legitimate
+    /// empty answer, and THIS envelope can say so completely, because 'areas' is computed over
+    /// the whole list before any selector: zero items, plus a map naming every area that does
+    /// have open work. Show has no such field, so the same empty answer there would carry no
+    /// information at all and the throw's "Areas in use: ..." is strictly better. Lori's call
+    /// on 2026-09-04, from opening a session in a repo with nothing on the list: startup
+    /// narrows this report to the session's own project, and the run entry came back
+    /// status=error with an exception text where a report belonged -- a repo with nothing in it
+    /// should return a json like everything else.
     ///
     /// 'notesLength' totals the items ACTUALLY RETURNED, so a narrowed report states what its
     /// own answer withheld rather than what the whole list holds. 'areas' is the opposite: it
@@ -815,7 +849,7 @@ public static class ThreadItems
     {
         (IReadOnlyList<ThreadItem> items, string? error) = TryRead(path);
 
-        ThreadShowResult shown = Project(items, error, all, topic, area);
+        ThreadShowResult shown = Project(items, error, all, topic, area, refuseUnknownArea: false);
 
         return new ThreadReportResult(
             shown.Count,
