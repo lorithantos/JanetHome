@@ -18,6 +18,18 @@
     gained ["-Area", "<this repo>"] so the brief carries one project's items and a
     per-area map of the rest instead of every open item on the machine.
 
+    An args token may contain {projectName}: the leaf name of -ProjectDir, which is
+    the repo the session will actually work in.  It exists because "<this repo>"
+    above was first written as the literal 'JanetHome', while this launcher's
+    stated usual case is loading Janet while working somewhere else -- so the brief
+    narrowed to the wrong repo, listing nine JanetHome items in full and showing
+    the session's own two as a bare count.  The area stays a manifest VALUE, which
+    is the property worth keeping; what changed is that the value names the session
+    rather than the repo Janet lives in.  Any other {token} is a problem: an
+    unrecognised one would otherwise reach the command as a literal brace string
+    and narrow to an area nothing is filed under, which returns an empty list and
+    reads as a clean backlog.
+
     Validation happens before anything executes, so a broken manifest reports all
     its problems at once rather than failing halfway through with side effects on
     disk.
@@ -26,6 +38,15 @@
     Manifest to execute.  Defaults to startup-manifest.json in the repo root
     (resolved from this script's own location, so there is no bootstrap
     dependency on $env:JanetBase already being set).
+
+.PARAMETER ProjectDir
+    The repo the session works in, which is not necessarily the repo Janet lives
+    in.  Defaults to $env:CLAUDE_PROJECT_DIR, then the current directory.  Two
+    things read it: the {projectName} args token, and the enforcedBy check, which
+    resolves hook paths against the project dir because that is the only place the
+    harness will look.  Start-Janet.ps1 passes its -Path, so both answer for the
+    session about to start rather than for whatever directory the launching shell
+    happened to be sitting in.
 
 .PARAMETER Text
     Formatted output for reading at a terminal.  The default is JSON: the brief's
@@ -87,6 +108,7 @@
 [CmdletBinding()]
 param(
     [string]$ManifestPath,
+    [string]$ProjectDir,
     [switch]$Text,
     [switch]$Pretty,
     [switch]$IncludeContent,
@@ -115,6 +137,20 @@ catch {
 # Set the framework variable before validation -- several scripts resolve paths
 # through it, including ones the manifest is about to run.
 $env:JanetBase = $repoRoot
+
+# The project dir is the repo the SESSION works in; $repoRoot is where Janet
+# lives, and the usual case is that they differ.  Resolved here rather than at
+# the enforcement check further down, because validation now reads it too: the
+# {projectName} args token is substituted before any run entry is bound.
+#
+# Assigning into the parameter is deliberate, not the $full/$text collision this
+# file warns about below.  There is exactly one $ProjectDir and an unset one has
+# no meaning to preserve, so defaulting in place is the whole intent -- but note
+# that any local named $ProjectDir anywhere in this script is now this parameter.
+if (-not $ProjectDir) {
+    $ProjectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
+}
+$projectName = Split-Path $ProjectDir -Leaf
 
 function Get-Prop {
     # ConvertFrom-Json returns PSCustomObject; reading an absent property is a
@@ -256,7 +292,7 @@ function Resolve-RunArguments {
     # problem at lint time, not a string quietly bound to the wrong parameter at
     # run time.  A positional value that itself begins with '-' is not supported;
     # nothing in this repo needs one, and saying so beats guessing.
-    param($Entry, [string]$Cmd, [string]$FullPath, [bool]$Exists)
+    param($Entry, [string]$Cmd, [string]$FullPath, [bool]$Exists, [string]$ProjectName)
     $result = [PSCustomObject]@{
         tokens     = @()
         named      = [ordered]@{}
@@ -277,6 +313,27 @@ function Resolve-RunArguments {
         return $result
     }
     $result.tokens = @([string[]]$value)
+
+    # Token substitution happens before binding, so what the brief reports under
+    # 'args' is what actually ran -- the resolved area, not the token.  That is the
+    # only place the brief says which repo it narrowed to, so a token surviving
+    # into the brief would leave nine items attributed to nothing.
+    #
+    # {projectName} is the only token, and an unrecognised one is a problem rather
+    # than a literal passed through.  Passing it through is the quiet failure:
+    # '-Area {repo}' matches nothing filed, and an empty item list is
+    # indistinguishable from a finished backlog.
+    if ($ProjectName) {
+        $result.tokens = @($result.tokens | ForEach-Object { $_ -replace '\{projectName\}', $ProjectName })
+    }
+    foreach ($token in $result.tokens) {
+        foreach ($unknown in [regex]::Matches($token, '\{[A-Za-z]\w*\}')) {
+            $result.problems += "run: 'args' for '$Cmd' contains unresolved token " +
+                                "'$($unknown.Value)'; the only token is {projectName}" +
+                                $(if (-not $ProjectName) { ' (no project name resolved)' })
+        }
+    }
+
     # A missing command is already reported; there is no metadata to check against.
     if (-not $Exists) { return $result }
     $parameters = (Get-Command $FullPath -ErrorAction Stop).Parameters
@@ -308,7 +365,7 @@ foreach ($entry in $runEntries) {
     $fullPath = Join-Path $repoRoot $cmd
     $exists = Test-Path $fullPath -PathType Leaf
     if (-not $exists) { $problems += "run: missing command '$cmd'" }
-    $arguments = Resolve-RunArguments $entry $cmd $fullPath $exists
+    $arguments = Resolve-RunArguments $entry $cmd $fullPath $exists $projectName
     foreach ($problem in $arguments.problems) { $problems += $problem }
     $runs += [PSCustomObject]@{
         cmd        = $cmd
@@ -343,11 +400,11 @@ for ($i = 0; $i -lt $rules.Count; $i++) {
     }
 }
 
-# Hooks load from the project dir, which is not necessarily this repo.
-$projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
+# Hooks load from the project dir, which is not necessarily this repo. Resolved
+# at the top of the script now, because the args token reads it during validation.
 $unwired = @()
 foreach ($rule in $rules) {
-    if (-not (Test-RuleEnforced $rule $projectDir)) {
+    if (-not (Test-RuleEnforced $rule $ProjectDir)) {
         $unwired += (Get-Prop $rule 'enforcedBy')
     }
 }
@@ -366,7 +423,7 @@ foreach ($rule in $rules) {
 $enforcementNotes = @()
 if ($unwired.Count -gt 0) {
     $enforcementNotes += "enforcement: $($unwired.Count) rule(s) labelled ENFORCED are not wired " +
-                         "for project dir '$projectDir' (missing: $($unwired -join ', ')). " +
+                         "for project dir '$ProjectDir' (missing: $($unwired -join ', ')). " +
                          "They are emitted as ADVISORY. Launch with '$repoRoot' as the project " +
                          "dir to arm them."
 }
@@ -406,11 +463,24 @@ foreach ($run in $runs) {
     # Two splats: the hashtable binds by name, the array fills what is left
     # positionally.  See Resolve-RunArguments for why the tokens cannot simply be
     # splatted as the array they arrived as.
+    # Both the error stream and the information stream are captured, and the exit
+    # code decides the status.  Only 6>&1 was redirected until 2026-09-04, which
+    # made a whole class of failure invisible: a run entry that is a shim over a
+    # CLI does not throw when the CLI fails, it writes to stderr and exits 1. The
+    # brief then carried status 'ok' with an EMPTY capture and no problem, and
+    # Start-Janet launched -- found by the tests for the {projectName} token, where
+    # narrowing to a repo with nothing filed made Get-ThreadReport exit 1 and the
+    # session got a blank thread report labelled ok. An empty string is the worst
+    # possible report of a failure, because it is what a clean result looks like.
+    #
+    # $LASTEXITCODE is reset first: it is a leftover from whatever ran last, and
+    # under StrictMode reading it before anything native has run is an error.
     $named = $run.named
     $positional = @($run.positional)
+    $global:LASTEXITCODE = 0
     try {
-        $output = (& $run.full @named @positional 6>&1 | Out-String).TrimEnd()
-        $status = 'ok'
+        $output = (& $run.full @named @positional 2>&1 6>&1 | Out-String).TrimEnd()
+        $status = if ($LASTEXITCODE -ne 0) { 'error' } else { 'ok' }
     }
     catch {
         $output = $_.Exception.Message
@@ -468,7 +538,7 @@ $rulesOut = @()
 foreach ($rule in $rules) {
     $line = Get-RuleText $rule -WithWhy:$Full
     if (-not $line) { continue }
-    if (-not (Test-RuleEnforced $rule $projectDir)) {
+    if (-not (Test-RuleEnforced $rule $ProjectDir)) {
         $line = $line -replace '^ENFORCED:', 'ADVISORY (claims ENFORCED; hook not wired here):'
     }
     $rulesOut += $line
@@ -586,7 +656,7 @@ if ($rules.Count -gt 0) {
     Write-Host 'OPERATING RULES' -ForegroundColor Cyan
     foreach ($rule in $rules) {
         $ruleText = Get-RuleText $rule
-        if (-not (Test-RuleEnforced $rule $projectDir)) {
+        if (-not (Test-RuleEnforced $rule $ProjectDir)) {
             $ruleText = $ruleText -replace '^ENFORCED:', 'ADVISORY (claims ENFORCED; hook not wired here):'
         }
         Write-Host "  - $ruleText"

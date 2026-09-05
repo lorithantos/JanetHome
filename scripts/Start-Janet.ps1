@@ -126,7 +126,12 @@ $claude = Resolve-Claude $ClaudePath
 
 # ---- Startup ---------------------------------------------------------------
 
-$startupArgs = @{ IncludeContent = $IncludeContent }
+# -ProjectDir is $Path, not this shell's location: startup runs BEFORE claude does,
+# so $env:CLAUDE_PROJECT_DIR is not set yet and the cwd is wherever the launcher was
+# invoked from. Both readers want the session's repo -- the {projectName} args token
+# that narrows the thread report, and the enforcedBy check that resolves hook paths
+# against the dir the harness will load them from.
+$startupArgs = @{ IncludeContent = $IncludeContent; ProjectDir = $Path }
 if ($ManifestPath) { $startupArgs['ManifestPath'] = $ManifestPath }
 
 $brief = $null

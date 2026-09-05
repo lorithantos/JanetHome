@@ -32,10 +32,22 @@ you can test it, and a broken entry is a hard failure instead of a quiet degrada
 
 `args` is optional: an array of strings handed to `cmd` as typed (`-Name value` binds by
 name, a lone `-Switch` is a switch, the rest is positional), so one script can run narrowed
-differently from each repo's manifest -- the thread report here takes `["-Area", "JanetHome", "-NoLead"]`.
+per session -- the thread report takes `["-Area", "{projectName}", "-NoLead"]`.
 Anything that is not an array of strings, or names a parameter the command does not declare,
 fails validation like any other unresolved entry. Added 2026-09-04, when a manifest `cmd` was
 still a bare path and the only way to pass an argument was a one-line forwarder script.
+
+`{projectName}` is the leaf of the session's project directory, substituted before binding;
+any other `{token}` fails validation. It replaced a literal `"JanetHome"` the same day,
+which is worth keeping as the cautionary case: narrowing the brief was right, and narrowing
+it to the repo the *tooling* lives in rather than the repo the *session* works in made it
+confidently wrong. The brief got 5.7x smaller by hiding exactly the items that mattered, and
+nothing failed -- the launcher's own documented usual case is loading the framework while
+working somewhere else. **A parameter that names one environment inside a tool used from
+many is a constant wearing a value's clothes.** The general form: when you narrow a view,
+the narrowing key belongs to the caller's context, and it has to fail loudly when it does
+not resolve -- an unrecognised token here is a hard stop precisely because filtering to a
+category nothing is filed under returns an empty list that reads as good news.
 
 **The lesson underneath it:** prefer contracts that fail loudly over documents that
 degrade quietly. This generalizes well past agent startup.
