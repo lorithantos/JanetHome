@@ -20,9 +20,14 @@ public static class ThreadTools
     [Description(
         "The investigation topics from this session and the last, with which one is in focus. " +
         "Read this when resuming work, or when you have lost the thread of what you were doing. " +
-        "Pass topic to read ONE item in full, or area to see only one project's items -- the " +
-        "list is shared by every repo on this machine, so an unnarrowed read is mostly someone " +
-        "else's work. Completed items are excluded unless all=true -- nothing is ever deleted. " +
+        "Each item's 'notes' is a LEAD by default -- the first non-empty line, capped at 200 " +
+        "characters, the same lead thread_report carries -- with 'notesLength' (the stored " +
+        "size) beside it and 'notesTruncated': true whenever the lead is not the whole text. " +
+        "To read one item's notes whole, pass topic AND full=true; full is refused with area " +
+        "or with no selector, because notes are returned one item at a time. Pass area to see " +
+        "only one project's items -- the list is shared by every repo on this machine, so an " +
+        "unnarrowed read is mostly someone else's work. Completed items are excluded unless " +
+        "all=true -- nothing is ever deleted. " +
         "'active' always names the focus of the WHOLE list, not of the narrowed answer, so it " +
         "does not become null just because you asked about a different item. A topic that " +
         "matches nothing or several items, and an area nothing is filed under, are refused with " +
@@ -35,15 +40,20 @@ public static class ThreadTools
     public static string Show(
         [Description("Include completed items as well as open ones.")] bool all = false,
         [Description(
-            "Substring of ONE item's topic, case-insensitive. Returns that item with its notes " +
-            "in full. Ambiguous is refused with every candidate named, never resolved to the " +
-            "first match. A '*' is a literal asterisk, not a wildcard.")]
+            "Substring of ONE item's topic, case-insensitive. Returns that item; add full=true " +
+            "for its notes whole. Ambiguous is refused with every candidate named, never " +
+            "resolved to the first match. A '*' is a literal asterisk, not a wildcard.")]
         string? topic = null,
         [Description(
             "Area to narrow to, case-insensitive substring. '(unfiled)' is the group of items " +
             "with no area set -- items are never guessed into a neighbouring area.")]
-        string? area = null) =>
-        ThreadJson.Serialize(ThreadItems.Show(null, all, topic, area));
+        string? area = null,
+        [Description(
+            "Return the selected item's notes whole instead of the lead. Allowed ONLY with " +
+            "topic; refused with area or with no selector, since expanding notes across a set " +
+            "is the oversized read the lead exists to prevent.")]
+        bool full = false) =>
+        ThreadJson.Serialize(ThreadItems.Show(null, all, topic, area, full));
 
     [McpServerTool(Name = "thread_report")]
     [Description(
@@ -85,7 +95,10 @@ public static class ThreadTools
         "something costs you nothing. Refuses a topic that already exists rather than creating " +
         "a second one that selectors cannot tell apart. Set area to the project this belongs " +
         "to: the list is shared by every repo on this machine, and an unfiled item is only " +
-        "findable by reading all of them.")]
+        "findable by reading all of them. Notes are CAPPED at 8,000 characters " +
+        "(JANET_NOTES_BUDGET overrides) and next at 1,000; a write over either is refused " +
+        "whole, with the escape named: put long-form in a catalogued note under notes\\ and " +
+        "reference it from refs.")]
     public static string Add(
         [Description("What the investigation is about. One line, distinctive enough to select on.")]
         string topic,
@@ -111,12 +124,20 @@ public static class ThreadTools
         "which is how you drop a resume cursor that no longer applies. Select by topic " +
         "(case-insensitive substring); with none, this acts on whatever is in focus. " +
         "An ambiguous topic is refused and both candidates named, rather than resolved to a " +
-        "first match -- amending the wrong item is how notes get lost.")]
+        "first match -- amending the wrong item is how notes get lost. Notes are CAPPED at " +
+        "8,000 characters (JANET_NOTES_BUDGET overrides) and next at 1,000, measured on what " +
+        "the item would hold AFTER the write -- so an appendNotes that crosses the ceiling is " +
+        "refused whole, not trimmed. The escape: write the long-form to notes\\<slug>.md, " +
+        "`janet research add` it as note.<slug>, put the id in refs, and REPLACE notes with a " +
+        "shorter working log. Writes that leave notes and next alone (status, refs, area) " +
+        "still succeed on an item already over the ceiling.")]
     public static string Update(
         [Description("Substring of the topic to act on. Omit to act on the item in focus.")]
         string? topic = null,
         [Description(RetiredIndex)] int? index = null,
-        [Description("Replacement notes, or empty to clear. Omit to leave alone.")]
+        [Description(
+            "Replacement notes, or empty to clear. Omit to leave alone. The result -- replaced " +
+            "or appended -- must fit the 8,000-character ceiling.")]
         string? notes = null,
         [Description("Replacement resume cursor, or empty to clear. Omit to leave alone.")]
         string? next = null,

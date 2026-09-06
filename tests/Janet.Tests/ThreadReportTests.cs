@@ -17,6 +17,7 @@ namespace Janet.Tests;
 /// notes silently would look complete and read as "these items have no notes". Every test here
 /// is ultimately about notesLength being present and right.
 /// </remarks>
+[Collection("thread store")]
 public class ThreadReportTests : IDisposable
 {
     private readonly List<string> _directories = [];

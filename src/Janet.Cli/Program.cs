@@ -108,8 +108,10 @@ static int Thread(Args args)
         // names one item and --area narrows to a group. Neither is capped, and a miss is
         // refused rather than answered with an empty list -- see ThreadItems.Show.
         case "show":
+            // --full is refused by Core without --topic: notes come back one item at a time.
             ThreadShowResult shown = ThreadItems.Show(
-                path, args.Flag("--all"), args.Value("--topic"), args.Value("--area"));
+                path, args.Flag("--all"), args.Value("--topic"), args.Value("--area"),
+                full: args.Flag("--full"));
 
             Console.Out.WriteLine(args.Flag("--text")
                 ? ThreadJson.Render(shown)
@@ -697,7 +699,11 @@ static int Usage()
                               (moves every inbound link with the node; prose mentions are
                               reported on stderr, never rewritten)
 
-        janet thread show     [--all] [--topic TEXT] [--area TEXT] [--text] [--pretty]
+        janet thread show     [--all] [--topic TEXT] [--area TEXT] [--full] [--text] [--pretty]
+                              (each item's notes is a LEAD -- first non-empty line, capped at
+                               200 -- with notesLength and notesTruncated beside it; --full
+                               returns the notes whole and needs --topic: notes are read one
+                               item at a time, never expanded across a set)
         janet thread report   [--all] [--topic TEXT] [--area TEXT] [--no-lead] [--text] [--pretty]
                               (topics, focus and note SIZES -- the map, not the bodies;
                                --no-lead drops each item's notesLead and keeps notesLength)
@@ -766,6 +772,12 @@ static int Usage()
         Thread commands: [--path FILE]   (defaults to Janet\thread-stack.json under %TEMP%)
         No selector means whatever is active. An ambiguous topic is refused, not guessed at.
         On update, an omitted --notes/--next/--ref leaves the field alone; --next '' clears it.
+        Notes are CAPPED at 8,000 characters (JANET_NOTES_BUDGET overrides) and --next at
+        1,000, measured on what the item would hold after the write, so an --append-notes that
+        crosses the ceiling is refused whole. Long-form belongs in a catalogued note: write it
+        to notes\<slug>.md, research add it as note.<slug>, put the id in --ref, and replace
+        the notes with a shorter working log. Status, ref and area writes still succeed on an
+        item already over the ceiling.
 
         Every research command: [--base DIR] [--graph PATH]
         (graph defaults to research.json in JanetBase)

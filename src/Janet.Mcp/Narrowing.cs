@@ -30,9 +30,9 @@ internal static class Narrowing
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["thread_show"] =
-                "pass topic for one item's notes in full, or area for one project's items; " +
-                "thread_report gives the whole map -- topics, focus and note sizes -- without " +
-                "the note bodies.",
+                "pass topic for one item (with full=true for its notes whole), or area for one " +
+                "project's items; drop full if you set it. thread_report gives the whole map -- " +
+                "topics, focus and note sizes -- without the note bodies.",
             ["thread_report"] =
                 "pass area for one project's items or topic for one; drop all=true if you set it.",
             ["thread_add"] = BoundedByConstruction,

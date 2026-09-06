@@ -93,7 +93,35 @@ public sealed record ThreadActiveResult(
 /// it. A caller that ignores the field gets an empty list, which is the honest degraded answer.
 /// </remarks>
 public sealed record ThreadShowResult(
-    int Count, string? Active, IReadOnlyList<ThreadItem> Items, string? Error);
+    int Count, string? Active, IReadOnlyList<ThreadShownItem> Items, string? Error);
+
+/// <summary>
+/// One item as Show carries it: the stored fields, with Notes as a LEAD unless the caller asked
+/// for the one item in full.
+/// </summary>
+/// <remarks>
+/// A separate record from <see cref="ThreadItem"/> because what is returned is no longer what
+/// is stored. Since 2026-09-05 Show returns the same lead the report does (first non-empty line,
+/// capped at 200) and states the withheld size beside it; before that it returned every note
+/// body whatever the selector, which is how a single read reached 238,552 characters.
+///
+/// NotesLength is always the STORED size, so a reader can tell a one-line note from a
+/// five-day log without carrying it. NotesTruncated is true whenever Notes is not the whole
+/// stored text -- a second line, a lead over the cap, even surrounding whitespace -- so "what
+/// you have is not all of it" is stated rather than left for a reader to notice. Both are
+/// carried even under full, where the flag is simply false.
+///
+/// Area is the STORED label, empty for an unfiled item, exactly as on ThreadItem; the JSON
+/// envelope resolves it to <see cref="ThreadItems.Unfiled"/> on the way out, as it always has.
+/// </remarks>
+public sealed record ThreadShownItem(
+    string Topic, string Status, IReadOnlyList<string> Refs, string Next, string Notes, string Area,
+    int NotesLength, bool NotesTruncated)
+{
+    public bool IsActive => string.Equals(Status, ThreadItems.Active, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsDone => string.Equals(Status, ThreadItems.Done, StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>One item as the reporter sees it: everything except the note body.</summary>
 /// <remarks>
@@ -301,8 +329,12 @@ public static class ThreadItems
     }
 
     /// <summary>The area an item is filed under, or <see cref="Unfiled"/> where it has none.</summary>
-    public static string AreaOf(ThreadItem item) =>
-        string.IsNullOrWhiteSpace(item.Area) ? Unfiled : item.Area;
+    public static string AreaOf(ThreadItem item) => AreaOf(item.Area);
+
+    /// <summary>The same resolution for an item as Show carries it.</summary>
+    public static string AreaOf(ThreadShownItem item) => AreaOf(item.Area);
+
+    private static string AreaOf(string area) => string.IsNullOrWhiteSpace(area) ? Unfiled : area;
 
     /// <summary>The topic in focus, or null. Nothing active is an ordinary state, not a fault.</summary>
     public static string? ActiveTopic(IEnumerable<ThreadItem> items) =>
@@ -410,6 +442,51 @@ public static class ThreadItems
 
     // ---- writing -----------------------------------------------------------------------
 
+    /// <summary>
+    /// Refuses a write whose notes or next would leave the item over its ceiling, or whose text
+    /// is the body of a mangled tool call. Null means the field is not being written, and is
+    /// neither measured nor scanned.
+    /// </summary>
+    /// <remarks>
+    /// THE ONE PLACE. Add, Update with replacement notes and Update with appended notes each
+    /// pass through here, so a check that one path forgot cannot exist.
+    ///
+    /// Two checks, two inputs. The ceiling measures <paramref name="notesAfter"/>, what the
+    /// item WOULD hold -- an append's result -- because the bound is on the item. The markup
+    /// guard scans <paramref name="notesWritten"/>, what the caller SENT -- an append's
+    /// fragment -- because items whose notes describe the markup bug with the literal tags
+    /// exist, the item tracking the guard among them, and must stay amendable.
+    ///
+    /// Only the fields being written are measured, deliberately. Items over the ceiling exist
+    /// (the live list held several when this arrived, 2026-09-05) and must stay amendable in
+    /// status, refs, area and next, or the ceiling would freeze exactly the items it was meant
+    /// to shrink. The escape the refusal names -- move the long-form to a catalogued note and
+    /// REPLACE notes with something shorter -- is itself a notes write, and it passes because
+    /// the result is measured, not the item's past.
+    ///
+    /// The ceiling is read per call rather than cached, so <see cref="NotesBudget.EnvironmentVariable"/>
+    /// takes effect on the next write without a restart, as the result budget's does.
+    /// </remarks>
+    private static void EnsureWritable(
+        string topic, string? notesAfter, string? notesWritten, string? next, string? area)
+    {
+        MalformedInput.Ensure("notes", topic, notesWritten);
+        MalformedInput.Ensure("next", topic, next);
+        MalformedInput.Ensure("area", topic, area);
+
+        int ceiling = NotesBudget.Current;
+
+        if (notesAfter is not null && notesAfter.Length > ceiling)
+        {
+            throw new GraphException(NotesBudget.NotesRefusal(topic, notesAfter.Length, ceiling));
+        }
+
+        if (next is not null && next.Length > NotesBudget.NextCeiling)
+        {
+            throw new GraphException(NotesBudget.NextRefusal(topic, next.Length));
+        }
+    }
+
     private static T Write<T>(string? path, Func<List<ThreadItem>, T> operation)
         where T : IBatchedResult<T> =>
         WriteQueue.Submit(
@@ -435,6 +512,11 @@ public static class ThreadItems
         {
             throw new GraphException("A thread item needs a topic.");
         }
+
+        // Before the queue: nothing here depends on what is already on disk. Topic is scanned
+        // on add alone; on update it is the stored item's, not text the caller sent.
+        MalformedInput.Ensure("topic", topic, topic);
+        EnsureWritable(topic, notesAfter: notes, notesWritten: notes, next, area);
 
         return Write(path, items =>
         {
@@ -504,13 +586,18 @@ public static class ThreadItems
             ThreadItem item = items[target];
             List<string> changed = [];
 
-            if (notes is not null)
-            {
-                item = item with
-                {
-                    Notes = appendNotes && item.Notes.Length > 0 ? item.Notes + "\n\n" + notes : notes,
-                };
+            // The RESULT of an append is what is measured, not the fragment: the ceiling is on
+            // what the item holds, and an append is how an item gets there a paragraph at a
+            // time. Measured inside the queue, against the text this batch actually read.
+            string? resultingNotes = notes is null
+                ? null
+                : appendNotes && item.Notes.Length > 0 ? item.Notes + "\n\n" + notes : notes;
 
+            EnsureWritable(item.Topic, notesAfter: resultingNotes, notesWritten: notes, next, area);
+
+            if (resultingNotes is not null)
+            {
+                item = item with { Notes = resultingNotes };
                 changed.Add("notes");
             }
 
@@ -627,18 +714,60 @@ public static class ThreadItems
     /// Neither selector is capped. An explicit selector means the caller already knows what
     /// they asked for, and truncating it would hide answers -- the rule CatalogQuery and ApiDoc
     /// both state where they cap free-text ranking and nothing else.
+    ///
+    /// Notes come back as a LEAD by default since 2026-09-05 -- the same <see cref="Lead"/> the
+    /// report carries, so the two views agree -- with the stored size and a truncation flag
+    /// beside each. <paramref name="full"/> returns the whole text, and is allowed ONLY with a
+    /// topic. That is the invariant note.thread-item-projection records: notes are returned one
+    /// item at a time, and a flag that expanded them across an area or the whole list would
+    /// re-create the original defect exactly, one option away from the default.
     /// </remarks>
     /// <param name="path">List file, or null for the well-known one.</param>
     /// <param name="all">Include completed items.</param>
     /// <param name="topic">Case-insensitive substring naming exactly ONE item.</param>
     /// <param name="area">Case-insensitive substring narrowing to one area's items.</param>
+    /// <param name="full">Carry the one selected item's notes whole. Refused without a topic.</param>
     public static ThreadShowResult Show(
-        string? path, bool all = false, string? topic = null, string? area = null)
+        string? path, bool all = false, string? topic = null, string? area = null, bool full = false)
     {
+        if (full && string.IsNullOrWhiteSpace(topic))
+        {
+            throw new GraphException(
+                "full expands notes, and notes are returned one item at a time: pass topic to " +
+                "name the ONE item you want whole. Expanding notes across an area or the whole " +
+                "list is refused because it re-creates the oversized read that the lead and " +
+                "thread_report exist to prevent (note.thread-item-projection). Read the map " +
+                "with thread_report, then ask for one item by topic.");
+        }
+
         (IReadOnlyList<ThreadItem> items, string? error) = TryRead(path);
 
-        return Project(items, error, all, topic, area);
+        Projection shown = Project(items, error, all, topic, area);
+
+        return new ThreadShowResult(
+            shown.Items.Count, shown.Active, [.. shown.Items.Select(i => Shown(i, full))], shown.Error);
     }
+
+    /// <summary>One stored item as Show carries it: lead or whole notes, and the size either way.</summary>
+    private static ThreadShownItem Shown(ThreadItem item, bool full)
+    {
+        string notes = full ? item.Notes : Lead(item.Notes);
+
+        return new ThreadShownItem(
+            item.Topic, item.Status, item.Refs, item.Next, notes, item.Area,
+            item.Notes.Length, !string.Equals(notes, item.Notes, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// What both readers derive their answer from: focus, then the filtered and selected items,
+    /// still as stored.
+    /// </summary>
+    /// <remarks>
+    /// Private, and not <see cref="ThreadShowResult"/>, because Show projects notes on the way
+    /// out and Report needs them whole to measure and lead them. One shared projection with two
+    /// renderings is what keeps the two views agreeing about membership and focus.
+    /// </remarks>
+    private sealed record Projection(string? Active, IReadOnlyList<ThreadItem> Items, string? Error);
 
     /// <summary>
     /// The list, or an empty one plus the reason it could not be read.
@@ -667,7 +796,7 @@ public static class ThreadItems
     /// <see cref="Report"/> passes false: its envelope carries the areas map, so an empty answer
     /// there still says where the work is. <see cref="Show"/> keeps the default.
     /// </param>
-    private static ThreadShowResult Project(
+    private static Projection Project(
         IReadOnlyList<ThreadItem> items,
         string? error,
         bool all,
@@ -685,7 +814,7 @@ public static class ThreadItems
 
         if (error is not null)
         {
-            return new ThreadShowResult(0, active, [], error);
+            return new Projection(active, [], error);
         }
 
         IReadOnlyList<ThreadItem> shown = all ? items : Live(items);
@@ -700,7 +829,7 @@ public static class ThreadItems
             shown = [Only(shown, topic)];
         }
 
-        return new ThreadShowResult(shown.Count, active, shown, error);
+        return new Projection(active, shown, error);
     }
 
     /// <summary>
@@ -849,10 +978,10 @@ public static class ThreadItems
     {
         (IReadOnlyList<ThreadItem> items, string? error) = TryRead(path);
 
-        ThreadShowResult shown = Project(items, error, all, topic, area, refuseUnknownArea: false);
+        Projection shown = Project(items, error, all, topic, area, refuseUnknownArea: false);
 
         return new ThreadReportResult(
-            shown.Count,
+            shown.Items.Count,
             shown.Active,
             AreaCounts(items),
             [.. shown.Items.Select(i => new ThreadReportItem(

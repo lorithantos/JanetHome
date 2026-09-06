@@ -273,8 +273,8 @@ public static class Program
     /// <remarks>
     /// Both halves are recorded: the list after the operation, byte for byte, and what the
     /// script printed. The file is the state machine; the stdout is the contract every caller
-    /// reads, and Show-ThreadItems' envelope is consumed by startup itself. A port could match
-    /// one and be wrong about the other.
+    /// reads. A port could match one and be wrong about the other. Write verbs only since
+    /// 2026-09-05: see the note on Cases.Threads for why show is no longer recorded.
     /// </remarks>
     private static int WriteThreads(string scripts, string seed, string goldens, string work, string repoRoot)
     {

@@ -12,7 +12,12 @@ namespace Janet.Tests;
 /// most here are the ones about not losing anything: nothing is removed, a completion is a
 /// status change, an ambiguous selector refuses rather than guessing, and concurrent writers
 /// all survive.
+///
+/// In the "thread store" collection with every other class that writes items, because
+/// ThreadNotesCeilingTests sets JANET_NOTES_BUDGET on the process and a write here racing that
+/// window would be refused for a reason this file never mentions.
 /// </remarks>
+[Collection("thread store")]
 public class ThreadItemTests : IDisposable
 {
     private readonly List<string> _directories = [];
@@ -66,7 +71,7 @@ public class ThreadItemTests : IDisposable
         string path = Empty();
         File.WriteAllText(path, """[{"topic":"old shape","status":"active","notes":"kept"}]""");
 
-        ThreadItem item = Assert.Single(ThreadItems.Show(path).Items);
+        ThreadShownItem item = Assert.Single(ThreadItems.Show(path).Items);
 
         Assert.Equal("old shape", item.Topic);
         Assert.Equal("kept", item.Notes);
@@ -239,7 +244,7 @@ public class ThreadItemTests : IDisposable
 
         ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, next: "");
 
-        ThreadItem item = ThreadItems.Show(path).Items.Single(i => i.Topic == "cache eviction");
+        ThreadShownItem item = ThreadItems.Show(path).Items.Single(i => i.Topic == "cache eviction");
 
         Assert.Equal(string.Empty, item.Next);
         Assert.Equal(["note.cache"], item.Refs);
@@ -261,9 +266,11 @@ public class ThreadItemTests : IDisposable
         ThreadItems.Update(path, new ThreadSelector { Topic = "cache warming" },
             notes: "ruled out threading", appendNotes: true);
 
+        // Whole notes are read one item at a time: topic plus full. The default read would
+        // carry only the lead, "not started", and say so with notesTruncated.
         Assert.Equal(
             "not started\n\nruled out threading",
-            ThreadItems.Show(path).Items.Single(i => i.Topic == "cache warming").Notes);
+            Assert.Single(ThreadItems.Show(path, topic: "cache warming", full: true).Items).Notes);
     }
 
     /// <summary>Appending to empty notes does not leave a blank line at the top.</summary>
@@ -421,21 +428,23 @@ public class ThreadItemTests : IDisposable
         return path;
     }
 
-    /// <summary>A topic returns that one item, with everything it holds.</summary>
+    /// <summary>A topic with full returns that one item, with everything it holds.</summary>
     /// <remarks>
     /// Notes in full, which is the point of asking for one item rather than the list: the
     /// report exists to answer "where was I" cheaply, and this is the expensive question asked
-    /// deliberately about a single item.
+    /// deliberately about a single item. Since 2026-09-05 it is asked with full=true; the
+    /// default read of the same item carries the lead. ThreadNotesCeilingTests pins the rest.
     /// </remarks>
     [Fact]
     public void ATopicReturnsExactlyThatItemWithItsNotesInFull()
     {
-        ThreadShowResult shown = ThreadItems.Show(Filed(), topic: "eviction");
+        ThreadShowResult shown = ThreadItems.Show(Filed(), topic: "eviction", full: true);
 
-        ThreadItem item = Assert.Single(shown.Items);
+        ThreadShownItem item = Assert.Single(shown.Items);
 
         Assert.Equal("cache eviction", item.Topic);
         Assert.Equal("Ruled out the TTL.\nSecond line.", item.Notes);
+        Assert.False(item.NotesTruncated);
         Assert.Equal(1, shown.Count);
     }
 
@@ -693,7 +702,7 @@ public class ThreadItemTests : IDisposable
             ]
             """);
 
-        IReadOnlyList<ThreadItem> items = ThreadItems.Show(path).Items;
+        IReadOnlyList<ThreadShownItem> items = ThreadItems.Show(path).Items;
 
         Assert.All(items, i => Assert.Equal(string.Empty, i.Area));
         Assert.All(items, i => Assert.Equal(ThreadItems.Unfiled, ThreadItems.AreaOf(i)));
@@ -741,7 +750,7 @@ public class ThreadItemTests : IDisposable
 
         Parallel.For(0, writers, i => ThreadItems.Add(path, $"topic {i:00}"));
 
-        IReadOnlyList<ThreadItem> items = ThreadItems.Show(path, all: true).Items;
+        IReadOnlyList<ThreadShownItem> items = ThreadItems.Show(path, all: true).Items;
 
         Assert.Equal(writers, items.Count);
 
@@ -766,7 +775,7 @@ public class ThreadItemTests : IDisposable
         Parallel.ForEach(topics, topic =>
             ThreadItems.Update(path, new ThreadSelector { Topic = topic }, notes: $"note for {topic}"));
 
-        IReadOnlyList<ThreadItem> items = ThreadItems.Show(path).Items;
+        IReadOnlyList<ThreadShownItem> items = ThreadItems.Show(path).Items;
 
         Assert.All(topics, topic =>
             Assert.Equal($"note for {topic}", items.Single(i => i.Topic == topic).Notes));

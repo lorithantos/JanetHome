@@ -114,16 +114,34 @@ public static class ThreadJson
     /// consumer reading positionally -- or a golden comparing field by field -- sees an
     /// addition rather than a rearrangement. It is the resolved label, so it is always a
     /// non-empty string and a reader never has to know that unfiled is stored as "".
+    ///
+    /// 'notesLength' and 'notesTruncated' follow it, since 2026-09-05, by the same rule.
+    /// 'notes' now carries the lead unless the caller asked for one item in full, and the two
+    /// fields beside it are what make that honest: the stored size is always stated, and the
+    /// flag is written ONLY when true -- an absent key means "this is the whole text", so a
+    /// reader who sees no flag has nothing to go back for, and one who sees it knows to pass
+    /// full=true with the topic.
     /// </remarks>
-    private static JsonNode Item(ThreadItem item) => new JsonObject
+    private static JsonNode Item(ThreadShownItem item)
     {
-        ["topic"] = item.Topic,
-        ["status"] = item.Status,
-        ["refs"] = Strings(item.Refs),
-        ["next"] = item.Next,
-        ["notes"] = item.Notes,
-        ["area"] = ThreadItems.AreaOf(item),
-    };
+        JsonObject node = new()
+        {
+            ["topic"] = item.Topic,
+            ["status"] = item.Status,
+            ["refs"] = Strings(item.Refs),
+            ["next"] = item.Next,
+            ["notes"] = item.Notes,
+            ["area"] = ThreadItems.AreaOf(item),
+            ["notesLength"] = item.NotesLength,
+        };
+
+        if (item.NotesTruncated)
+        {
+            node["notesTruncated"] = true;
+        }
+
+        return node;
+    }
 
     /// <summary>
     /// The reporter's envelope: the list as a map, with the note bodies left on disk.
@@ -277,10 +295,12 @@ public static class ThreadJson
 
         List<string> lines = [];
 
-        foreach (ThreadItem item in result.Items)
+        foreach (ThreadShownItem item in result.Items)
         {
             string icon = item.IsActive ? ">>>" : item.IsDone ? " x " : "   ";
-            lines.Add($"{icon} {item.Status.PadRight(7)} {Filed(ThreadItems.AreaOf(item))}{item.Topic}");
+            string size = item.NotesTruncated ? $" ({item.NotesLength:N0} chars of notes)" : string.Empty;
+
+            lines.Add($"{icon} {item.Status.PadRight(7)} {Filed(ThreadItems.AreaOf(item))}{item.Topic}{size}");
 
             if (item.Refs.Count > 0)
             {
@@ -295,7 +315,8 @@ public static class ThreadJson
             if (item.Notes.Length > 0)
             {
                 // First line only, truncated. The list is a map of where you were, not the
-                // notes themselves -- reading those is what the JSON is for.
+                // notes themselves -- reading those is what the JSON is for. Notes here are
+                // already the lead unless the caller asked for one item in full.
                 string first = item.Notes.Replace("\r\n", "\n").Split('\n')[0];
 
                 lines.Add("            " + (first.Length > 100 ? first[..100] + "..." : first));

@@ -301,9 +301,11 @@ public static class Cases
 
         new("thread clear active", "Set-ActiveThread.ps1", ["-None"]),
 
-        new("thread show", "Show-ThreadItems.ps1", []),
-
-        new("thread show all", "Show-ThreadItems.ps1", ["-All"]),
+        // No "show" cases. Dropped 2026-09-05, when an unnarrowed show stopped returning every
+        // note whole and started returning a lead per item: the recorded envelope is the
+        // behaviour that was retired, and keeping the case meant hand-editing an expectation,
+        // which is the one thing a golden must never be. Lead-by-default is asserted directly
+        // in ThreadItemTests, where the lead can be checked against the text it came from.
     ];
 
     /// <summary>Turns a label into a file name. Stable, because it names a committed golden.</summary>

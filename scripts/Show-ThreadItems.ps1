@@ -26,15 +26,23 @@
     Include completed items. They are kept, never deleted, and hidden by default.
 
 .PARAMETER Topic
-    Case-insensitive substring naming exactly ONE item, returned with its notes in full. An
+    Case-insensitive substring naming exactly ONE item. Add -Full for its notes whole. An
     ambiguous topic is refused with every candidate named, and one that matches nothing is
     refused too rather than answered with an empty list -- 'no such item' and 'no open work'
     are different claims. A '*' is a literal asterisk, not a wildcard.
 
-    This script is UNBOUNDED, like the CLI it shims: an unnarrowed list of any size comes back
-    whole, so redirect to a file when it is large. The thread_show MCP tool is not -- a result
-    over the result budget (100,000 characters, JANET_RESULT_BUDGET overrides) is refused with
-    a hint naming -Topic and -Area, never cut.
+    This script is UNBOUNDED by count, like the CLI it shims: an unnarrowed list of any size
+    comes back whole, so redirect to a file when it is large. The thread_show MCP tool is not
+    -- a result over the result budget (100,000 characters, JANET_RESULT_BUDGET overrides) is
+    refused with a hint naming -Topic and -Area, never cut.
+
+.PARAMETER Full
+    Return the selected item's notes whole rather than the lead. Since 2026-09-05 every item's
+    'notes' is a LEAD -- the first non-empty line, capped at 200 characters, the same lead
+    Get-ThreadReport carries -- with 'notesLength' (the stored size) beside it and
+    'notesTruncated': true whenever the lead is not the whole text. -Full needs -Topic and is
+    refused with -Area or with no selector: notes are read one item at a time, and a flag that
+    expanded them across a set would re-create the oversized read the lead exists to prevent.
 
 .PARAMETER Area
     Narrows to one area, case-insensitive substring. '(unfiled)' is the group of items with no
@@ -45,6 +53,9 @@
 
 .EXAMPLE
     .\Show-ThreadItems.ps1 -Area JanetHome -Text
+
+.EXAMPLE
+    .\Show-ThreadItems.ps1 -Topic 'cache eviction' -Full
 #>
 [CmdletBinding()]
 param(
@@ -52,6 +63,7 @@ param(
     [switch]$All,
     [string]$Topic = '',
     [string]$Area = '',
+    [switch]$Full,
     [switch]$Text,
     [switch]$Pretty
 )
@@ -68,6 +80,7 @@ if ($Path) { $arguments += @('--path', $Path) }
 if ($All) { $arguments += '--all' }
 if ($Topic) { $arguments += @('--topic', $Topic) }
 if ($Area) { $arguments += @('--area', $Area) }
+if ($Full) { $arguments += '--full' }
 if ($Text) { $arguments += '--text' }
 if ($Pretty) { $arguments += '--pretty' }
 

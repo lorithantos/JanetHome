@@ -11,13 +11,19 @@ namespace Janet.Tests;
 /// </summary>
 /// <remarks>
 /// Both, because a port could match either alone and still be wrong. The file is the state
-/// machine; the envelope is the contract callers read, and Show's is consumed by startup itself
-/// under 'threadStack' in startup-manifest.json -- getting that shape wrong breaks a session's
-/// first move.
+/// machine; the envelope is the contract callers read.
 ///
 /// The answers were recorded once by tests/Janet.Goldens from the scripts as they stood at
 /// a277625, before the catalog shims landed. These tests need no PowerShell.
+///
+/// Write verbs only, since 2026-09-05. The two show cases were dropped when an unnarrowed show
+/// stopped returning every note whole: the recording described the retired behaviour, and the
+/// only way to keep it green was to edit the expectation by hand. See Cases.Threads.
+///
+/// In the "thread store" collection because ThreadNotesCeilingTests sets JANET_NOTES_BUDGET
+/// on the process, and the appended-notes case here writes 56 characters.
 /// </remarks>
+[Collection("thread store")]
 public class ThreadGoldenTests : IDisposable
 {
     private readonly List<string> _directories = [];
@@ -89,6 +95,10 @@ public class ThreadGoldenTests : IDisposable
     /// envelope carries it resolved, so it reads '(unfiled)' for every item in these goldens:
     /// none were backfilled, deliberately, because inferring an area from a topic is the thing
     /// the field exists to avoid.
+    ///
+    /// Additions only. A recorded VALUE is never corrected here: when the 2026-09-05 lead-by-
+    /// default show made that the only way to keep the show cases green, the cases were dropped
+    /// instead (Cases.Threads), so this list stays a tolerance and never becomes a rewrite.
     /// </remarks>
     private static readonly string[] AddedToEnvelope = ["batched"];
 
@@ -208,12 +218,6 @@ public class ThreadGoldenTests : IDisposable
 
         "thread clear active" =>
             ThreadJson.Serialize(ThreadItems.SetActive(list, null)),
-
-        "thread show" =>
-            ThreadJson.Serialize(ThreadItems.Show(list)),
-
-        "thread show all" =>
-            ThreadJson.Serialize(ThreadItems.Show(list, all: true)),
 
         _ => throw new ArgumentException($"no Janet.Core equivalent for case '{label}'"),
     };

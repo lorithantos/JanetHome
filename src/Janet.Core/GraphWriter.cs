@@ -112,6 +112,11 @@ public static class GraphWriter
             throw new GraphException($"Cannot add node:{Environment.NewLine}  - id '{request.Id}' already exists");
         }
 
+        // Beside the other validation, before anything is rendered or spliced.
+        MalformedInput.Ensure("summary", request.Id, request.Summary);
+        MalformedInput.Ensure("section", request.Id, request.Section);
+        EnsureCaveats(request.Id, request.Caveats);
+
         List<string> warnings = [];
 
         if (!IdConvention.IsMatch(request.Id))
@@ -239,6 +244,19 @@ public static class GraphWriter
         {
             JsonNode? value = incoming;
 
+            // Scanned as SENT, before an append merges it with what is stored: a stored caveat
+            // may legitimately quote the markup this refuses.
+            switch (name)
+            {
+                case "summary":
+                case "section":
+                    MalformedInput.Ensure(name, request.Id, NodeText.AsText(incoming));
+                    break;
+                case "caveats":
+                    EnsureCaveats(request.Id, [.. AsList(incoming)]);
+                    break;
+            }
+
             if (ArrayFields.Contains(name, StringComparer.Ordinal))
             {
                 value = ResolveArray(incoming, fields.GetValueOrDefault(name), request.Append);
@@ -323,6 +341,15 @@ public static class GraphWriter
         }
 
         return (updated, new UpdateResult(true, false, request.Id, changes, warnings, newCount, null));
+    }
+
+    /// <summary>Each caveat is its own field for the guard, so the refusal names which one.</summary>
+    private static void EnsureCaveats(string id, IReadOnlyList<string> caveats)
+    {
+        for (int i = 0; i < caveats.Count; i++)
+        {
+            MalformedInput.Ensure($"caveats[{i}]", id, caveats[i]);
+        }
     }
 
     /// <summary>Merges or replaces an array value, dropping repeats case-insensitively as Select-Object -Unique does.</summary>
