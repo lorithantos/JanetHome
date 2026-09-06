@@ -1,14 +1,17 @@
 <#
 .SYNOPSIS
     Wires this checkout into the user profile: JanetBase at User scope, the scripts
-    directory on the User PATH, and a junction per skill under ~\.claude\skills.
+    directory on the User PATH, a junction per skill under ~\.claude\skills, and the
+    clone's core.hooksPath at .githooks so the pre-commit gate runs.
 
 .DESCRIPTION
-    Everything here is per-user machine state that a repo cannot carry, which is why it
-    is a script you run once rather than something startup does. All three were found
-    missing or stale on 2026-09-03: JanetBase was set at neither User nor Machine scope,
-    ~\.claude\skills did not exist at all so neither skill enumerated in any session, and
-    the startup script could only be run by full path.
+    Everything here is per-user or per-clone state that a repo cannot carry, which is why
+    it is a script you run once rather than something startup does. The first three were
+    found missing or stale on 2026-09-03: JanetBase was set at neither User nor Machine
+    scope, ~\.claude\skills did not exist at all so neither skill enumerated in any
+    session, and the startup script could only be run by full path. The fourth was found
+    unset on 2026-09-04: .githooks\pre-commit is tracked, but git runs nothing from there
+    until the clone opts in, so the gate had been run by hand or not at all.
 
     PATH is edited at User scope only, and read from User scope only -- reading $env:PATH
     would merge the Machine entries into the user's own copy, which is how a PATH gets
@@ -202,12 +205,44 @@ else {
     }
 }
 
+# --- 4. The pre-commit gate -----------------------------------------------------------
+# core.hooksPath is per-clone state git does not version: .githooks\pre-commit is tracked,
+# but nothing runs it until the clone opts in, and until 2026-09-06 nothing here did --
+# every commit that week ran Test-PreCommit.ps1 by hand or not at all. Relative on
+# purpose, so the setting survives a move of the checkout.
+$hooksDir = Join-Path $Base '.githooks'
+$hooksWanted = '.githooks'
+$hooksWas = $null
+$hooksState = 'already-correct'
+
+if (-not (Test-Path -LiteralPath (Join-Path $hooksDir 'pre-commit'))) {
+    $problems.Add("No pre-commit hook to wire in: $hooksDir")
+    $hooksState = 'missing'
+}
+else {
+    # git exits 1 when the key is unset, which pwsh 7.4+ turns into a terminating error
+    # under Stop; unset is the expected case, not a failure.
+    try { $hooksWas = & git -C $Base config --get core.hooksPath 2>$null } catch { $hooksWas = $null }
+    if ($LASTEXITCODE -ne 0) { $hooksWas = $null }
+
+    if ($hooksWas -eq $hooksWanted) {
+        $hooksState = 'already-correct'
+    }
+    else {
+        $hooksState = if ([string]::IsNullOrWhiteSpace($hooksWas)) { 'set' } else { 'repointed' }
+        if (-not $DryRun) {
+            & git -C $Base config core.hooksPath $hooksWanted
+            if ($LASTEXITCODE -ne 0) { $problems.Add("git config core.hooksPath failed in $Base (exit $LASTEXITCODE)") }
+        }
+    }
+}
+
 $note = if ($DryRun) {
     'Dry run: nothing was changed.'
 }
 else {
     $verb = if ($janetBaseChanged) { 'JanetBase set at User scope' } else { 'JanetBase already correct' }
-    "$verb; PATH $pathState; $($actions.Count) skill(s) wired. Open a NEW session for any of it to take effect -- the harness enumerates skills once at session start, and a running process never sees a User-scope variable it did not start with."
+    "$verb; PATH $pathState; $($actions.Count) skill(s) wired; pre-commit gate $hooksState. Open a NEW session for the environment to take effect -- the harness enumerates skills once at session start, and a running process never sees a User-scope variable it did not start with. The gate is live on the next commit."
 }
 
 $result = [ordered]@{
@@ -228,6 +263,12 @@ $result = [ordered]@{
     }
     skillRootState = $skillRootState
     skills    = @($actions)
+    hooks     = [ordered]@{
+        scope = 'clone'
+        was   = $hooksWas
+        now   = $hooksWanted
+        state = $hooksState
+    }
     problems  = @($problems)
     note      = $note
     error     = $null
@@ -240,6 +281,7 @@ if ($Text) {
     foreach ($s in $stalePath) { "    dropped stale:   $s" }
     "  Skill root:       $SkillRoot ($skillRootState)"
     foreach ($a in $actions) { "    {0,-18} {1}" -f $a.name, $a.state }
+    "  Pre-commit gate:  $hooksState (core.hooksPath -> $hooksWanted)"
     if ($problems.Count -gt 0) {
         "  PROBLEMS:"
         foreach ($p in $problems) { "    - $p" }
