@@ -102,6 +102,11 @@
       "enforcedBy": "scripts\\Invoke-DelegationGuard.ps1"
     },
     {
+      "text": "ENFORCED: graph first for C# structure -- a Grep, Bash or PowerShell text search over C# source is denied until the session has made a RazorGraph call.",
+      "why": "The delegation guard gates the prompt a subagent is handed; this gates the controller's own hands. A PreToolUse hook on Grep, Bash and PowerShell denies a text search aimed at C# -- a .cs glob or type, a src\\ path, or a bare identifier with no narrowing, which is the shape of 'who calls Foo' -- unless one of the last 12 tool calls in THIS session's transcript is an mcp__razorgraph__ call, and the denial names the first query (find_nodes on the identifier, then get_node edges=incoming edgeType=Calls) with the graphId derived from the .slnx on disk, so clearing it is a paste. Written 2026-09-05 after four greps for callers and blast radius ran against C# in one session while the graph-first rule, the delegation rule and skills\\agent-kickoff\\SKILL.md were all in force -- the incident is on note.subagent-delegation. Per session via the transcript rather than a shared trace file, so one session cannot clear another's; a regex pattern or a non-C# glob passes untouched; a repo with no .slnx passes untouched; JANET_GRAPH_GUARD=off is the escape hatch for a repo with no C#.",
+      "enforcedBy": "scripts\\Invoke-GraphGuard.ps1"
+    },
+    {
       "text": "ADVISORY: graph first, narrative second -- once you know WHAT you are building.",
       "why": "Query a semantic model for the narrowest slice that answers the question; read source only to spot-check the claims that matter (DESIGN-NOTES section 4). This is a technique for working inside a problem, and it ranks BELOW research-first: graphing tells you how the code you are about to touch fits together, while the catalog tells you whether to touch it at all. Reaching for the graph -- or worse, for grep -- before asking what already exists is the expensive order."
     },

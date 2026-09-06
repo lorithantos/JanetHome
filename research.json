@@ -52,7 +52,7 @@
         "PATH CORRECTED 2026-09-01 to C:\\repos\\RazorGraphTool, verified to exist. It previously named a location on the PREVIOUS MACHINE, and several nodes carried that dead path for weeks without anything failing -- see note.janet-machine-move for the full list, for the three silent-failure shapes involved, and for what still has no home on this machine."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots", "note.janet-machine-move", "file.skill-agent-kickoff", "file.skill-graph-node-reading"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots", "note.janet-machine-move", "file.skill-agent-kickoff", "file.skill-graph-node-reading", "script.invoke-graph-guard"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -624,7 +624,7 @@
         "THE ORDER HAD TO BE MADE TOTAL BEFORE PAGING WAS CORRECT, and this is the transferable half. GetCoveringTests and GetCoveredMethods ordered by depth ALONE, leaving ties to edge enumeration order, and FindUncoveredMethods had no ordering at all. Both are deterministic in practice for one loaded graph and guaranteed by nothing, and an offset into a partially ordered result silently repeats and skips rows -- so paging built on that would have been quietly wrong rather than loudly broken. Now depth then id, and id for the uncovered walk, which is the rule the subtree walk in gamehub's ContourGates already states: a cached or replayed answer has to equal a recomputed one exactly. GENERAL: adding pagination to a query is not an API change, it is a claim that the query has a total order, and that claim is usually false until someone checks. Offset was chosen over an opaque cursor deliberately -- a built graph does not change under the reader, so a cursor would only protect against reordering that cannot happen."
       ],
       "tags": ["code-analysis", "agent", "roslyn", "csharp", "retrieval"],
-      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.ensure-razorgraph-server", "script.invoke-mcp-tool", "script.find-divergent-state-roots", "note.janet-machine-move", "note.gamehub-design-record", "file.skill-agent-kickoff", "file.skill-graph-node-reading"]
+      "links": ["pattern.graph-first-analysis", "note.razorgraph-js-scoping", "script.search-json", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "skill.crash-escape-analysis", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.razorgraph-lua-scoping", "note.janet-mcp-port", "script.update-mcp-server", "note.razorgraph-attribute-scoping", "script.ensure-razorgraph-server", "script.invoke-mcp-tool", "script.find-divergent-state-roots", "note.janet-machine-move", "note.gamehub-design-record", "file.skill-agent-kickoff", "file.skill-graph-node-reading", "script.invoke-graph-guard"]
     },
 
     {
@@ -1112,7 +1112,7 @@
         "Fires only on Write of a new .ps1 directly inside a folder named 'scripts'. Notes, source files, and edits to existing scripts pass untouched."
       ],
       "tags": ["hooks", "enforcement", "research", "retrieval", "powershell"],
-      "links": ["script.get-research", "script.invoke-edit-guard", "pattern.manifest-startup", "script.invoke-delegation-guard"]
+      "links": ["script.get-research", "script.invoke-edit-guard", "pattern.manifest-startup", "script.invoke-delegation-guard", "script.invoke-graph-guard"]
     },
 
     {
@@ -1680,7 +1680,7 @@
         "RECURRED 2026-09-05 and was escalated to a GATE. Four subagents were spawned in one session for C# work with no RazorGraph instruction in any prompt, and every one ran text-first; one agent's own retrospective was 'I ran the whole sweep on grep and only reached for the graph after you asked', and its graph pass then found what the grep could not -- zero nodes across all sixteen projects where the text sweep had needed a hand-written exclusion list, and a compiled constructor signature proving a removed field was gone from a record's SHAPE rather than only from the text of a file. Both an advisory manifest rule and skills\\agent-kickoff already carried the requirement; both were skipped four times. THE ROOT THE FIRST WRITE-UP MISSED: the controller had itself made four graph calls against roughly twenty greps before Lori said 'it feels like there is an underconsumption of razorgraph'. A controller that is not using the graph does not think to tell its agents to, so the two failures are one failure seen from two ends -- and checking one's own last ten tool calls is the cheap detector. Now enforced by script.invoke-delegation-guard rather than left advisory, on the same reasoning Invoke-ResearchGuard.ps1 states: an agent does not skip a step from fatigue, it skips from rationalisation, and 'this one is a straightforward refactor' is a rationalisation."
       ],
       "tags": ["agent", "context-budget", "progressive-disclosure", "session", "retrieval"],
-      "links": ["pattern.progressive-disclosure", "skill.graph-first-code-analysis", "pattern.deterministic-edits", "script.git", "note.thread-item-projection", "file.skill-agent-kickoff", "script.invoke-delegation-guard"]
+      "links": ["pattern.progressive-disclosure", "skill.graph-first-code-analysis", "pattern.deterministic-edits", "script.git", "note.thread-item-projection", "file.skill-agent-kickoff", "script.invoke-delegation-guard", "script.invoke-graph-guard"]
     },
 
     {
@@ -1773,7 +1773,24 @@
         "Matcher is Agent|Task -- this harness names the tool Agent, older harnesses call it Task. Exits 0 always, including on the denial and on malformed payloads, so a broken hook cannot block unrelated work."
       ],
       "tags": ["hooks", "enforcement", "delegation", "razorgraph", "powershell"],
-      "links": ["script.invoke-research-guard", "file.skill-agent-kickoff", "note.subagent-delegation"]
+      "links": ["script.invoke-research-guard", "file.skill-agent-kickoff", "note.subagent-delegation", "script.invoke-graph-guard"]
+    },
+
+    {
+      "id": "script.invoke-graph-guard",
+      "kind": "script",
+      "path": "scripts/Invoke-GraphGuard.ps1",
+      "summary": "PreToolUse hook enforcing GRAPH FIRST at the controller's own keyboard: a Grep, Bash or PowerShell text search aimed at C# source is denied until one of the last 12 tool calls in THIS session's transcript is an mcp__razorgraph__ call. The delegation guard gates the prompt a subagent is handed; this gates the grep the session itself is about to run. The denial is not a nag -- it takes the identifier from the pattern, derives the graphId from the .slnx under the project dir, and hands back the first query (find_nodes nameContains on the identifier, then get_node edges=incoming edgeType=Calls for callers), the ToolSearch line that loads the tools, the list_graphs/build_solution fallback, and the two legitimate uses of text search, so clearing it is a paste. Written 2026-09-05 after four greps for callers, implementers and blast radius ran against C# in one session while the graph-first rule, the delegation rule and skills/agent-kickoff were all in force and the Roslyn graph server sat idle; grep cannot see a call through an interface, a generic or a partial class, and the graph can. An advisory rule was skipped four times, which is the argument for a gate. Same skeleton as the research guard: stdin payload, narrow trigger, deny JSON, fail-open catch, exit 0 always.",
+      "params": ["InputJson"],
+      "caveats": [
+        "Deliberately narrow. Grep fires when tool_input.glob or type names cs, when path ends in .cs or carries a src\\ segment, or when there is no narrowing to a non-C# kind and the pattern is a bare identifier (^[A-Za-z_][A-Za-z0-9_.]*$). A pattern with regex metacharacters, a glob or type naming ps1/json/md, a path to a non-.cs file, or a directory path holding no .cs within three levels all pass untouched. Bash and PowerShell fire only when the command names grep, rg, Select-String, sls or findstr AND .cs or a src\\ path in the same command. Every other tool passes.",
+        "Clearance is per session, read from the transcript_path the harness puts in the payload: the last 12 tool_use blocks are walked from the end, and any name starting mcp__razorgraph__ clears the guard. So one razorgraph call buys 12 tool calls of text search, and a session cannot clear another's guard the way the research guard's shared temp trace allows. The current tool call may already be in the transcript when the hook runs, so the window is 12 give or take one.",
+        "Fails OPEN on every doubt: transcript_path missing or unreadable, no .slnx or .sln under the project dir (CLAUDE_PROJECT_DIR, else the payload's cwd, else the working directory -- no solution means no graph, so grep is legitimate), a malformed payload, or any exception. Exits 0 always, including on the denial. JANET_GRAPH_GUARD=off disables it for a repo with no C#.",
+        "Pipe input does not bind to a [string] parameter, so tests must pass -InputJson; the real hook invocation reads stdin. The test harness that proved it lives in the session scratchpad, not the repo.",
+        "Wired in TWO places and needs both: .claude/settings.json (matcher Grep|Bash|PowerShell) arms it when the project dir is JanetHome, and ~/.claude/settings.json arms it by absolute path everywhere else, skipping when the project dir already is JanetHome so the two levels never double-fire. Test-ConfigPaths does not see hook scripts named inside command strings, so a renamed or missing script here is silent -- that gap is on the thread list."
+      ],
+      "tags": ["hooks", "enforcement", "razorgraph", "graph-first", "powershell"],
+      "links": ["script.invoke-research-guard", "script.invoke-delegation-guard", "note.razorgraph-mcp-server", "note.subagent-delegation", "pattern.graph-first-analysis"]
     }
   ]
 }

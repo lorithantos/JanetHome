@@ -40,6 +40,18 @@
             "statusMessage": "Checking the delegation prompt for RazorGraph..."
           }
         ]
+      },
+      {
+        "matcher": "Grep|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$d = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }; $s = Join-Path $d 'scripts\\Invoke-GraphGuard.ps1'; if (Test-Path $s) { & $s }",
+            "timeout": 15,
+            "statusMessage": "Checking whether the graph has been asked..."
+          }
+        ]
       }
     ],
     "PostToolUse": [
