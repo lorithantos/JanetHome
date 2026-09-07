@@ -1,6 +1,15 @@
+# Normalise text to LF in the repository and check it out in the platform's own
+# style. This says in the REPO what core.autocrlf was only saying on one machine:
+# the setting that made this work here came from Git for Windows' system config,
+# so a reinstall with different setup options would have changed it silently and
+# for every repo at once. Verified a no-op when added on 2026-09-07 -- all 348
+# tracked files were already LF in the index, so nothing renormalised.
+* text=auto
+
 # The TRX fixtures are parsed by XmlDocument, which preserves a CR inside text content, and
 # the goldens were recorded from an LF working tree. A CRLF checkout (autocrlf on a fresh
 # clone) makes TheTestRunMatchesTheRecordedAnswer fail on \r\n vs \n in the failure message
 # -- an environmental red that looks like a parity break. Pin them so every checkout parses
-# to the recorded answer.
+# to the recorded answer. This rule is LAST because later rules win: it has to override the
+# blanket text=auto above.
 tests/Janet.Tests/Fixtures/**/*.trx text eol=lf
