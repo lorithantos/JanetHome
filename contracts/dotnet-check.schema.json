@@ -5,7 +5,7 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
-    "contract": 6,
+    "contract": 7,
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
@@ -22,7 +22,7 @@
       "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
       "properties": {
         "status": { "const": "complete" },
-        "contract": { "const": 6 },
+        "contract": { "const": 7 },
         "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
         "configuration": { "type": "string" },
         "succeeded": {
@@ -113,7 +113,7 @@
           "type": ["object", "null"],
           "description": "NULL MEANS NOT RUN -- -NoTests, or the build failed. Which one is visible from build.succeeded. It does not mean a suite with no tests.",
           "additionalProperties": false,
-          "required": ["succeeded", "runnerExitCode", "abort", "total", "passed", "failed", "skipped", "failures", "assemblies"],
+          "required": ["succeeded", "runnerExitCode", "abort", "total", "passed", "failed", "skipped", "durationSeconds", "testTimeSeconds", "failures", "assemblies", "slowest", "resultsDirectory"],
           "properties": {
             "succeeded": {
               "type": "boolean",
@@ -125,12 +125,22 @@
             },
             "abort": {
               "type": ["string", "null"],
-              "description": "The runner's abort banner -- the exception that killed the test host and the top of its stack -- or null for a run that finished. The one channel that names why a host died; best effort, the exit code is the verdict."
+              "description": "The runner's abort banner -- the exception that killed the test host and the top of its stack -- or null for a run that finished. The one channel that names why a host died; best effort, the exit code is the verdict. NOT set by an ordinary test failure: xUnit files its per-test '[FAIL]' line as a run-level RunInfo Error, which until contract 7 was handed back here as though it were a crash."
             },
             "total": { "type": "integer", "minimum": 0 },
             "passed": { "type": "integer", "minimum": 0 },
             "failed": { "type": "integer", "minimum": 0 },
             "skipped": { "type": "integer", "minimum": 0 },
+            "durationSeconds": {
+              "type": "number",
+              "minimum": 0,
+              "description": "WALL CLOCK for the whole run, earliest start to latest finish across every assembly. What you waited. Diagnostic, never a budget: nothing fails for being slow, and suite duration is machine-dependent."
+            },
+            "testTimeSeconds": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Every test's own duration added up. EXCEEDS durationSeconds whenever collections ran in parallel, so this and durationSeconds are different questions and neither is 'the' duration: this one is where the time went. Measured on JanetHome 2026-09-07: 17.07s of test time inside 3.96s of clock."
+            },
             "failures": {
               "type": "array",
               "items": {
@@ -152,7 +162,7 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["name", "total", "passed", "failed", "skipped", "status"],
+                "required": ["name", "total", "passed", "failed", "skipped", "status", "durationSeconds", "testTimeSeconds", "resultsFile"],
                 "properties": {
                   "name": { "type": "string" },
                   "total": { "type": "integer", "minimum": 0 },
@@ -160,11 +170,43 @@
                   "failed": { "type": "integer", "minimum": 0 },
                   "skipped": { "type": "integer", "minimum": 0 },
                   "status": {
-                    "enum": ["complete", "aborted"],
-                    "description": "'aborted' is a crashed run's leftovers: the TRX says the run was aborted, or is too partial to name its assembly (the name is then the TRX filename). Its counters are what the host lived to write, not a result."
+                    "enum": ["complete", "empty", "aborted"],
+                    "description": "'aborted' is a crashed run's leftovers and FAILS the run: its counters are what the host lived to write, not a result. 'empty' ran nothing and does NOT fail the run -- a filter matching nothing in an assembly writes a TRX with no definitions and zero counters, which is the same shape a half-written crash file has. They are told apart by whether the runner closed the file out (ResultSummary outcome Completed/Failed) and by whether a run-level RunInfo Error actually reads as an abort banner. Absence of a name or of counters is NOT evidence of a crash; treating it as such reported a narrow filter over six assemblies as five crashes."
+                  },
+                  "durationSeconds": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Wall clock for this assembly, from the TRX's own Times. Falls back to testTimeSeconds when the file carries no Times."
+                  },
+                  "testTimeSeconds": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "This assembly's per-test durations added up. Zero for an assembly that reported no results."
+                  },
+                  "resultsFile": {
+                    "type": ["string", "null"],
+                    "description": "The TRX this row was read from, kept on disk rather than deleted with the run. Open it instead of re-running the suite to see something the envelope did not carry."
                   }
                 }
               }
+            },
+            "slowest": {
+              "type": "array",
+              "description": "The slowest test CLASSES by summed test time, longest first, at most five. The class is the unit reported because it is the unit that serialises: xUnit runs collections in parallel and defaults to one collection per class, so a slow class costs its full time however many cores are idle. Empty when no TRX carried durations. Diagnostic output, not a budget.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["class", "testTimeSeconds", "tests"],
+                "properties": {
+                  "class": { "type": "string" },
+                  "testTimeSeconds": { "type": "number", "minimum": 0 },
+                  "tests": { "type": "integer", "minimum": 0 }
+                }
+              }
+            },
+            "resultsDirectory": {
+              "type": ["string", "null"],
+              "description": "Where this run's TRX files are. They now OUTLIVE the call: they used to be deleted in a finally, which made the envelope the only account of a run that ever existed and left a session re-running the whole suite with its own logger to learn anything it had not thought to include. A bounded number of recent run directories is kept."
             }
           }
         },
@@ -207,7 +249,7 @@
       "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
       "properties": {
         "status": { "const": "running" },
-        "contract": { "const": 6 },
+        "contract": { "const": 7 },
         "target": { "type": "string" },
         "configuration": { "type": "string" },
         "handle": {

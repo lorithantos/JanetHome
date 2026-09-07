@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The assembly the filter DID match, beside trx-nomatch's other file. Together they model a
+  narrow filter over a multi-assembly solution: one assembly runs, the rest match nothing.
+-->
+<TestRun id="8a5f1c22-0b8e-4f1a-9a2a-11119a3f0008" name="the assembly the filter matched" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-06T10:17:20.0000000-07:00" queuing="2026-09-06T10:17:20.0000000-07:00" start="2026-09-06T10:17:19.0000000-07:00" finish="2026-09-06T10:17:20.5000000-07:00" />
+  <Results>
+    <UnitTestResult testId="aaaaaaaa-0000-0000-0000-000000000001" testName="Sample.Nav.Core.Tests.ReachableSpotsTests.FindsEveryCell" computerName="SAMPLE" duration="00:00:00.1000000" outcome="Passed" />
+    <UnitTestResult testId="aaaaaaaa-0000-0000-0000-000000000002" testName="Sample.Nav.Core.Tests.ReachableSpotsTests.StopsAtWalls" computerName="SAMPLE" duration="00:00:00.2000000" outcome="Passed" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Sample.Nav.Core.Tests.ReachableSpotsTests.FindsEveryCell" storage="d:\repos\sample\src\nav.core.tests\bin\debug\net10.0\nav.core.tests.dll" id="aaaaaaaa-0000-0000-0000-000000000001">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Core.Tests\bin\Debug\net10.0\Nav.Core.Tests.dll" className="Sample.Nav.Core.Tests.ReachableSpotsTests" name="FindsEveryCell" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Core.Tests.ReachableSpotsTests.StopsAtWalls" storage="d:\repos\sample\src\nav.core.tests\bin\debug\net10.0\nav.core.tests.dll" id="aaaaaaaa-0000-0000-0000-000000000002">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Core.Tests\bin\Debug\net10.0\Nav.Core.Tests.dll" className="Sample.Nav.Core.Tests.ReachableSpotsTests" name="StopsAtWalls" />
+    </UnitTest>
+  </TestDefinitions>
+  <ResultSummary outcome="Completed">
+    <Counters total="2" executed="2" passed="2" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A suite whose time is concentrated in one class, which is the case the timing fields exist
+  for. Two classes: CameraTests is 4 tests at 20s each, GridTests is 4 at 2.5s. Summed test
+  time is 90s inside 30s of wall clock, because xUnit runs collections in parallel and
+  defaults to one collection per class. The two numbers are deliberately different here, and
+  a fixture that made them agree would prove nothing.
+
+  CameraTests carries a theory whose name includes its arguments, so aggregating by class
+  cannot be done by trimming the test name: the class is joined from TestDefinitions on
+  testId.
+-->
+<TestRun id="8a5f1c22-0b8e-4f1a-9a2a-11119a3f000a" name="one slow class" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-06T20:00:30.0000000-07:00" queuing="2026-09-06T20:00:30.0000000-07:00" start="2026-09-06T20:00:00.0000000-07:00" finish="2026-09-06T20:00:30.0000000-07:00" />
+  <Results>
+    <UnitTestResult testId="bbbbbbbb-0000-0000-0000-000000000001" testName="Sample.Nav.Viewer.Tests.CameraTests.Fits(zoom: 1)" computerName="SAMPLE" duration="00:00:20.0000000" outcome="Passed" />
+    <UnitTestResult testId="bbbbbbbb-0000-0000-0000-000000000002" testName="Sample.Nav.Viewer.Tests.CameraTests.Fits(zoom: 2)" computerName="SAMPLE" duration="00:00:20.0000000" outcome="Passed" />
+    <UnitTestResult testId="bbbbbbbb-0000-0000-0000-000000000003" testName="Sample.Nav.Viewer.Tests.CameraTests.Centres" computerName="SAMPLE" duration="00:00:20.0000000" outcome="Passed" />
+    <UnitTestResult testId="bbbbbbbb-0000-0000-0000-000000000004" testName="Sample.Nav.Viewer.Tests.CameraTests.Clamps" computerName="SAMPLE" duration="00:00:20.0000000" outcome="Passed" />
+    <UnitTestResult testId="cccccccc-0000-0000-0000-000000000001" testName="Sample.Nav.Viewer.Tests.GridTests.Draws" computerName="SAMPLE" duration="00:00:02.5000000" outcome="Passed" />
+    <UnitTestResult testId="cccccccc-0000-0000-0000-000000000002" testName="Sample.Nav.Viewer.Tests.GridTests.Snaps" computerName="SAMPLE" duration="00:00:02.5000000" outcome="Passed" />
+    <UnitTestResult testId="cccccccc-0000-0000-0000-000000000003" testName="Sample.Nav.Viewer.Tests.GridTests.Wraps" computerName="SAMPLE" duration="00:00:02.5000000" outcome="Passed" />
+    <UnitTestResult testId="cccccccc-0000-0000-0000-000000000004" testName="Sample.Nav.Viewer.Tests.GridTests.Scrolls" computerName="SAMPLE" duration="00:00:02.5000000" outcome="Passed" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Sample.Nav.Viewer.Tests.CameraTests.Fits(zoom: 1)" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="bbbbbbbb-0000-0000-0000-000000000001">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.CameraTests" name="Fits" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Viewer.Tests.CameraTests.Fits(zoom: 2)" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="bbbbbbbb-0000-0000-0000-000000000002">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.CameraTests" name="Fits" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Viewer.Tests.CameraTests.Centres" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="bbbbbbbb-0000-0000-0000-000000000003">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.CameraTests" name="Centres" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Viewer.Tests.CameraTests.Clamps" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="bbbbbbbb-0000-0000-0000-000000000004">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.CameraTests" name="Clamps" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Viewer.Tests.GridTests.Draws" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="cccccccc-0000-0000-0000-000000000001">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.GridTests" name="Draws" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Viewer.Tests.GridTests.Snaps" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="cccccccc-0000-0000-0000-000000000002">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.GridTests" name="Snaps" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Viewer.Tests.GridTests.Wraps" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="cccccccc-0000-0000-0000-000000000003">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.GridTests" name="Wraps" />
+    </UnitTest>
+    <UnitTest name="Sample.Nav.Viewer.Tests.GridTests.Scrolls" storage="d:\repos\sample\src\nav.viewer.tests\bin\debug\net10.0\nav.viewer.tests.dll" id="cccccccc-0000-0000-0000-000000000004">
+      <TestMethod codeBase="D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll" className="Sample.Nav.Viewer.Tests.GridTests" name="Scrolls" />
+    </UnitTest>
+  </TestDefinitions>
+  <ResultSummary outcome="Completed">
+    <Counters total="8" executed="8" passed="8" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

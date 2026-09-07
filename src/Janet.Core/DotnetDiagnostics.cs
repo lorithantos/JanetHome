@@ -64,9 +64,20 @@ public static class DotnetDiagnostics
     /// the runner's verdict (runnerExitCode, abort, per-assembly status) after a crashed test
     /// host summed to a passing run -- notes\test-count-blind-spot.md; to 6 when graph gained
     /// 'via' and 'graphId', because a graph can now live in a RazorGraph server rather than a
-    /// file and the envelope has to say which convention answered.
+    /// file and the envelope has to say which convention answered; to 7 when the per-assembly
+    /// status gained "empty" and tests gained time and provenance -- durationSeconds,
+    /// testTimeSeconds, slowest[], resultsDirectory, and per-assembly resultsFile.
+    /// <para>
+    /// 7 is the correction to 5 as much as an addition. 5's abort detection asked four
+    /// independent questions and OR'd them, and three of the four fire on healthy runs, so
+    /// every failing suite was labelled aborted and every filter that matched nothing was
+    /// labelled a crash. The rule is now positive evidence only; DotnetTests.Classify carries
+    /// the measurements. The time and the TRX path are there for the other half of the same
+    /// complaint: sessions were bypassing this envelope and re-running dotnet test themselves
+    /// to learn things the run had already written down.
+    /// </para>
     /// </summary>
-    public const int Contract = 6;
+    public const int Contract = 7;
 
     /// <summary>
     /// The baseline file's own format, deliberately NOT the envelope's.

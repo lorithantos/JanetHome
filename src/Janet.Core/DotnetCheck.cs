@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 
 namespace Janet.Core;
 
@@ -204,40 +205,89 @@ public static class DotnetCheck
         return new CheckResult(target, request.Configuration, succeeded, build, tests, graph);
     }
 
+    /// <summary>How many run directories to keep, and how long one is protected from pruning
+    /// whatever its age rank. The second number is what makes this safe with concurrent
+    /// sessions: four repos share this machine, and a run still writing its TRX must not be
+    /// deleted by another session that started later.</summary>
+    private const int KeptRunDirectories = 5;
+
+    private static readonly TimeSpan PruneGrace = TimeSpan.FromMinutes(30);
+
     private static TestRun RunTests(string target, CheckRequest request, CancellationToken cancellation)
     {
-        string results = Path.Combine(Path.GetTempPath(), $"janet-trx-{Guid.NewGuid():N}");
+        // The TRX files OUTLIVE the call now. They used to be deleted in a finally, which made
+        // the envelope the only account of a run that ever existed: a session wanting anything
+        // the envelope had not thought to include -- a duration, another assembly's results,
+        // the raw XML behind a disputed count -- had no choice but to re-run the whole suite
+        // with its own --logger. Reporting a path to a directory deleted before the caller read
+        // the answer would have been worse than reporting none.
+        string root = Path.Combine(Path.GetTempPath(), "janet-trx");
+        Directory.CreateDirectory(root);
+        PruneRunDirectories(root);
+
+        // Timestamped so the directory name sorts chronologically and reads as something,
+        // with a short random tail because two sessions can start in the same millisecond.
+        string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+        string tail = Guid.NewGuid().ToString("N")[..4];
+        string results = Path.Combine(root, $"{stamp}-{tail}");
         Directory.CreateDirectory(results);
 
+        List<string> arguments =
+        [
+            target,
+            "--no-build",
+            "--configuration", request.Configuration,
+            "-nologo",
+            "--logger", "trx",
+            "--results-directory", results,
+        ];
+
+        if (!string.IsNullOrEmpty(request.TestFilter))
+        {
+            arguments.Add("--filter");
+            arguments.Add(request.TestFilter);
+        }
+
+        (int exitCode, IReadOnlyList<string> lines) = RunDotnet("test", arguments, cancellation);
+
+        // The runner's verdict travels with the counters. Discarding it here is how a
+        // crashed test host once summed to 423/423 passing and exit 0 -- the TRX files
+        // held only the results the host lived to write.
+        return DotnetTests.WithRunnerVerdict(DotnetTests.ReadDirectory(results), exitCode, lines);
+    }
+
+    /// <summary>
+    /// Keeps the most recent run directories and removes the rest.
+    /// </summary>
+    /// <remarks>
+    /// Pruning happens BEFORE a run rather than after, so the directory this call is about to
+    /// report is never a candidate, and so an interrupted check leaves its results behind to
+    /// be read. Names sort chronologically because they are timestamps -- ordering by name
+    /// rather than by mtime keeps a directory a reader has just opened from looking newest.
+    /// Failure here is swallowed: a temp directory that will not delete is not worth failing
+    /// a build over, which is the same trade the old finally made.
+    /// </remarks>
+    private static void PruneRunDirectories(string root)
+    {
         try
         {
-            List<string> arguments =
-            [
-                target,
-                "--no-build",
-                "--configuration", request.Configuration,
-                "-nologo",
-                "--logger", "trx",
-                "--results-directory", results,
-            ];
+            DateTime cutoff = DateTime.UtcNow - PruneGrace;
 
-            if (!string.IsNullOrEmpty(request.TestFilter))
+            string[] stale = [.. Directory.EnumerateDirectories(root)
+                .OrderByDescending(Path.GetFileName, StringComparer.Ordinal)
+                .Skip(KeptRunDirectories)
+                .Where(directory => Directory.GetLastWriteTimeUtc(directory) < cutoff)];
+
+            foreach (string directory in stale)
             {
-                arguments.Add("--filter");
-                arguments.Add(request.TestFilter);
+                try { Directory.Delete(directory, recursive: true); }
+                catch (IOException) { /* another session may be reading it */ }
+                catch (UnauthorizedAccessException) { /* likewise */ }
             }
-
-            (int exitCode, IReadOnlyList<string> lines) = RunDotnet("test", arguments, cancellation);
-
-            // The runner's verdict travels with the counters. Discarding it here is how a
-            // crashed test host once summed to 423/423 passing and exit 0 -- the TRX files
-            // held only the results the host lived to write.
-            return DotnetTests.WithRunnerVerdict(DotnetTests.ReadDirectory(results), exitCode, lines);
         }
-        finally
+        catch (DirectoryNotFoundException)
         {
-            try { Directory.Delete(results, recursive: true); }
-            catch (IOException) { /* a leftover temp directory is not worth failing a check over */ }
+            // Nothing to prune.
         }
     }
 

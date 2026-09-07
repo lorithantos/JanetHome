@@ -774,6 +774,18 @@ static int Usage()
         because an incremental run that skipped a project entirely and one that had nothing to
         say about it produce the identical green.
 
+        Each test assembly reports status complete, empty or aborted, and only aborted is
+        bad news: empty is an assembly --test-filter matched nothing in and does not fail
+        the run, while aborted is a crashed host whose counters are leftovers rather than a
+        result. An ordinary failing test is complete with an entry in failures. Tests also
+        report two times, because they answer different questions: durationSeconds is wall
+        clock and testTimeSeconds is every test's own duration summed, which exceeds it
+        whenever collections ran in parallel. slowest names the costliest test CLASSES --
+        the class is what serialises, since xUnit defaults to one collection per class --
+        and it is diagnostic, never a budget. The TRX files are kept: resultsDirectory and
+        each assembly's resultsFile point at results that outlive the run, so read one
+        rather than re-running a suite to see something the envelope did not carry.
+
         api with no filter gives the orientation view: counts by kind and the largest types.
         Free-text results are ranked and capped -- check 'truncated'. A selector (--type, --kind,
         --id) is never capped, because it is a request for a known set.

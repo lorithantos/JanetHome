@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A HEALTHY run with a genuine test failure, recorded from dotnet test on 2026-09-07 and
+  sanitized. Nothing here is aborted: the host lived, the counters are whole, the failure is
+  an ordinary assert. It is a fixture because xUnit files its per-test "[FAIL]" diagnostic as
+  a run-level RunInfo outcome="Error", which the first abort detection read as a crash, so
+  every failing suite reported status "aborted" and handed this line back as a crash banner.
+-->
+<TestRun id="8a5f1c22-0b8e-4f1a-9a2a-11119a3f0007" name="failing run, host healthy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-07T09:32:49.9582763-07:00" queuing="2026-09-07T09:32:49.9582765-07:00" start="2026-09-07T09:32:48.4916298-07:00" finish="2026-09-07T09:32:49.9609898-07:00" />
+  <Results>
+    <UnitTestResult executionId="119f63b6-6092-4bc4-ae51-c8342d9371e7" testId="c2d00ccc-b85e-4db9-48ba-28984b465105" testName="Sample.Core.Tests.LedgerTests.Totals" computerName="SAMPLE" duration="00:00:00.0020094" outcome="Passed" />
+    <UnitTestResult executionId="13fded78-e31f-4936-a599-8fa7462552f4" testId="12306849-8341-0136-0e33-0cbfb4868a6b" testName="Sample.Core.Tests.LedgerTests.Balances" computerName="SAMPLE" duration="00:00:00.0025893" outcome="Failed">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ
+Expected: 1
+Actual:   2</Message>
+          <StackTrace>   at Sample.Core.Tests.LedgerTests.Balances() in D:\Repos\Sample\src\Core.Tests\LedgerTests.cs:line 19</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Sample.Core.Tests.LedgerTests.Balances" storage="d:\repos\sample\src\core.tests\bin\debug\net10.0\core.tests.dll" id="12306849-8341-0136-0e33-0cbfb4868a6b">
+      <TestMethod codeBase="D:\Repos\Sample\src\Core.Tests\bin\Debug\net10.0\Core.Tests.dll" className="Sample.Core.Tests.LedgerTests" name="Balances" />
+    </UnitTest>
+    <UnitTest name="Sample.Core.Tests.LedgerTests.Totals" storage="d:\repos\sample\src\core.tests\bin\debug\net10.0\core.tests.dll" id="c2d00ccc-b85e-4db9-48ba-28984b465105">
+      <TestMethod codeBase="D:\Repos\Sample\src\Core.Tests\bin\Debug\net10.0\Core.Tests.dll" className="Sample.Core.Tests.LedgerTests" name="Totals" />
+    </UnitTest>
+  </TestDefinitions>
+  <ResultSummary outcome="Failed">
+    <Counters total="2" executed="2" passed="1" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <RunInfos>
+      <RunInfo computerName="SAMPLE" outcome="Error" timestamp="2026-09-07T09:32:49.9059347-07:00">
+        <Text>[xUnit.net 00:00:01.20]     Sample.Core.Tests.LedgerTests.Balances [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

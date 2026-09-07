@@ -30,6 +30,14 @@
     -->
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Goldens\**\*" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
+      The DECLARED envelope, copied live rather than frozen. Unlike the fixtures above, this
+      one is meant to track the repository: the gate that validates a sample against it runs
+      its sampler in build-only mode, so the entire tests section was declared and never
+      checked. DotnetCheckSchemaTests reads this copy and holds the serializer to it.
+    -->
+    <None Include="..\..\contracts\dotnet-check.schema.json" Link="Contracts\dotnet-check.schema.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

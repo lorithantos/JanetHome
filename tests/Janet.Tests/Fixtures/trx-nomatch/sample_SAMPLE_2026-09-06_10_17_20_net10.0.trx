@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An assembly the filter matched NOTHING in, recorded from dotnet test on 2026-09-07 and
+  sanitized. This is the shape that made a narrow filter over six assemblies report five
+  crashes: no TestDefinitions to name the assembly from, zero counters, and a TRX-filename
+  fallback for a name, which are the same three signs a half-written crash file shows. What
+  tells them apart is that the runner CLOSED THIS OUT: outcome="Completed", and the RunInfo
+  is a Warning rather than an Error. Its text also names the dll, which is where the
+  assembly name now comes from instead of this file's own name.
+-->
+<TestRun id="8a5f1c22-0b8e-4f1a-9a2a-11119a3f0009" name="filter matched nothing here" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-06T10:17:21.0000000-07:00" queuing="2026-09-06T10:17:21.0000000-07:00" start="2026-09-06T10:17:20.6000000-07:00" finish="2026-09-06T10:17:21.1000000-07:00" />
+  <ResultSummary outcome="Completed">
+    <Counters total="0" executed="0" passed="0" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <RunInfos>
+      <RunInfo computerName="SAMPLE" outcome="Warning" timestamp="2026-09-06T10:17:21.0500000-07:00">
+        <Text>No test matches the given testcase filter `FullyQualifiedName~ReachableSpotsTests` in D:\Repos\Sample\src\Nav.Viewer.Tests\bin\Debug\net10.0\Nav.Viewer.Tests.dll</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

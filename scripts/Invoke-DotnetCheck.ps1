@@ -18,7 +18,7 @@
     failures carry their payload up front and are read from TRX files rather than scraped.
     The exit code means exactly one thing: 0 when the build succeeded and every test passed.
 
-    THE CONTRACT IS NOW 6. Contract 4 added the 'status' discriminator, because the MCP tool
+    THE CONTRACT IS NOW 7. Contract 4 added the 'status' discriminator, because the MCP tool
     can answer "running" with a handle when a rebuild outlasts the client's call timeout;
     this script only ever produces "complete" -- every invocation is a fresh process, so
     there is nobody to poll -- but the field is present. Contract 5 makes 'tests' carry the
@@ -32,8 +32,23 @@
     directory with scripts\graph.ps1, "razorgraph" for a graph held by the RazorGraph MCP
     server the repository's .mcp.json declares) and 'graphId' names the server-side graph.
     Under razorgraph a successful build rebuilds a graph that source has outrun, in place,
-    so the graph tools stay current across the check loop. The declared format is
-    contracts\dotnet-check.schema.json.
+    so the graph tools stay current across the check loop.
+
+    Contract 7 corrects contract 5 and extends it. The correction: 5 decided "aborted" from
+    four independent signs OR'd together, and three of them fire on healthy runs. xUnit files
+    its per-test "[FAIL]" line as a run-level RunInfo Error, so EVERY failing suite came back
+    aborted with a [FAIL] line as its crash banner; and an assembly a --filter matched nothing
+    in writes a TRX with no definitions and no counters, so a narrow filter over six
+    assemblies came back as five crashes and a failed run. Abort now needs positive evidence
+    -- the runner closing the file out as Aborted, never closing it out at all, or a RunInfo
+    Error whose text actually reads as an abort banner -- and an assembly that ran nothing is
+    'empty', which does NOT fail the run. The extension: 'tests' carries 'durationSeconds'
+    (wall clock) and 'testTimeSeconds' (every test's own duration summed, which exceeds wall
+    clock when collections run in parallel), a 'slowest' list of the costliest test classes,
+    and 'resultsDirectory'; each assembly adds the same two times plus 'resultsFile'. The TRX
+    files now OUTLIVE the run -- a bounded number of recent result directories is kept -- so a
+    session can open one instead of re-running a suite to see what the envelope did not carry.
+    The declared format is contracts\dotnet-check.schema.json.
 
     Baselines written under contract 3 are still read. The baseline file's format did not
     change when the envelope's did, and stamping both from one number would have discarded

@@ -44,6 +44,22 @@ public static class CheckTools
         "that skipped a project entirely and one that had nothing to say about it produce the " +
         "identical green. 'succeeded' means exactly one thing: the build succeeded and every " +
         "test passed.\n\n" +
+        "PER-ASSEMBLY 'status' IS THREE-VALUED and only one of them is bad news. \"complete\" " +
+        "ran. \"empty\" ran nothing -- a testFilter that matched nothing in that assembly -- and " +
+        "does NOT fail the run. \"aborted\" is a crashed host's leftovers, whose counters are " +
+        "what it lived to write rather than a result, and DOES fail the run. An ordinary failing " +
+        "test is \"complete\" with a failure in 'failures', never \"aborted\", and 'abort' stays " +
+        "null: it carries a crashed host's banner and nothing else.\n\n" +
+        "TIME COMES BACK IN TWO NUMBERS AND THEY ARE NOT THE SAME QUESTION. 'durationSeconds' is " +
+        "wall clock, what you waited. 'testTimeSeconds' is every test's own duration summed, and " +
+        "it EXCEEDS wall clock whenever collections ran in parallel -- 4.31x on this repo's own " +
+        "suite. 'slowest' names the costliest test CLASSES, because the class is the unit that " +
+        "serialises: xUnit runs collections in parallel and defaults to one collection per class, " +
+        "so a slow class costs its full time however many cores are idle. All of it is diagnostic " +
+        "and none of it is a budget -- nothing fails for being slow.\n\n" +
+        "THE TRX FILES ARE KEPT. 'resultsDirectory', and 'resultsFile' per assembly, point at " +
+        "results that outlive the call, so read one instead of re-running a suite with your own " +
+        "--logger to see something this envelope did not carry.\n\n" +
         "Errors and failures are reported in full, so a result over the result budget (100,000 " +
         "characters by default) is REFUSED rather than cut; the refusal says how to narrow, and " +
         "the CLI twin `janet check` has no limit and can be redirected to a file.")]
@@ -54,7 +70,7 @@ public static class CheckTools
         string configuration = "Debug",
         [Description("Build only. 'tests' comes back null.")]
         bool noTests = false,
-        [Description("Passed to dotnet test --filter. The counters then describe the filtered run, not the whole suite.")]
+        [Description("Passed to dotnet test --filter. The counters then describe the filtered run, not the whole suite, and any assembly the filter matched nothing in comes back status \"empty\" rather than failing the run.")]
         string? testFilter = null,
         [Description("Diff the warning census against the previous run of this kind. Forces a full rebuild, because a diff against an incremental census reports every later full build as all-new.")]
         bool @new = false,

@@ -173,6 +173,20 @@ public static class DotnetCheckJson
                 ["failed"] = assembly.Failed,
                 ["skipped"] = assembly.Skipped,
                 ["status"] = assembly.Status,
+                ["durationSeconds"] = assembly.DurationSeconds,
+                ["testTimeSeconds"] = assembly.TestTimeSeconds,
+                ["resultsFile"] = assembly.ResultsFile,
+            });
+        }
+
+        JsonArray slowest = [];
+        foreach (TestClassTime entry in tests.Slowest)
+        {
+            slowest.Add(new JsonObject
+            {
+                ["class"] = entry.Class,
+                ["testTimeSeconds"] = entry.TestTimeSeconds,
+                ["tests"] = entry.Tests,
             });
         }
 
@@ -185,8 +199,12 @@ public static class DotnetCheckJson
             ["passed"] = tests.Passed,
             ["failed"] = tests.Failed,
             ["skipped"] = tests.Skipped,
+            ["durationSeconds"] = tests.DurationSeconds,
+            ["testTimeSeconds"] = tests.TestTimeSeconds,
             ["failures"] = failures,
             ["assemblies"] = assemblies,
+            ["slowest"] = slowest,
+            ["resultsDirectory"] = tests.ResultsDirectory,
         };
     }
 
@@ -242,7 +260,8 @@ public static class DotnetCheckJson
         }
 
         TestRun tests = result.Tests;
-        text.AppendLine($"tests: {tests.Passed}/{tests.Total} passed, {tests.Failed} failed, {tests.Skipped} skipped");
+        text.AppendLine($"tests: {tests.Passed}/{tests.Total} passed, {tests.Failed} failed, {tests.Skipped} skipped"
+            + $" in {tests.DurationSeconds:0.##}s ({tests.TestTimeSeconds:0.##}s of test time)");
 
         // An aborted run's counters describe only what the host lived to write, so they are
         // rendered under the abort rather than the abort under them.
@@ -259,9 +278,17 @@ public static class DotnetCheckJson
             }
         }
 
-        foreach (TestAssembly assembly in tests.Assemblies.Where(a => a.Status != "complete"))
+        // "aborted" and "empty" are different news and must not share a line: one is a crashed
+        // host, the other is a filter that matched nothing, and printing the second as the
+        // first is what made a narrow filter over six assemblies read as five crashes.
+        foreach (TestAssembly assembly in tests.Assemblies.Where(a => a.Status == "aborted"))
         {
             text.AppendLine($"  ABORTED {assembly.Name}: partial results ({assembly.Passed}/{assembly.Total})");
+        }
+
+        foreach (TestAssembly assembly in tests.Assemblies.Where(a => a.Status == "empty"))
+        {
+            text.AppendLine($"  empty {assembly.Name}: no test matched the filter");
         }
 
         foreach (TestFailure failure in tests.Failures)
@@ -275,8 +302,30 @@ public static class DotnetCheckJson
             }
         }
 
+        // The reading view is curated where the JSON is complete: the slowest list is always
+        // in the envelope, and printed here only for a suite long enough that someone might
+        // want it. It is diagnostic, never a budget -- nothing fails for being slow.
+        if (tests.TestTimeSeconds >= SlowSuiteSeconds && tests.Slowest.Count > 0)
+        {
+            foreach (TestClassTime entry in tests.Slowest.Take(3))
+            {
+                text.AppendLine(
+                    $"  slowest {entry.Class}: {entry.TestTimeSeconds:0.##}s over {entry.Tests} tests"
+                    + $" ({entry.TestTimeSeconds / tests.TestTimeSeconds:P0} of test time)");
+            }
+        }
+
+        if (tests.ResultsDirectory is not null)
+        {
+            text.AppendLine($"  results: {tests.ResultsDirectory}");
+        }
+
         return text.ToString();
     }
+
+    /// <summary>Test time past which the reading view names the slowest classes. A suite under
+    /// this is not worth three lines of anyone's attention.</summary>
+    private const double SlowSuiteSeconds = 10;
 
     public static string Render(CheckPending pending) =>
         $"RUNNING  {pending.Target} ({pending.Configuration}), {pending.ElapsedSeconds}s so far." + Environment.NewLine +
