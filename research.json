@@ -42,7 +42,7 @@
         "FOCUS IS ONE PER AREA SINCE 2026-09-06, not one per list. The 2026-09-03 change gave items a stored area and gave the reading verbs (show, report) an area selector, but left focus global -- so the list was partitioned for READING and not for FOCUS, and since the list is shared by every repo on this machine, concurrent sessions in different repos fought over one variable. Measured that morning: the startup brief ran Get-ThreadReport.ps1 -Area JanetHome -NoLead and returned 21 JanetHome items beside active = a gamehub topic, so the brief that exists to orient a JanetHome session pointed at another repo's work; setting a JanetHome item active parked a gamehub session's item twice; completing a JanetHome item cleared focus for all four areas. This is the SAME SHAPE DESIGN-NOTES section 3 already teaches one layer up -- half a change, where a new dimension is added to the reads and not to the writes -- and it is the third instance recorded there. NO STORAGE CHANGE was needed: status plus the item's area already encoded one cursor per area, so nothing was migrated, the one item then active kept focus within its own area, and every other area started with none. What changed is the scope each operation enforces: SetActive, Add(active) and Update(status active) park only the target item's OWN area; Complete clears only that item's area. (unfiled) is an area like any other and gets its own cursor -- it is not exempt, which matters because most of the live list is unfiled. THE AMBIGUITY RULE, for the two verbs that take no selector: SetActive(none) with no area and Complete with an empty selector act when EXACTLY ONE area holds focus and are REFUSED when several do, naming every area and its topic, exactly as an ambiguous topic is refused with every candidate named rather than resolved to a first match. Exactly-one rather than always-refuse is deliberate: a single-project list holds all its items in one area and must not have to name it. Set-active gained an area parameter for the clear (--area, -Area, area) and refuses area together with a topic, since the two would name different areas."
       ],
       "tags": ["debugging", "session", "thread-items", "highest-value"],
-      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue", "note.thread-item-projection", "note.design-notes-projection", "file.standalone", "script.get-thread-report", "file.result-budget", "file.skill-checking-in"]
+      "links": ["script.add-thread-item", "script.set-active-thread", "script.update-thread-item", "script.complete-thread-item", "script.show-thread-items", "script.thread-items-common", "skill.crash-escape-analysis", "note.graph-write-queue", "note.thread-item-projection", "note.design-notes-projection", "file.standalone", "script.get-thread-report", "file.result-budget", "file.skill-checking-in", "script.get-thread-backlog"]
     },
     {
       "id": "pattern.graph-first-analysis",
@@ -1181,7 +1181,7 @@
         "Surfaced gained a second arm on 2026-09-03: after the tool runs, the filter sums the result's text blocks and throws McpException with that tool's narrowing hint when the total exceeds ResultBudget (file.result-budget). Never cut -- the same argument as the exception arm, read the other way: a truncated JSON document is a message that lies about what it is. The description caveat above still applies: the tool descriptions were updated to state the refusal, and whether a running session sees the new text without a restart was not re-tested."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server", "file.az-token", "file.server-link", "script.invoke-mcp-tool", "file.result-budget"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server", "file.az-token", "file.server-link", "script.invoke-mcp-tool", "file.result-budget", "script.get-thread-backlog"]
     },
 
     {
@@ -1200,7 +1200,7 @@
         "WAITS FOR THE LISTENER since 2026-09-01. The script used to return the moment the process was spawned, and the port stayed empty for up to 3 s after that: a client call inside that window failed with 'Unable to connect', the client's reconnect backoff outlasted a human's patience, and the whole thing read as the rotated server having died. It had not -- verified three ways, including a real rotation whose new pid was serving 16 s later. It now polls the port read from --port in -ServerArgument for up to 15 s, throws if the process exits first (current already points at the new build; repoint to roll back), warns if it is alive but silent, and says so when no --port was given. It also redirects the server's stdout/stderr to %TEMP%\\Janet\\<ProcessName>.out.log and .err.log, exactly as Ensure-McpServer does, so a start failure leaves a reason on disk."
       ],
       "tags": ["agent", "deployment", "tooling", "csharp", "powershell", "failure-modes"],
-      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server", "file.server-link", "script.ensure-razorgraph-server"]
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server", "file.server-link", "script.ensure-razorgraph-server", "script.get-thread-backlog"]
     },
 
     {
@@ -1460,7 +1460,7 @@
         "REPORT CONTRACT 4 ON 2026-09-06: focus became one cursor per area, so 'active' changed meaning and every 'areas' row gained one. 'active' now names the focus of THIS ANSWER'S SCOPE -- the area -Area narrowed to, or null when nothing narrowed, because a scalar cannot carry four projects' cursors. That null is \"you did not narrow\", not \"nothing is in focus\". Each areas row is now { area, open, active }, which is what makes an unnarrowed answer complete and removes the null ambiguity: nothing in focus anywhere is every row carrying null. The areas map still describes the WHOLE open list computed before either selector, exactly as contract 3 says -- a narrowed report still carries other projects' cursors, and a cursor computed from the narrowed set instead would make a JanetHome report read as \"no other project has anything in hand\". This script's own defect is what triggered the change: startup runs it with -Area JanetHome -NoLead, and on 2026-09-06 it returned 21 JanetHome items beside a gamehub topic in 'active'. The contract test seeds one labelled area in Test-OutputContracts.ps1 so both states of areas[].active are sampled, plus a narrowed sample so the scalar is exercised as a string and not only as null."
       ],
       "tags": ["agent", "thread-items", "retrieval", "contract", "session", "startup", "context-budget", "powershell"],
-      "links": ["pattern.thread-items", "script.show-thread-items", "script.test-output-contracts", "file.startup-manifest", "note.golden-tests", "note.thread-item-projection", "file.janet-core", "file.result-budget"]
+      "links": ["pattern.thread-items", "script.show-thread-items", "script.test-output-contracts", "file.startup-manifest", "note.golden-tests", "note.thread-item-projection", "file.janet-core", "file.result-budget", "script.get-thread-backlog"]
     },
 
     {
@@ -1643,7 +1643,7 @@
         "The default Uri is razorgraph (7718) because that is what the first caller needed. Pass -Uri http://127.0.0.1:7717/ for janet. Nothing checks that the server behind a given port is the one you meant, so a wrong port reports 'unknown tool' rather than 'wrong server'."
       ],
       "tags": ["powershell", "mcp", "agent", "retrieval", "http", "entrypoint"],
-      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-razorgraph-server", "script.search-json", "script.find-divergent-state-roots", "file.skill-graph-node-reading"]
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-razorgraph-server", "script.search-json", "script.find-divergent-state-roots", "file.skill-graph-node-reading", "script.get-thread-backlog"]
     },
 
     {
@@ -1830,6 +1830,23 @@
       ],
       "tags": ["skills", "agent", "pre-commit", "git", "quality"],
       "links": ["script.test-pre-commit", "script.install-janet-environment", "pattern.thread-items", "file.skill-agent-kickoff", "script.git"]
+    },
+
+    {
+      "id": "script.get-thread-backlog",
+      "kind": "script",
+      "path": "scripts\\Get-ThreadBacklog.ps1",
+      "summary": "Open thread items for one area, read from the RUNNING janet MCP server rather than the installed CLI. Get-ThreadReport.ps1 answers the same question but shims to the global janet tool, which Update-McpServer.ps1 rotates only when passed -ToolProject, so the tool and the server can be different builds -- they were on 2026-09-06, the CLI reinstalled at a rotation while the server kept the build before it. This asks the server, which is what attached sessions actually see, and stamps the contract number it answered with so a skew is visible rather than inferred. Envelope carries ok, uri, area, contract, count, active, activeCaveat, areas, items, note, problems and error. -Area defaults to JanetHome, -NoLead drops the leads, -Text for a terminal, -Pretty to indent; exit 1 when problems is non-empty.",
+      "params": ["Area", "Uri", "NoLead", "TimeoutSec", "Text", "Pretty"],
+      "caveats": [
+        "TWO UNWRAPS, AND MISSING EITHER RETURNS A WRONG ANSWER RATHER THAN AN ERROR. Invoke-McpTool.ps1 emits its call envelope as JSON TEXT (the house default), and the tool's own payload sits inside it under 'result'. The first draft of this script read fields off the outer object, and then off an unparsed string, and both times reported '0 open items' with a blank contract -- a confident empty backlog, which is the failure worth knowing about because nothing throws. Parse the text, take result, then read.",
+        "IT REPORTS FOCUS AS UNRELIABLE BELOW CONTRACT 4, deliberately, rather than presenting a topic that may not belong to the area asked for. Focus became one cursor per area on 2026-09-06; before that one cursor served the whole machine-wide list, so a report narrowed to JanetHome could name a gamehub topic -- which is what it did, and what prompted the change. Against an older server 'active' is still carried, but activeCaveat is filled and the -Text view prints the warning INSTEAD of an 'In focus' line. Verified against the live 7717 server the same day, still serving contract 3 after a rotation that reinstalled only the CLI.",
+        "Completed items are excluded twice: thread_report omits them unless all=true, and items are filtered on status as well. The second pass is redundant against a current server and is kept so the promise in the name does not depend on a remote default staying put.",
+        "It asks a SERVER, so it fails when nothing is listening -- a different fact from an empty backlog, reported as a problem with a non-zero exit and never as zero items. Ensure-McpServer.ps1 is what brings 7717 up; startup already runs it.",
+        "The area is a case-insensitive SUBSTRING, inherited from thread_report, so a short -Area can match more than one project's label. An area matching nothing returns an empty envelope rather than throwing (the report's own 2026-09-04 behaviour), and the areas map still names every area with open work, so a zero count arrives with the evidence of where the work actually is."
+      ],
+      "tags": ["thread-items", "mcp", "powershell", "retrieval", "session", "contract"],
+      "links": ["script.invoke-mcp-tool", "script.get-thread-report", "pattern.thread-items", "script.update-mcp-server", "note.janet-mcp-port"]
     }
   ]
 }
