@@ -28,8 +28,9 @@ public static class ThreadTools
         "only one project's items -- the list is shared by every repo on this machine, so an " +
         "unnarrowed read is mostly someone else's work. Completed items are excluded unless " +
         "all=true -- nothing is ever deleted. " +
-        "'active' always names the focus of the WHOLE list, not of the narrowed answer, so it " +
-        "does not become null just because you asked about a different item. A topic that " +
+        "Focus is one cursor PER AREA, so 'active' names the focus of the area you narrowed to " +
+        "and is null when you passed no area -- it cannot name four cursors at once. Use " +
+        "thread_report to see every area's cursor in one answer. A topic that " +
         "matches nothing or several items, and an area nothing is filed under, are refused with " +
         "a message saying what to do -- they are not answered with an empty list. The 'error' " +
         "field reports a list that could not be read; it is a fact about the list, not a failure " +
@@ -65,9 +66,13 @@ public static class ThreadTools
         "omitted silently. Read one item in full with thread_show once you know which one you " +
         "want. Each item carries the area it is filed under; pass area to see one project's " +
         "items only, which is usually what you want, since this list is shared by every repo on " +
-        "this machine. The envelope's 'areas' is the map of the WHOLE open list -- one {area, open} " +
-        "row per area in use, sorted by name -- and like 'active' it ignores the narrowing, so a " +
-        "report of one project still says how much is open elsewhere and under which labels. " +
+        "this machine. Focus is one cursor PER AREA: 'active' names the focus of the area you " +
+        "narrowed to, and is null when you passed no area, because a single field cannot carry " +
+        "every project's cursor. The envelope's 'areas' is the map of the WHOLE open list -- one " +
+        "{area, open, active} row per area in use, sorted by name -- and it ignores the " +
+        "narrowing, so a report of one project still says how much is open elsewhere, under " +
+        "which labels, and what each of them has in hand. Nothing in focus anywhere is every " +
+        "row's 'active' being null. " +
         "Completed items are excluded unless all=true, and never counted in 'areas'. " +
         "lead=false omits each item's notesLead key (notesLength stays), for when the map is " +
         "all you need.")]
@@ -108,7 +113,9 @@ public static class ThreadTools
         string? next = null,
         [Description("Catalog node ids that carry the context for this topic.")]
         string[]? refs = null,
-        [Description("Also take focus, parking whatever held it.")]
+        [Description(
+            "Also take focus, parking whatever held it IN THIS ITEM'S OWN AREA. Focus is one " +
+            "cursor per area, so no other project's session is displaced.")]
         bool active = false,
         [Description(
             "Which project or area this belongs to, free text -- a stored label, never derived " +
@@ -122,7 +129,8 @@ public static class ThreadTools
     [Description(
         "Amend an item in place. Omitted fields are left alone; an empty string clears one, " +
         "which is how you drop a resume cursor that no longer applies. Select by topic " +
-        "(case-insensitive substring); with none, this acts on whatever is in focus. " +
+        "(case-insensitive substring); with none, this acts on the item in focus, which works " +
+        "while a single area holds focus and is otherwise refused with every cursor named. " +
         "An ambiguous topic is refused and both candidates named, rather than resolved to a " +
         "first match -- amending the wrong item is how notes get lost. Notes are CAPPED at " +
         "8,000 characters (JANET_NOTES_BUDGET overrides) and next at 1,000, measured on what " +
@@ -143,7 +151,9 @@ public static class ThreadTools
         string? next = null,
         [Description("Replacement catalog node ids. Omit to leave alone.")]
         string[]? refs = null,
-        [Description("active, parked, or done. Setting active parks whatever held focus.")]
+        [Description(
+            "active, parked, or done. Setting active parks whatever held focus in THIS ITEM'S " +
+            "OWN AREA, and no other area's.")]
         string? status = null,
         [Description("Add to the existing notes rather than replacing them.")]
         bool appendNotes = false,
@@ -162,7 +172,9 @@ public static class ThreadTools
     [Description(
         "Mark an item finished. This is a status change, not a deletion -- the item stays in the " +
         "list and stops showing by default, so finishing work leaves a record of having done it. " +
-        "With no selector, completes whatever is in focus.")]
+        "Clears focus for THAT ITEM'S AREA only. With no selector it completes the item in " +
+        "focus, which works while a single area holds focus and is otherwise refused with every " +
+        "area and topic named -- pass a topic to say which one you meant.")]
     public static string Complete(
         [Description("Substring of the topic to complete. Omit to complete the item in focus.")]
         string? topic = null,
@@ -171,14 +183,23 @@ public static class ThreadTools
 
     [McpServerTool(Name = "thread_set_active")]
     [Description(
-        "Move focus to an item, or clear it with none=true. Focus is single: taking it always " +
-        "parks whatever held it, and the previous topic is reported so the switch is visible. " +
+        "Move focus to an item, or clear it with none=true. Focus is one cursor PER AREA: " +
+        "taking it parks whatever held focus in THAT ITEM'S OWN AREA and nothing else, so " +
+        "picking up JanetHome work leaves another repo's session holding what it was holding. " +
+        "The parked topic is reported as 'previous' so the switch is visible. With none=true, " +
+        "pass area to say whose cursor to clear; without it the clear succeeds only while a " +
+        "single area holds focus, and is otherwise refused with every area and topic named. " +
         "A completed item cannot take focus until it is reopened by setting its status to parked.")]
     public static string SetActive(
         [Description("Substring of the topic to focus on.")] string? topic = null,
         [Description(RetiredIndex)] int? index = null,
-        [Description("Clear focus entirely rather than moving it.")] bool none = false) =>
-        ThreadJson.Serialize(ThreadItems.SetActive(null, none ? null : Selector(topic, index)));
+        [Description("Clear focus entirely rather than moving it.")] bool none = false,
+        [Description(
+            "Which area's focus to clear, case-insensitive substring resolving to exactly one " +
+            "area. Applies only with none=true -- an item takes focus in the area it is filed " +
+            "under. '(unfiled)' is an area like any other and has its own cursor.")]
+        string? area = null) =>
+        ThreadJson.Serialize(ThreadItems.SetActive(null, none ? null : Selector(topic, index), area));
 
     private const string RetiredIndex =
         "RETIRED -- do not pass. Supplying it is an error. Select by topic instead.";

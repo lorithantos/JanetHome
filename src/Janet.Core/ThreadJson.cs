@@ -53,8 +53,12 @@ public static class ThreadJson
     /// 2 -> 3 on 2026-09-04: the envelope gained 'areas', the per-area open-count map over the
     /// whole list, so that a report narrowed by area still says where the rest of the backlog
     /// is. Same rule, same two files.
+    ///
+    /// 3 -> 4 on 2026-09-06: focus became one cursor PER AREA, so 'active' changed meaning and
+    /// 'areas' rows gained one. Two changes, one bump, because neither is readable without the
+    /// other. Same rule, same two files.
     /// </remarks>
-    private const int ReportContract = 3;
+    private const int ReportContract = 4;
 
     public static string Serialize(ThreadAddResult result, bool pretty = false) => Render(new JsonObject
     {
@@ -168,10 +172,20 @@ public static class ThreadJson
         ["error"] = result.Error,
     }, pretty);
 
+    /// <summary>One row of the area map: how much is open there, and what it has in hand.</summary>
+    /// <remarks>
+    /// 'active' is APPENDED after the two fields contract 3 wrote, by the same rule 'area' and
+    /// 'batched' were appended to their envelopes: what already existed keeps its order, so a
+    /// consumer sees an addition rather than a rearrangement. Always present and null where the
+    /// area has no cursor -- omitting the key would make "nothing in focus here" and "this row
+    /// does not report focus" the same absence, and the whole reason the field exists is that
+    /// the envelope's own null had become ambiguous.
+    /// </remarks>
     private static JsonNode AreaCount(ThreadAreaCount area) => new JsonObject
     {
         ["area"] = area.Area,
         ["open"] = area.Open,
+        ["active"] = area.Active,
     };
 
     /// <summary>One report item. 'notesLead' is OMITTED, not nulled, when the caller declined leads.</summary>
@@ -268,6 +282,16 @@ public static class ThreadJson
         if (result.Areas.Count > 0)
         {
             lines.Add("open by area: " + string.Join(", ", result.Areas.Select(a => $"{a.Area} {a.Open}")));
+        }
+
+        // Every cursor, on its own line, because focus is one per area since 2026-09-06 and a
+        // person reading a narrowed view is exactly the reader who needs to know that three
+        // other areas are holding something.
+        ThreadAreaCount[] focused = [.. result.Areas.Where(a => a.Active is not null)];
+
+        if (focused.Length > 0)
+        {
+            lines.Add("in focus: " + string.Join("; ", focused.Select(a => $"{a.Area}: {a.Active}")));
         }
 
         return string.Join(Environment.NewLine, lines);

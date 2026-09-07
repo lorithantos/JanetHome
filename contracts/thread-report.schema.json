@@ -5,9 +5,10 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
-    "contract": 3,
+    "contract": 4,
     "$comment.contract2": "1 -> 2 on 2026-09-03: items gained 'area', the stored project label that show and report can now be narrowed by. A field added to the envelope is a format change, so the number moved and so did the surface below.",
     "$comment.contract3": "2 -> 3 on 2026-09-04: the envelope gained 'areas', one {area, open} entry per area with open items over the WHOLE list, whatever the area selector narrowed to. Startup now narrows the report to the session's own area (the manifest's run entry passes -Area), and without this map the other projects' backlog would vanish from the brief rather than be summarised. Same rule as contract 2: a field added is a format change. The same bump made items[].notesLead OPTIONAL: narrowing alone left the JanetHome brief at 9,969 characters against a budget of about 8,000, and the leads were 1,827 of the report, so the startup entry now passes -NoLead as well. One bump, two changes, because they landed together.",
+    "$comment.contract4": "3 -> 4 on 2026-09-06: focus became one cursor PER AREA rather than one for the whole list, so 'active' changed meaning and every 'areas' row gained one. The defect: items gained a stored 'area' on 2026-09-03 and the reading verbs gained an 'area' selector, but focus was left global -- the list was partitioned for reading and not for focus, so the sessions running in four repos against this one shared store fought over a single variable. Measured the morning of the bump: the startup brief ran the report with -Area JanetHome, returned 21 JanetHome items, and named a gamehub item beside them as the thing in hand -- the brief that exists to orient a JanetHome session pointed at another repo's work. In the same session, setting a JanetHome item active parked a gamehub session's item twice, and completing a JanetHome item cleared focus for all four areas. So 'active' now names the focus of THIS ANSWER'S SCOPE: the area you narrowed to, or null when you narrowed to nothing, because a scalar cannot carry four cursors and reporting an arbitrary one of them is exactly how the brief came to lie. 'areas[].active' is what makes the unnarrowed answer complete, and it removes the null ambiguity the change would otherwise introduce: 'nothing is in focus anywhere' is every row carrying null, which a reader can tell apart from the envelope's own null, which means 'you did not narrow -- read the map'. NO STORAGE CHANGE and nothing to migrate: status plus the item's area already encoded this, so the one item then active kept focus within its own area and every other area started with none. Same rule as contracts 2 and 3, and the same two files move together.",
     "produces": "thread_report / janet thread report / scripts\\Get-ThreadReport.ps1",
     "script": "scripts\\Get-ThreadReport.ps1",
     "node": "script.get-thread-report",
@@ -20,7 +21,7 @@
   "required": ["contract", "count", "active", "areas", "items", "notesLength", "error"],
   "properties": {
     "contract": {
-      "const": 3,
+      "const": 4,
       "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
     },
     "count": {
@@ -30,15 +31,15 @@
     },
     "active": {
       "type": ["string", "null"],
-      "description": "Topic in focus, or null. Nothing active is an ordinary state, not a fault -- do not read null as an error."
+      "description": "Topic in focus in THIS ANSWER'S SCOPE, or null. Since contract 4 focus is one cursor PER AREA, so this names the cursor of the area you narrowed to and is null whenever you passed no area -- a scalar cannot carry four cursors, and picking one of them to report is what made a brief narrowed to JanetHome name a gamehub item. Null here therefore does NOT mean nothing is in focus; it means this answer was not scoped to an area. Read 'areas' for every cursor at once, and note that nothing active anywhere is an ordinary state either way, not a fault."
     },
     "areas": {
       "type": "array",
-      "description": "The map of the WHOLE open list: one entry per area with at least one open item, sorted by area name case-insensitively, computed before either selector -- like 'active', it describes the list and not this answer. Present whether or not area narrowed, and empty only when nothing is open anywhere. '(unfiled)' appears as a row like any other when unlabelled items are open, and is absent rather than zero when none are. Completed items are never counted, whatever all= says: the map answers where the rest of the backlog is, and finished work is not backlog.",
+      "description": "The map of the WHOLE open list: one entry per area with at least one open item, sorted by area name case-insensitively, computed before either selector -- it describes the list, not this answer. Present whether or not area narrowed, and empty only when nothing is open anywhere. '(unfiled)' appears as a row like any other when unlabelled items are open, and is absent rather than zero when none are. Completed items are never counted, whatever all= says: the map answers where the rest of the backlog is, and finished work is not backlog. Since contract 4 each row also carries that area's cursor, which is what makes an unnarrowed answer complete rather than merely honest about being unscoped.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["area", "open"],
+        "required": ["area", "open", "active"],
         "properties": {
           "area": {
             "type": "string",
@@ -49,6 +50,10 @@
             "type": "integer",
             "minimum": 1,
             "description": "Open (active or parked) items filed under this area. Never zero: an area with nothing open has no row."
+          },
+          "active": {
+            "type": ["string", "null"],
+            "description": "The topic this area has in focus, or null where it has none. Focus is one per area since contract 4, so these rows are the complete set of cursors: every row null means nothing is in focus anywhere, which is a different statement from the envelope's own null. Always present, never omitted -- an absent key would make 'no cursor here' and 'this row does not report focus' the same absence, which is the ambiguity the field exists to remove."
           }
         }
       }
@@ -81,7 +86,7 @@
           "status": {
             "type": "string",
             "enum": ["active", "parked", "done"],
-            "description": "Focus is single: at most one item is active."
+            "description": "Focus is one PER AREA since contract 4: at most one item is active within any one area, and several areas can each hold one at the same time. It was at most one across the whole list until 2026-09-06, which is the claim this field's description used to make and which four concurrent sessions sharing this list disproved."
           },
           "refs": {
             "type": "array",

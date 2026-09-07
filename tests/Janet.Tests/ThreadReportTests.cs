@@ -146,10 +146,11 @@ public class ThreadReportTests : IDisposable
     {
         JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(ThreadItems.Report(Seeded())))!.AsObject();
 
-        // 3 since 2026-09-04, when the envelope gained 'areas' (2 on 2026-09-03, when items
-        // gained 'area'). Pinned here as a literal rather than read from the code, so that a bump
-        // has to be stated in two places by a person.
-        Assert.Equal(3, (int)envelope["contract"]!);
+        // 4 since 2026-09-06, when focus became one cursor per area, so 'active' changed
+        // meaning and 'areas' rows gained one (3 on 2026-09-04, when the envelope gained
+        // 'areas'; 2 on 2026-09-03, when items gained 'area'). Pinned here as a literal rather
+        // than read from the code, so that a bump has to be stated in two places by a person.
+        Assert.Equal(4, (int)envelope["contract"]!);
 
         // The point of the format: no field anywhere holds a note body.
         foreach (JsonNode? item in envelope["items"]!.AsArray())

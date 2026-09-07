@@ -103,7 +103,11 @@ public class ThreadItemTests : IDisposable
         ThreadAddResult result = ThreadItems.Add(path, "something noticed in passing");
 
         Assert.Equal("chase the AV", result.Active);
-        Assert.Equal("chase the AV", ThreadItems.Show(path).Active);
+
+        // Read back through the area, since 2026-09-06: the seed is entirely unfiled, so
+        // (unfiled) is the one area and its cursor is the focus this test is about. An
+        // unnarrowed read reports null now -- see ActiveNamesTheFocusOfTheScopeAsked.
+        Assert.Equal("chase the AV", ThreadItems.Show(path, area: ThreadItems.Unfiled).Active);
     }
 
     [Fact]
@@ -113,7 +117,7 @@ public class ThreadItemTests : IDisposable
 
         ThreadItems.Add(path, "urgent detour", active: true);
 
-        ThreadShowResult shown = ThreadItems.Show(path);
+        ThreadShowResult shown = ThreadItems.Show(path, area: ThreadItems.Unfiled);
 
         Assert.Equal("urgent detour", shown.Active);
         Assert.Single(shown.Items, i => i.IsActive);
@@ -314,7 +318,7 @@ public class ThreadItemTests : IDisposable
 
         ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, status: ThreadItems.Active);
 
-        ThreadShowResult shown = ThreadItems.Show(path);
+        ThreadShowResult shown = ThreadItems.Show(path, area: ThreadItems.Unfiled);
 
         Assert.Equal("cache eviction", shown.Active);
         Assert.Single(shown.Items, i => i.IsActive);
@@ -449,23 +453,37 @@ public class ThreadItemTests : IDisposable
     }
 
     /// <summary>
-    /// 'active' names the focus of the LIST, not of the answer.
+    /// 'active' names the focus of THIS ANSWER'S SCOPE, and null means "unscoped".
     /// </summary>
     /// <remarks>
-    /// The trap this exists for. ActiveTopic is computed over the unprojected list, so a
-    /// caller who asks about some other item still learns what is in focus. Computed after the
-    /// selector instead, it would be null here -- and a reader would correctly conclude from
-    /// that envelope that nothing is in focus, which is false. Nothing else catches it: every
-    /// test that existed before these selectors did passes no selector at all.
+    /// This test used to be called ActiveStillNamesTheFocusWhenADifferentItemWasSelected and
+    /// asserted the opposite of every line below: that 'active' described the whole list
+    /// whatever the selectors did. That was right while focus was global and became wrong on
+    /// 2026-09-06, when focus became one cursor per area -- there is no single focus of the
+    /// whole list to name any more, and naming one of four cursors is exactly how the startup
+    /// brief came to narrow to JanetHome and report a gamehub item.
+    ///
+    /// So: an AREA scopes the answer and 'active' is that area's cursor, null where the area
+    /// has none. A TOPIC does not scope it -- it narrows to an item, not to a group -- and
+    /// leaves 'active' null, as does no selector at all. The complete answer to "what is in
+    /// focus" is the report's 'areas' map, asserted in ThreadReportTests.
     /// </remarks>
     [Fact]
-    public void ActiveStillNamesTheFocusWhenADifferentItemWasSelected()
+    public void ActiveNamesTheFocusOfTheScopeAsked()
     {
         string path = Filed();
 
-        Assert.Equal("the startup brief", ThreadItems.Show(path, topic: "eviction").Active);
-        Assert.Equal("the startup brief", ThreadItems.Show(path, area: "RazorGraph").Active);
-        Assert.Equal("the startup brief", ThreadItems.Report(path, topic: "eviction").Active);
+        Assert.Equal("the startup brief", ThreadItems.Show(path, area: "JanetHome").Active);
+        Assert.Equal("the startup brief", ThreadItems.Report(path, area: "JanetHome").Active);
+
+        // RazorGraph holds two open items and no cursor. Null here is a fact about RazorGraph,
+        // and it is what the old behaviour got wrong in the other direction: it would have
+        // answered "the startup brief" to a question about a project that has nothing in hand.
+        Assert.Null(ThreadItems.Show(path, area: "RazorGraph").Active);
+
+        Assert.Null(ThreadItems.Show(path, topic: "eviction").Active);
+        Assert.Null(ThreadItems.Report(path, topic: "eviction").Active);
+        Assert.Null(ThreadItems.Report(path).Active);
     }
 
     /// <summary>Ambiguity is refused, and every candidate named.</summary>
@@ -571,7 +589,11 @@ public class ThreadItemTests : IDisposable
             shown.Items.Select(i => i.Topic));
 
         Assert.Equal(4, shown.Count);
-        Assert.Equal("the startup brief", shown.Active);
+
+        // Null because nothing narrowed, not because nothing is in focus: 'the startup brief'
+        // holds JanetHome's cursor throughout. Since 2026-09-06 'active' describes the scope
+        // asked about, and no scope was asked about here.
+        Assert.Null(shown.Active);
         Assert.Null(shown.Error);
     }
 

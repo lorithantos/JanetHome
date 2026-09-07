@@ -119,11 +119,34 @@ was off by the done count and rewrote a different item. The available fix was to
 true index instead, which makes the number right without making it identity, and leaves the
 next change to ordering free to break it again.
 
+**And a third time, as half a change.** On 2026-09-03 items gained a stored `area` and the
+reading verbs gained an `area` selector, because one list is shared by every repo on this
+machine and an unnarrowed read is mostly someone else's work. Focus was left global. So the
+list was partitioned for *reading* and not for *focus*, and four concurrent sessions went on
+sharing one cursor. Nothing failed loudly. What it did instead, measured on 2026-09-06, was
+lie: the startup brief -- the thing that exists to orient a session -- narrowed the report to
+JanetHome, returned 21 JanetHome items, and named a gamehub topic beside them as the work in
+hand. Setting a JanetHome item active parked a gamehub session's item twice; completing one
+cleared focus for all four areas. The fix needed no storage change at all, which is the
+diagnostic: `status` plus the item's `area` already encoded one cursor per area, and only the
+scope each operation enforced was wrong. Two things followed from making it per-area, and both
+were consequences rather than choices. The envelope's `active` could no longer be a scalar
+about the whole list, so it became the focus of the *answer's scope* and the areas map grew a
+cursor per row. And the two verbs that take no selector -- clear focus, complete -- had to stop
+meaning "the one active item", because there is no longer exactly one: they now act when
+exactly one area holds focus and refuse otherwise with every cursor named, which is the house
+rule for an ambiguous topic applied to an ambiguous *cursor*.
+
 **The general lesson, which outlives this tool.** A structure chosen for the operation you
 first imagined -- descend, unwind -- will quietly forbid the operations you actually turn
 out to need: note, amend, finish. The tell is callers reaching for a destructive operation
 to accomplish a harmless one. That is not user error; it is a missing verb. Its companion:
 when a selector is right only as long as nothing above it moves, the selector is the bug.
+And its third: adding a dimension to the reads and not to the writes leaves a structure that
+*describes* itself correctly and *behaves* as though the dimension were not there. That failure
+is silent by construction, because every individual answer is well-formed -- so the question to
+ask when introducing a new dimension is not "does this read right" but "which invariants were
+stated over the whole thing, and does each of them still mean what it says".
 
 Still the highest value-to-complexity ratio in the toolkit, which is the more durable
 observation: the most-used thing here is list manipulation and a lock.

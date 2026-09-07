@@ -136,10 +136,16 @@ $samplers = @{
         # One item with notes and refs, one bare, one completed: notesLead is exercised both
         # non-empty and empty, notesLength both above and at zero, and the done status is only
         # reachable through --all.
+        #
+        # One item carries an AREA and the rest do not, added 2026-09-06 with contract 4. Two
+        # rows in 'areas' is what makes the new areas[].active field testable at all: the
+        # unfiled row carries a cursor and the labelled one carries null, so the gate sees the
+        # field in both of its states rather than only the one an all-unfiled fixture reaches.
+        # It also pins that '(unfiled)' is a row like any other beside a real label.
         $items = @'
 [
   { "topic": "cache eviction", "status": "active", "refs": ["note.cache"], "next": "query the telemetry table", "notes": "\n\nRuled out the obvious: it isn't the TTL.\nSecond line, not carried." },
-  { "topic": "cache warming", "status": "parked", "refs": [], "next": "", "notes": "" },
+  { "topic": "cache warming", "status": "parked", "refs": [], "next": "", "notes": "", "area": "JanetHome" },
   { "topic": "finished thing", "status": "done", "refs": [], "next": "", "notes": "closed out" }
 ]
 '@
@@ -150,6 +156,11 @@ $samplers = @{
             $live = @(& $Janet thread report --path $seed) -join "`n"
             $all = @(& $Janet thread report --path $seed --all) -join "`n"
             $none = @(& $Janet thread report --path $empty) -join "`n"
+
+            # Narrowed, so the envelope's own 'active' is exercised as a STRING. Unnarrowed it
+            # is null by contract 4, and a fixture that never narrowed would only ever show the
+            # gate the null.
+            $scoped = @(& $Janet thread report --path $seed --area '(unfiled)') -join "`n"
         }
         finally {
             # A sampler that leaves temp files behind runs on every commit.
@@ -162,6 +173,7 @@ $samplers = @{
             samples = @(
                 [pscustomobject]@{ label = 'live items'; json = $live }
                 [pscustomobject]@{ label = 'including completed'; json = $all }
+                [pscustomobject]@{ label = 'narrowed to one area'; json = $scoped }
                 [pscustomobject]@{ label = 'empty list'; json = $none }
             )
         }

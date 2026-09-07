@@ -48,8 +48,11 @@
     Narrows to one area, case-insensitive substring. '(unfiled)' is the group of items with no
     area set; items are never guessed into a neighbouring one.
 
-    'active' still names the focus of the WHOLE list under either selector, so a narrowed
-    answer does not read as though nothing is in focus.
+    'active' names the focus of THIS ANSWER'S SCOPE since 2026-09-06: this area's cursor when
+    -Area narrowed, and null when it did not. Focus is one cursor PER AREA now, so there is no
+    single focus of the whole list left to name -- and a null here means "you did not narrow",
+    not "nothing is in focus". Show carries no areas map, so use Get-ThreadReport.ps1 when the
+    question is what every project has in hand: its envelope carries every area's cursor.
 
 .EXAMPLE
     .\Show-ThreadItems.ps1 -Area JanetHome -Text

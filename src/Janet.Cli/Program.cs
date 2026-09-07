@@ -169,9 +169,14 @@ static int Thread(Args args)
             return 0;
 
         case "active":
-            // --none clears focus; anything else moves it.
+            // --none clears focus, and --area says WHOSE: focus is one cursor per area, so
+            // clearing without naming one is refused when several areas hold it.
             Console.Out.WriteLine(ThreadJson.Serialize(
-                ThreadItems.SetActive(path, args.Flag("--none") ? null : selector), pretty));
+                ThreadItems.SetActive(
+                    path,
+                    args.Flag("--none") ? null : selector,
+                    args.Value("--area")),
+                pretty));
 
             return 0;
 
@@ -709,20 +714,27 @@ static int Usage()
                                --no-lead drops each item's notesLead and keeps notesLength)
                               (--topic names ONE item and refuses an ambiguous or absent
                                one; --area narrows to a group, '(unfiled)' being the
-                               group of items with no area. Neither is capped, and
-                               'active' still names the focus of the whole list, as
-                               does 'areas': one {area, open} row per area with open
-                               items, over the whole list, whatever --area narrowed to)
+                               group of items with no area. Neither is capped. 'active'
+                               names the focus of THIS answer's scope -- the area you
+                               narrowed to, or null when you narrowed to nothing, since
+                               focus is one cursor per area. 'areas' carries them all:
+                               one {area, open, active} row per area with open items,
+                               over the whole list, whatever --area narrowed to)
         janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]...
                               [--area TEXT] [--active]
         janet thread update   [--topic TEXT] [--notes TEXT] [--next TEXT]
                               [--ref ID]... [--status active|parked|done] [--area TEXT]
                               [--append-notes] [--append-refs]
         janet thread complete [--topic TEXT]
-        janet thread active   (--topic TEXT | --none)
-                              (topic is the only WRITE selector; with none, update and
-                              complete act on whatever is in focus. --area is a stored
-                              label, never inferred from the topic; --area '' unfiles)
+        janet thread active   (--topic TEXT | --none [--area TEXT])
+                              (topic is the only WRITE selector. Focus is one cursor PER
+                              AREA: taking it parks only that item's own area, and
+                              --none clears one area's -- name it with --area, or omit
+                              --area only while a single area holds focus, since with
+                              several the clear is refused and every cursor named. With
+                              no topic, update and complete act on the sole cursor by
+                              the same rule. On add and update --area is a stored label,
+                              never inferred from the topic; --area '' unfiles)
 
         janet api             (--package ID | --path FILE) [--version V] [--tfm TFM]
                               [--query TEXT] [--id MEMBER]... [--kind Type|Method|Property|Field|Event]

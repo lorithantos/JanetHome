@@ -24,11 +24,20 @@
     stated rather than implied -- the same rule the catalog follows when it reports its own
     truncation. Read one item in full with Show-ThreadItems.ps1 once you know which one.
 
-    The envelope also carries 'areas' since 2026-09-04 (report contract 3): one { area, open }
-    row per area with open items, over the WHOLE list, whatever -Area narrowed to -- the same
-    rule 'active' follows. Startup passes -Area through the manifest's 'args', so a session's
-    brief holds its own project's items plus this map of everyone else's; before that the
-    unnarrowed report was 38,058 of the brief's 42,241 characters.
+    The envelope also carries 'areas' since 2026-09-04: one row per area with open items, over
+    the WHOLE list, whatever -Area narrowed to. Startup passes -Area through the manifest's
+    'args', so a session's brief holds its own project's items plus this map of everyone else's;
+    before that the unnarrowed report was 38,058 of the brief's 42,241 characters.
+
+    FOCUS IS ONE CURSOR PER AREA since 2026-09-06 (report contract 4), and this changed what
+    two fields mean. 'active' names the focus of THIS ANSWER'S SCOPE: the area -Area narrowed
+    to, or null when nothing narrowed -- a single field cannot carry four projects' cursors,
+    and picking one of them is what this bump exists to stop. Measured that morning against
+    the live list: the startup brief ran this script with -Area JanetHome, returned 21
+    JanetHome items, and named a gamehub item beside them as the work in hand. Each 'areas' row
+    therefore gained an 'active' of its own, so the unnarrowed answer is complete rather than
+    merely honest about being unscoped -- and "nothing is in focus anywhere" is every row
+    carrying null, which is a different statement from the envelope's own null.
 
 .PARAMETER Path
     List file to read. Defaults to Janet\thread-stack.json under TEMP.

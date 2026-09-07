@@ -141,13 +141,21 @@ public sealed record ThreadReportItem(
     string Topic, string Status, string Area, IReadOnlyList<string> Refs, string Next,
     string? NotesLead, int NotesLength);
 
-/// <summary>One area and how many OPEN items are filed under it.</summary>
+/// <summary>One area, how many OPEN items are filed under it, and which one it has in focus.</summary>
 /// <remarks>
 /// Open, never total: the map exists so a narrowed report still says where the rest of the
 /// backlog is, and completed items are not backlog. Area is the resolved label, so the group of
 /// unlabelled items appears here as <see cref="ThreadItems.Unfiled"/> like any other.
+///
+/// Active is that area's OWN cursor, null where it has none, and it is what makes the
+/// unnarrowed report complete. Focus became per-area on 2026-09-06; before that the envelope
+/// had one scalar for the whole list, which could not describe four projects at once, and the
+/// startup brief demonstrated the consequence by narrowing to JanetHome and naming a gamehub
+/// item as the thing in hand. A row per area removes the null ambiguity too: "nothing is in
+/// focus anywhere" is every row carrying null, which a reader can tell apart from the envelope's
+/// own null, which means "you did not narrow -- read the map".
 /// </remarks>
-public sealed record ThreadAreaCount(string Area, int Open);
+public sealed record ThreadAreaCount(string Area, int Open, string? Active);
 
 /// <summary>
 /// The list as a map rather than as its contents.
@@ -163,10 +171,15 @@ public sealed record ThreadAreaCount(string Area, int Open);
 /// (see ThreadJson.Render, first line only). This is that view for a machine reader.
 ///
 /// Areas is the per-area map of the WHOLE open list -- one entry per area in use, with its open
-/// count, sorted by name -- and like Active it ignores the selectors. Added 2026-09-04 so that a
-/// report narrowed to one project still carries the shape of the backlog it left out: the
+/// count and its own cursor, sorted by name -- and it ignores the selectors. Added 2026-09-04 so
+/// that a report narrowed to one project still carries the shape of the backlog it left out: the
 /// startup brief narrows to the session's own area, and without this the other projects' work
 /// would simply vanish from it, which is the silent omission the envelope otherwise avoids.
+///
+/// Active is THIS ANSWER'S scope since 2026-09-06, not the whole list's: the area selector's
+/// focus when one was passed, and null when none was, because a scalar cannot carry four
+/// cursors and picking one of them to report is how the startup brief came to name another
+/// repo's work. The complete answer to "what is in focus" when nothing narrowed is Areas.
 /// </remarks>
 public sealed record ThreadReportResult(
     int Count, string? Active, IReadOnlyList<ThreadAreaCount> Areas, IReadOnlyList<ThreadReportItem> Items,
@@ -180,6 +193,15 @@ public sealed record ThreadReportResult(
 /// "descend into a topic" were the same operation, so noting work displaced whatever was active,
 /// and completing an item dropped it. A list separates those: position carries order, status
 /// carries focus, and nothing is ever removed.
+///
+/// FOCUS IS ONE PER AREA since 2026-09-06, not one per list. Status plus the item's area already
+/// encodes that, so nothing about the stored format changed -- only the scope every operation
+/// enforces it over. The reason is that this list is shared by every repo on this machine: items
+/// gained an area on 2026-09-03 and the reading verbs gained an area selector, but focus was
+/// left global, so the list was partitioned for reading and not for focus and concurrent
+/// sessions fought over one variable. Measured 2026-09-06: the startup brief narrowed to
+/// JanetHome and named a gamehub item as the work in hand; setting a JanetHome item active
+/// parked a gamehub session's item twice; completing one cleared focus for all four areas.
 ///
 /// Every write goes through the shared write queue, which is the same mechanism the catalog
 /// uses. The PowerShell serialised its read-modify-write with a named mutex, added after an
@@ -336,9 +358,49 @@ public static class ThreadItems
 
     private static string AreaOf(string area) => string.IsNullOrWhiteSpace(area) ? Unfiled : area;
 
-    /// <summary>The topic in focus, or null. Nothing active is an ordinary state, not a fault.</summary>
+    /// <summary>
+    /// The topic in focus among the items given, or null. Nothing active is an ordinary state,
+    /// not a fault.
+    /// </summary>
+    /// <remarks>
+    /// SCOPED BY ITS ARGUMENT, which is the whole of how per-area focus is implemented: pass an
+    /// area's items and you get that area's cursor, pass the list and you get whichever cursor
+    /// happens to come first. Since 2026-09-06 nothing passes the whole list expecting an
+    /// answer about the whole list, because there is no such single answer any more.
+    /// </remarks>
     public static string? ActiveTopic(IEnumerable<ThreadItem> items) =>
         items.FirstOrDefault(i => i.IsActive)?.Topic;
+
+    /// <summary>The topic in focus in ONE area, or null where that area has no cursor.</summary>
+    /// <remarks>
+    /// Areas are compared with Ordinal equality on the RESOLVED label, the same comparer
+    /// <see cref="AreaCounts"/> groups by, so a cursor always belongs to exactly one row of the
+    /// map. The read selectors match an area case-insensitively by substring, deliberately
+    /// differently: that is a narrowing, and this is identity.
+    /// </remarks>
+    public static string? ActiveTopic(IEnumerable<ThreadItem> items, string area) =>
+        ActiveTopic(items.Where(i => SameArea(i, area)));
+
+    /// <summary>Whether an item is filed under the given RESOLVED area label.</summary>
+    private static bool SameArea(ThreadItem item, string area) =>
+        string.Equals(AreaOf(item), area, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Every item holding focus, at most one per area.
+    /// </summary>
+    /// <remarks>
+    /// The invariant is per-area since 2026-09-06, so this is a LIST rather than the single
+    /// item it used to be. A file hand-edited into two cursors in one area is still possible;
+    /// the callers that must resolve one item cope by counting distinct AREAS, so a corrupt
+    /// pair inside one area behaves as the old global single did rather than becoming a new
+    /// refusal nobody can act on.
+    /// </remarks>
+    private static List<ThreadItem> InFocus(IEnumerable<ThreadItem> items) =>
+        [.. items.Where(i => i.IsActive)];
+
+    /// <summary>Every cursor as "area: topic", for a refusal that names all of them.</summary>
+    private static string Cursors(IEnumerable<ThreadItem> active) =>
+        string.Join("; ", active.Select(i => $"{AreaOf(i)}: {i.Topic}"));
 
     /// <summary>Everything not yet completed. Done items stay in the file and out of the way.</summary>
     public static IReadOnlyList<ThreadItem> Live(IEnumerable<ThreadItem> items) =>
@@ -366,12 +428,7 @@ public static class ThreadItems
     {
         if (string.IsNullOrEmpty(selector.Topic))
         {
-            int active = IndexOfActive(items);
-
-            return active >= 0
-                ? active
-                : throw new GraphException(
-                    "No item is active, so there is nothing to act on. Pass a topic.");
+            return IndexOfSoleActive(items);
         }
 
         List<int> matched = Matching(items, selector.Topic);
@@ -410,27 +467,66 @@ public static class ThreadItems
             .Where(i => items[i].Topic.Contains(topic, StringComparison.OrdinalIgnoreCase))
     ];
 
-    private static int IndexOfActive(IReadOnlyList<ThreadItem> items)
+    /// <summary>
+    /// The one item an EMPTY selector means, or a refusal naming every cursor.
+    /// </summary>
+    /// <remarks>
+    /// "Whatever is active" was unambiguous while focus was global. Per-area it is a question
+    /// with up to one answer per area, so this applies the same house rule an ambiguous topic
+    /// gets: act when exactly one area holds focus, and otherwise REFUSE with every candidate
+    /// named rather than resolve to a first match. Guessing here would complete or amend
+    /// another repo's item, which is the concrete harm measured on 2026-09-06 -- completing a
+    /// JanetHome item cleared focus for all four areas.
+    ///
+    /// Counted by distinct AREA, not by item: one area holding two cursors is a corrupt file
+    /// rather than an ambiguous request, and behaving there as the old global single did is
+    /// better than a refusal whose remedy is to hand-edit the store.
+    /// </remarks>
+    private static int IndexOfSoleActive(IReadOnlyList<ThreadItem> items)
     {
-        for (int i = 0; i < items.Count; i++)
+        List<int> active = [.. Enumerable.Range(0, items.Count).Where(i => items[i].IsActive)];
+
+        if (active.Count == 0)
         {
-            if (items[i].IsActive)
-            {
-                return i;
-            }
+            throw new GraphException(
+                "No item is active, so there is nothing to act on. Pass a topic.");
         }
 
-        return -1;
+        string[] areas = [.. active.Select(i => AreaOf(items[i])).Distinct(StringComparer.Ordinal)];
+
+        if (areas.Length > 1)
+        {
+            throw new GraphException(
+                $"Focus is per area, and {areas.Length} areas hold it: " +
+                Cursors(active.Select(i => items[i])) +
+                ". An empty selector cannot mean all of them -- pass a topic to name the one " +
+                "you meant.");
+        }
+
+        return active[0];
     }
 
-    /// <summary>Parks whatever is active. Focus is single, so taking it always means yielding it.</summary>
-    private static string? ParkActive(List<ThreadItem> items)
+    /// <summary>
+    /// Parks whatever holds focus IN ONE AREA, and reports what it displaced.
+    /// </summary>
+    /// <remarks>
+    /// The area argument is the change of 2026-09-06 and the whole point of it. Focus is one
+    /// per area, not one per list: this list is shared by every repo on this machine, so a
+    /// global park meant a session taking up its own work silently parked whatever three other
+    /// sessions were holding. Measured that day: setting a JanetHome item active parked a
+    /// gamehub session's item twice.
+    ///
+    /// Takes the RESOLVED area, so <see cref="Unfiled"/> is parked like any other group and
+    /// there is no special case for the unlabelled items -- they are an area, and they get
+    /// their own cursor.
+    /// </remarks>
+    private static string? ParkActive(List<ThreadItem> items, string area)
     {
         string? previous = null;
 
         for (int i = 0; i < items.Count; i++)
         {
-            if (items[i].IsActive)
+            if (items[i].IsActive && SameArea(items[i], area))
             {
                 previous ??= items[i].Topic;
                 items[i] = items[i] with { Status = Parked };
@@ -438,6 +534,45 @@ public static class ThreadItems
         }
 
         return previous;
+    }
+
+    /// <summary>
+    /// The ONE area a write's area argument names, or a refusal.
+    /// </summary>
+    /// <remarks>
+    /// Matched case-insensitively by substring, as the read selectors are, but resolved to
+    /// exactly one area or refused -- the same split <see cref="Find"/> and <see cref="Only"/>
+    /// hold to. A write that cleared two areas' cursors because a substring reached both is the
+    /// wrong-item write this whole file is arranged to prevent.
+    /// </remarks>
+    private static string SoleArea(IReadOnlyList<ThreadItem> items, string area)
+    {
+        string[] known =
+        [
+            .. Live(items).Select(AreaOf)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.OrdinalIgnoreCase)
+        ];
+
+        string[] matched =
+            [.. known.Where(a => a.Contains(area, StringComparison.OrdinalIgnoreCase))];
+
+        if (matched.Length == 1)
+        {
+            return matched[0];
+        }
+
+        if (matched.Length == 0)
+        {
+            throw new GraphException(
+                $"No item is filed under an area matching '{area}'. " + (known.Length > 0
+                    ? $"Areas in use: {string.Join(", ", known)}."
+                    : "The list is empty, so no area is in use yet."));
+        }
+
+        throw new GraphException(
+            $"Area '{area}' is ambiguous -- it matches {matched.Length} areas: " +
+            string.Join(", ", matched) + ". Pass more of the one you meant.");
     }
 
     // ---- writing -----------------------------------------------------------------------
@@ -518,6 +653,11 @@ public static class ThreadItems
         MalformedInput.Ensure("topic", topic, topic);
         EnsureWritable(topic, notesAfter: notes, notesWritten: notes, next, area);
 
+        // Absent stays absent. An add that names no area produces an unfiled item, rather than
+        // one filed under whatever the caller was last working on -- and (unfiled) is the area
+        // whose cursor this add competes for, exactly as a labelled one would be.
+        string filed = (area ?? string.Empty).Trim();
+
         return Write(path, items =>
         {
             if (items.Any(i => string.Equals(i.Topic, topic, StringComparison.OrdinalIgnoreCase)))
@@ -528,7 +668,9 @@ public static class ThreadItems
 
             if (active)
             {
-                ParkActive(items);
+                // The NEW item's own area, and no other. An add that takes focus in JanetHome
+                // leaves a gamehub session's cursor exactly where it was.
+                ParkActive(items, AreaOf(filed));
             }
 
             items.Add(new ThreadItem
@@ -538,15 +680,12 @@ public static class ThreadItems
                 Refs = refs ?? [],
                 Next = next,
                 Notes = notes,
-
-                // Absent stays absent. An add that names no area produces an unfiled item,
-                // rather than one filed under whatever the caller was last working on.
-                Area = (area ?? string.Empty).Trim(),
+                Area = filed,
             });
 
             IReadOnlyList<ThreadItem> live = Live(items);
 
-            return new ThreadAddResult(topic, ActiveTopic(live), live.Count);
+            return new ThreadAddResult(topic, ActiveTopic(live, AreaOf(filed)), live.Count);
         });
     }
 
@@ -627,7 +766,10 @@ public static class ThreadItems
             {
                 if (string.Equals(status, Active, StringComparison.OrdinalIgnoreCase))
                 {
-                    ParkActive(items);
+                    // Scoped to the STORED area rather than a pending one: the re-read below
+                    // is what the item ends up as, so parking any other area's cursor would
+                    // park a group this item is not going to join.
+                    ParkActive(items, AreaOf(items[target]));
                     item = items[target];
                 }
 
@@ -662,18 +804,43 @@ public static class ThreadItems
 
             IReadOnlyList<ThreadItem> live = Live(items);
 
-            return new ThreadCompleteResult(items[target].Topic, ActiveTopic(live), live.Count);
+            // THIS item's area, and only that one. Completing is how an area's cursor is
+            // cleared, and before 2026-09-06 it cleared every area's -- finishing a JanetHome
+            // item told three other sessions that nothing was in hand.
+            return new ThreadCompleteResult(
+                items[target].Topic, ActiveTopic(live, AreaOf(items[target])), live.Count);
         });
 
-    /// <summary>Moves focus, or clears it when the selector is null.</summary>
-    public static ThreadActiveResult SetActive(string? path, ThreadSelector? selector) =>
+    /// <summary>
+    /// Moves focus within ONE area, or clears one area's focus when the selector is null.
+    /// </summary>
+    /// <remarks>
+    /// The invariant is at most one active item PER AREA since 2026-09-06, so both halves of
+    /// this are scoped. Taking focus parks only the target's own area; clearing takes an
+    /// <paramref name="area"/>, and without one falls back to the ambiguity rule
+    /// <see cref="IndexOfSoleActive"/> states -- act when exactly one area holds focus, refuse
+    /// with every cursor named when several do.
+    ///
+    /// Find runs BEFORE the park now, where it used to run after. It has to: the area to park
+    /// is the target's, and there is no way to know it before the target is resolved.
+    /// </remarks>
+    /// <param name="path">List file, or null for the well-known one.</param>
+    /// <param name="selector">The item to focus on, or null to clear focus.</param>
+    /// <param name="area">Which area's focus to clear. Only meaningful with a null selector.</param>
+    public static ThreadActiveResult SetActive(
+        string? path, ThreadSelector? selector, string? area = null) =>
         Write(path, items =>
         {
-            string? previous = ParkActive(items);
-            string? active = null;
-
             if (selector is not null)
             {
+                if (!string.IsNullOrWhiteSpace(area))
+                {
+                    throw new GraphException(
+                        "area names which cursor to CLEAR and applies only with none. An item " +
+                        "takes focus in the area it is filed under, so passing both says two " +
+                        "different things about which area is meant.");
+                }
+
                 int target = Find(items, selector);
 
                 if (items[target].IsDone)
@@ -682,12 +849,42 @@ public static class ThreadItems
                         $"'{items[target].Topic}' is completed. Reopen it by setting its status to parked first.");
                 }
 
+                string? displaced = ParkActive(items, AreaOf(items[target]));
+
                 items[target] = items[target] with { Status = Active };
-                active = items[target].Topic;
+
+                return new ThreadActiveResult(items[target].Topic, displaced, Live(items).Count);
             }
 
-            return new ThreadActiveResult(active, previous, Live(items).Count);
+            return new ThreadActiveResult(null, ClearFocus(items, area), Live(items).Count);
         });
+
+    /// <summary>Parks one area's cursor: the named one, or the only one there is.</summary>
+    /// <remarks>
+    /// Nothing in focus anywhere stays what it always was -- a success reporting no previous
+    /// topic. Clearing focus that is not there is not a failure, and refusing it would make
+    /// "leave me with nothing active" depend on what the last session did.
+    /// </remarks>
+    private static string? ClearFocus(List<ThreadItem> items, string? area)
+    {
+        if (!string.IsNullOrWhiteSpace(area))
+        {
+            return ParkActive(items, SoleArea(items, area));
+        }
+
+        List<ThreadItem> active = InFocus(items);
+        string[] areas = [.. active.Select(AreaOf).Distinct(StringComparer.Ordinal)];
+
+        if (areas.Length > 1)
+        {
+            throw new GraphException(
+                $"Focus is per area, and {areas.Length} areas hold it: " + Cursors(active) +
+                ". Clearing without an area cannot mean all of them -- pass area to name the " +
+                "one you meant.");
+        }
+
+        return areas.Length == 0 ? null : ParkActive(items, areas[0]);
+    }
 
     /// <summary>
     /// Reads the list without writing it. Never throws for a BAD FILE; a bad selector is
@@ -703,6 +900,11 @@ public static class ThreadItems
     /// open", which is a different and false claim. Those throw <see cref="GraphException"/>,
     /// which Surfaced.Filter re-throws as McpException so the message survives the MCP boundary
     /// intact.
+    ///
+    /// 'active' names the focus of THIS ANSWER'S SCOPE since 2026-09-06: the area selector's
+    /// cursor when one was passed, and null when none was. Show has no areas map to carry the
+    /// other cursors, so an unnarrowed read here says only "you did not narrow" -- pass area,
+    /// or read <see cref="Report"/>, whose envelope carries every area's cursor at once.
     ///
     /// Show refuses an unknown area and <see cref="Report"/> does not, since 2026-09-04, and
     /// the asymmetry is deliberate rather than an oversight -- see Report's own remarks for
@@ -804,24 +1006,28 @@ public static class ThreadItems
         string? area,
         bool refuseUnknownArea = true)
     {
-        // Over the UNPROJECTED list, and this is the whole point of the field. 'active' means
-        // "the focus of the list", not "the focus of this answer": computing it after a
-        // selector had run would report null whenever the caller asked about some other item,
-        // and a reader would correctly conclude from that envelope that nothing is in focus.
-        // Nothing catches this by accident -- no caller that passes a selector existed before
-        // these selectors did.
-        string? active = ActiveTopic(items);
-
         if (error is not null)
         {
-            return new Projection(active, [], error);
+            return new Projection(null, [], error);
         }
 
         IReadOnlyList<ThreadItem> shown = all ? items : Live(items);
 
+        // 'active' is THIS ANSWER'S scope since 2026-09-06, and the scope is the AREA selector
+        // -- not the topic one, which narrows to an item rather than to a group of them.
+        // Unnarrowed it is null, because focus is now one cursor per area and a scalar cannot
+        // carry four: reporting any one of them is precisely how the startup brief came to
+        // narrow to JanetHome and name a gamehub item beside it. The complete answer when
+        // nothing narrowed is the report's 'areas' map, which carries every cursor.
+        //
+        // Computed over the area-filtered list rather than looked up by label, so a selector
+        // broad enough to span two areas reports focus from the set it actually returned.
+        string? active = null;
+
         if (!string.IsNullOrWhiteSpace(area))
         {
             shown = InArea(shown, area, refuseUnknownArea);
+            active = ActiveTopic(shown);
         }
 
         if (!string.IsNullOrWhiteSpace(topic))
@@ -965,7 +1171,9 @@ public static class ThreadItems
     /// 'notesLength' totals the items ACTUALLY RETURNED, so a narrowed report states what its
     /// own answer withheld rather than what the whole list holds. 'areas' is the opposite: it
     /// is computed over the whole open list, before either selector, so the narrowed answer
-    /// still carries a map of what it left out -- the same rule 'active' follows.
+    /// still carries a map of what it left out. 'active' followed that rule until 2026-09-06
+    /// and now does not: focus is one cursor per area, so the scalar reports the narrowed
+    /// scope's cursor and null when nothing narrowed, while 'areas' carries all of them.
     ///
     /// 'lead' false drops notesLead from every item. Measured 2026-09-04 on this machine's
     /// list narrowed to JanetHome: the leads were 1,827 of a 5,430-character report inside a
@@ -991,7 +1199,8 @@ public static class ThreadItems
     }
 
     /// <summary>
-    /// One entry per area with OPEN items, sorted by name, over the whole list.
+    /// One entry per area with OPEN items -- its count and its cursor -- sorted by name, over
+    /// the whole list.
     /// </summary>
     /// <remarks>
     /// Open items only, whatever 'all' says: the map answers "where is the rest of the backlog",
@@ -1000,12 +1209,18 @@ public static class ThreadItems
     /// zero row would read as a category that exists, which is the guess this field avoids.
     /// Ordered case-insensitively, the way <see cref="InArea"/> lists the areas in use, so the
     /// two views of the same set agree.
+    ///
+    /// The cursor comes from the group, which is what makes this map the complete answer to
+    /// "what is in focus" now that the envelope's own 'active' describes only a narrowed scope.
+    /// Grouping and focus scoping share the Ordinal comparer deliberately: were they different,
+    /// an item could hold focus in a group no row corresponds to, and the map would be missing
+    /// a cursor while claiming to carry all of them.
     /// </remarks>
     public static IReadOnlyList<ThreadAreaCount> AreaCounts(IReadOnlyList<ThreadItem> items) =>
     [
         .. Live(items)
             .GroupBy(AreaOf, StringComparer.Ordinal)
-            .Select(g => new ThreadAreaCount(g.Key, g.Count()))
+            .Select(g => new ThreadAreaCount(g.Key, g.Count(), ActiveTopic(g)))
             .OrderBy(a => a.Area, StringComparer.OrdinalIgnoreCase)
     ];
 }
