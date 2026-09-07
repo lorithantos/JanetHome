@@ -49,11 +49,19 @@ mcp__razorgraph__method_body_graph,mcp__razorgraph__render_tree -- as the task n
 Get a graph: call list_graphs; use graphId "[janet]" (built from [C:\...\X.slnx]). If it is
 not listed: load_graph path=[saved .json] if one exists, else build_solution
 path=[C:\...\X.slnx] graphId=[name] (slow: a full Roslyn compile). Pass graphId on every
-call. Check loadedAt against the edits you make -- rebuild after changing C#.
+call. Check builtAt (not loadedAt) against the edits you make -- rebuild after changing
+C#; a rebuild costs seconds and ~700 characters, a stale answer costs the task.
 Graph first, grep second. Grep, Glob and Read are for (a) spot-checking a claim the graph
 made and (b) text the graph does not index -- prose, JSON, .ps1, config. They are never
 the first move on callers, implementers, blast radius or test reach. If ToolSearch
 returns no razorgraph tools, say so in your report before falling back to text.
+A hook DENIES a text search over C# until this session has made a razorgraph call. Do
+NOT answer a denial by listing directories or reading whole files: that is strictly more
+expensive than the grep that was refused. Go back to the graph, then Read only the span
+a node names (lineDocs ?? lineStart through lineEnd).
+get_node is narrow by default: outgoing rows, incoming counts by type. Read
+availableFields and incoming.byType FIRST, then expand exactly one side with
+edges/edgeType. Never call it with edges="all".
 Per query: name what you are learning and the cheapest query that settles it. Check
 'truncated' in every result. Ids are exact: m:Type.Name(paramTypes). Blind spots:
 ExternalType holds attributes only; return and parameter types carry no edges -- use text
@@ -64,10 +72,23 @@ Research first: `janet research query --base [repo] --query "..."` before buildi
 tool or hand-rolling a technique; `--id <id> --expand` for a node and its neighbours.
 Never hand-edit research.json -- `janet research add` / `update` only.
 Work you surface but are not doing: `janet thread add --topic "..." --area "[area]"
---notes "..."`. Set --area or it lands in (unfiled).
+--notes "..."`. Set --area or it lands in (unfiled). Notes are capped at 8,000
+characters, and the write path REFUSES text carrying a closing notes, next, invoke or
+parameter tag or the parameter-name attribute text -- describe such things in prose.
+Send notes, next and status in separate calls; together, only the status lands.
 Any .ps1 you touch: `pwsh [repo]\scripts\Test-PowerShellRules.ps1 -Path <file>`; fix
-what it reports. Files are CRLF and ASCII-only (write `--`, not em dashes); the Write
-tool emits LF, so convert, then verify with `Test-FileEncoding.ps1 -Path <f> -ExpectCrlf`.
+what it reports.
+[ENCODING -- PER REPO, CHECK BEFORE QUOTING. The rule is the repo's GATE, not its git
+config: both JanetHome and gamehub have core.autocrlf=true, so that setting does not
+tell them apart. JanetHome enforces CRLF and ASCII-only (write `--`, not em dashes)
+through .githooks\pre-commit; the Write tool emits LF, so convert and verify with
+`Test-FileEncoding.ps1 -Path <f> -ExpectCrlf`. gamehub has no gate, no .gitattributes,
+and mixed files -- measured 2026-09-06: 79 of 150 C# files carry em dashes, and a
+sample ran 2:1 LF to CRLF -- so an agent that "fixes" a gamehub file to CRLF and ASCII
+is making an unasked-for change. Settle it with `git config core.hooksPath` and a look
+for a pre-commit script, then say what THIS repo wants -- or say nothing.
+Never fix line endings with `sed -i 's/$/\r/'`: on a file already CRLF it doubles the
+carriage returns, and it rewrites every line to fix an encoding detail.]
 
 ## Testing
 Mutation-check every test you add: break the subject, see the test fail, restore, see it
@@ -76,6 +97,9 @@ pass. Report the mutation you used. A test that never failed proves nothing.
 ## Report (under [N] words)
 [What to bring back: findings, files changed with absolute paths, node ids.] Exact error
 text on any failure. What you could not verify, stated as such.
+ALWAYS ask for these two, whatever the task: anything you changed that you were not asked
+to change, and anything you did to a file that was not an edit (a shell rewrite, a
+generated file, a formatter). A summary hides both, because from inside they worked.
 
 ## Do not
 Commit or push unless told. Edit outside [scope]. Fix when asked only to investigate.
@@ -87,11 +111,16 @@ Report a narrative instead of findings.
 - Names the graphId (and the .slnx to build if absent)?
 - The ToolSearch line lists exact `mcp__razorgraph__` tool names?
 - Says grep is second, and what grep IS for?
+- Says what to do on a guard denial -- back to the graph, not Read or Glob?
+- Says which encoding rule THIS repo has, or says nothing?
 - Sets `--area` for thread items?
 - Gives the scratchpad path and the date?
 - States the report shape, word budget, and the boundary (no commit/push, scope)?
+- Asks for the two things a summary hides: unrequested changes, and non-edit rewrites?
 
-If any answer is no, the agent will run text-first and speculate. Observed 2026-08-11.
+If any answer is no, the agent will run text-first and speculate. Observed 2026-08-11,
+and again 2026-09-06: an agent denied a C# grep enumerated a directory and read whole
+files, which cost several times what the grep would have.
 
 ## Everything else: query the catalog
 
