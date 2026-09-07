@@ -25,7 +25,10 @@
                       identifier, which is the shape of "who calls Foo". A pattern with
                       regex metacharacters, or a glob naming ps1/json/md, passes.
       Bash/PowerShell fires when the command runs grep, rg, Select-String, sls or
-                      findstr AND names .cs or a src\ path in the same command.
+                      findstr AND names .cs or a src\ path in the same command --
+                      EXCEPT a git command, which reads history and change text the
+                      graph does not index. `git grep` is still gated, being an
+                      ordinary working-tree search wearing git's name.
       anything else   passes.
 
     Clearance is per session, read from the transcript the harness names in the
@@ -164,6 +167,25 @@ function Get-ShellTrigger {
 
     $command = [string](Get-Prop $ToolInput 'command')
     if (-not $command) { return $null }
+
+    # GIT IS NOT A CODE SEARCH. A diff, a log, a blame, a show or a status reads
+    # HISTORY and CHANGE TEXT, and the graph indexes neither -- it models one built
+    # state of the source, so "what changed" and "who touched this" are questions it
+    # cannot answer at all. Denying them sends the caller to a tool that has no answer.
+    # Three false positives on 2026-09-06 were this: `git status --short` beside a
+    # `git diff -- src/X.cs | Select-String` in one command line, refused because the
+    # text mentioned a search tool and a .cs path.
+    #
+    # `git grep` is the exception and stays gated: it searches the working tree exactly
+    # as grep does, so it is the same question in a different spelling.
+    #
+    # KNOWN HOLE, left open deliberately: a compound command that runs git AND a real
+    # source grep -- `git status; rg Foo src` -- is exempted by this. Closing it means
+    # parsing shell to decide which pipeline each search sits in, which is fragile in a
+    # hook that must be fast and legible, and the guard is about defaults rather than
+    # defence. Prefer the false negative: this guard's own risk is being clicked past.
+    if ($command -match '\bgit\b' -and $command -notmatch '\bgit\s+grep\b') { return $null }
+
     if ($command -notmatch '\b(grep|rg|Select-String|sls|findstr)\b') { return $null }
     if ($command -notmatch '\.cs\b' -and $command -notmatch 'src[\\/]') { return $null }
 
