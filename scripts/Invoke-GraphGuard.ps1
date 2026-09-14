@@ -37,9 +37,24 @@
     research guard's shared temp trace lets one session clear another's guard; this
     one must not, which is why the transcript and not a trace file is the record.
 
-    The denial does the work. It names the first query, with the identifier taken
-    from the pattern and the graphId derived from the solution file on disk, so the
-    fix is a paste rather than a scolding.
+    The denial does the work. It names the first query, with the identifier taken from
+    the pattern and the SOLUTION resolved on disk, so the fix is a paste rather than a
+    scolding.
+
+    It does NOT name a graphId, and that is a correction rather than an omission. Until
+    2026-09-14 it derived one from the solution's file name, which is a convention
+    nothing enforces -- the id is whatever was passed to build_solution. A session
+    holding that solution's graph under any other name was told the id it "should" use,
+    found it missing, and read the next line as licence to build a duplicate: a full
+    Roslyn compile to arrive where it already was. Saying "read the id off list_graphs"
+    costs one cheap call and cannot be wrong.
+
+    The solution itself is resolved from the SEARCHED PATH when the Grep tool names one,
+    and from the project directory otherwise. Same day, same incident: a search over
+    another repo's src, run from this one, was sent to this one's graph -- not merely
+    unhelpful but a different codebase. A shell command's paths are not read, because
+    that means parsing shell (see Get-ShellTrigger); there the denial says outright that
+    the solution named is the session's own, instead of asserting it.
 
     Fails OPEN: no transcript, an unreadable one, no solution file under the project
     dir, or any exception -- exit 0 and let the call through. A broken guard must not
@@ -91,6 +106,41 @@ function Get-SolutionFile {
             Sort-Object { $_.FullName.Length } |
             Select-Object -First 1
         if ($null -ne $hit) { return $hit }
+    }
+    return $null
+}
+
+# The solution that OWNS a searched path, found by walking UP from it.
+#
+# Get-SolutionFile answers "what does this project hold" and is the right question for
+# an unnarrowed search. It is the wrong one when the search NAMES a tree, because a
+# Grep can point at a repo that is not the session's project -- and then the project's
+# solution is not merely unhelpful, it is another codebase's graph. Observed on
+# 2026-09-14: a search over JanetHome's src, run from a RazorGraphTool session, was
+# told to query RazorGraphTool's graph.
+#
+# Returns $null when nothing above the path holds a solution, which falls back to the
+# project-directory answer rather than inventing one.
+function Get-SolutionForPath {
+    param([string]$Path)
+
+    if (-not $Path) { return $null }
+
+    $full = $null
+    try { $full = [System.IO.Path]::GetFullPath($Path) } catch { return $null }
+    if (-not $full -or -not (Test-Path -LiteralPath $full)) { return $null }
+
+    $dir = if (Test-Path -LiteralPath $full -PathType Container) { $full } else { Split-Path -Parent $full }
+
+    while ($dir) {
+        foreach ($filter in @('*.slnx', '*.sln')) {
+            $hit = Get-ChildItem -LiteralPath $dir -Filter $filter -File -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($null -ne $hit) { return $hit }
+        }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
     }
     return $null
 }
@@ -286,31 +336,52 @@ try {
     $projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR }
     elseif (Get-Prop $payload 'cwd') { [string](Get-Prop $payload 'cwd') }
     else { (Get-Location).Path }
-    $solution = Get-SolutionFile $projectDir
+
+    # A Grep names the tree it searches, so let the tree pick the solution. Only the
+    # Grep tool gets this: a shell command carries its paths inside free text, often
+    # behind a cd, and reading them means parsing shell -- which this guard refuses to
+    # do for the reason recorded on Get-ShellTrigger. There the project's solution is
+    # the honest guess, and the denial says so rather than asserting it.
+    $searchPath = if ($toolName -eq 'Grep') { [string](Get-Prop $toolInput 'path') } else { $null }
+    $solution = Get-SolutionForPath $searchPath
+    $solutionIsCertain = $null -ne $solution
+    if ($null -eq $solution) { $solution = Get-SolutionFile $projectDir }
     if ($null -eq $solution) { exit 0 }
 
-    $graphId = [System.IO.Path]::GetFileNameWithoutExtension($solution.Name).ToLowerInvariant()
+    # NO graphId IS DERIVED HERE, and that is the point. Filing a graph under the
+    # solution's file name is a convention nothing enforces: the id is whatever the
+    # caller passed to build_solution. Asserting one was worse than saying nothing,
+    # because the accompanying "if it is not listed, build_solution" then read as an
+    # instruction to build a SECOND graph of a solution already loaded under another
+    # name -- a full Roslyn compile to arrive where the session already was.
     $graphBlock = @"
-Get a graph: call list_graphs; use graphId "$graphId" (built from $($solution.FullName)).
-If it is not listed: load_graph path=<saved .json> if one exists, else
-build_solution path=$($solution.FullName) graphId=$graphId (slow: a full Roslyn compile).
+Get a graph: call list_graphs and find the row whose source is
+  $($solution.FullName)
+and take its graphId. Read the id off that row rather than guessing it from the
+file name -- graphs are filed under whatever id built them.
+If NO row names that solution: load_graph path=<saved .json> if one exists, else
+build_solution path=$($solution.FullName) (slow: a full Roslyn compile).
 "@
 
+    if (-not $solutionIsCertain -and $toolName -ne 'Grep') {
+        $graphBlock += @"
+
+That solution is this SESSION'S project. A shell command can search a different
+tree and this hook cannot see which one -- if that is what you are doing, use the
+solution belonging to the repo you are actually searching.
+"@
+    }
+
     $identifier = Get-QueryIdentifier $searchText
-    $firstQuery = if ($identifier) {
-        "find_nodes graphId=`"$graphId`" nameContains=`"$identifier`""
-    }
-    else {
-        "find_nodes graphId=`"$graphId`" nameContains=`"<the symbol you are looking for>`""
-    }
+    $subject = if ($identifier) { $identifier } else { '<the symbol you are looking for>' }
 
     $reason = @"
 Graph guard: $fired is a text search over C# source, and no mcp__razorgraph__ call appears in the last $script:ClearanceWindow tool calls of this session. The Roslyn graph answers callers, implementers and blast radius correctly; grep cannot see a call through an interface, a generic or a partial class.
 
 Load the tools: ToolSearch("select:mcp__razorgraph__list_graphs,mcp__razorgraph__find_nodes,mcp__razorgraph__get_node,mcp__razorgraph__find_path,mcp__razorgraph__research")
 $graphBlock
-First query:  $firstQuery
-Then callers: get_node graphId="$graphId" id=<id from find_nodes> edges=incoming edgeType=Calls
+First query:  find_nodes graphId=<graphId> nameContains="$subject"
+Then callers: get_node graphId=<graphId> id=<node id from find_nodes> edges=incoming edgeType=Calls
 Pass graphId on every call. Ids are exact: m:Type.Name(paramTypes). Check 'truncated' in every result.
 
 Text search is second, for two things: (a) spot-checking a claim the graph made, and (b) text the graph does not index -- prose, JSON, .ps1, config, string literals. One razorgraph call clears this guard for the next $script:ClearanceWindow tool calls. For a repo with no C#, set JANET_GRAPH_GUARD=off.

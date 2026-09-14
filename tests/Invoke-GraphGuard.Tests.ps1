@@ -82,6 +82,42 @@ BeforeAll {
         if ($out -match '"permissionDecision"\s*:\s*"deny"') { return 'deny' }
         return 'pass'
     }
+
+    function Get-GuardReason {
+        <#
+            The denial's REASON text, decoded. Invoke-Guard answers deny or pass and
+            throws the reason away, which is how the reason drifted: on 2026-09-14 it
+            was naming a graphId that no graph carried and a solution belonging to a
+            different repository, and every test was green throughout. The remediation
+            is the whole product of this hook, so it needs pinning like any other output.
+        #>
+        [CmdletBinding()]
+        param(
+            [string]$Command,
+            [hashtable]$GrepInput,
+            [string]$ToolName = 'PowerShell',
+            [string]$Transcript = $script:coldTranscript
+        )
+
+        $toolInput = if ($GrepInput) { $GrepInput } else { @{ command = $Command } }
+        $payload = @{
+            tool_name       = $ToolName
+            tool_input      = $toolInput
+            transcript_path = $Transcript
+        } | ConvertTo-Json -Compress -Depth 6
+
+        $previous = $env:CLAUDE_PROJECT_DIR
+        $env:CLAUDE_PROJECT_DIR = $script:projectDir
+        try {
+            $out = & $script:guard -InputJson $payload 2>&1 | Out-String
+        }
+        finally {
+            $env:CLAUDE_PROJECT_DIR = $previous
+        }
+
+        if (-not ($out -match '"permissionDecision"\s*:\s*"deny"')) { return $null }
+        return ($out | ConvertFrom-Json).hookSpecificOutput.permissionDecisionReason
+    }
 }
 
 Describe 'Invoke-GraphGuard' {
@@ -185,6 +221,80 @@ Describe 'Invoke-GraphGuard' {
             # deleting it -- the case is worth keeping either way.
             Invoke-Guard -Command 'Get-ChildItem src -Filter *.cs | Select-String -Pattern ([char]0x2014)' |
                 Should -Be 'deny'
+        }
+    }
+
+    Context 'the remediation names things that exist' {
+        # Both failures here were found by the guard firing on the author, on
+        # 2026-09-14, and both were invisible to every test above: a denial is a denial
+        # whatever it then advises, so these assert the ADVICE.
+
+        BeforeAll {
+            # A second repository with its own solution, to search from a session whose
+            # project is the first one.
+            $script:otherRepo = Join-Path $TestDrive 'other'
+            New-Item -ItemType Directory -Path (Join-Path $script:otherRepo 'src') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $script:otherRepo 'Other.slnx') `
+                -Value '<Solution />' -Encoding utf8
+        }
+
+        It 'does not invent a graphId from the solution file name' {
+            # It used to say: use graphId "stub". Nothing files graphs under that name
+            # except convention, so a session holding the graph under any other id was
+            # told to build a duplicate -- a full Roslyn compile to reach where it was.
+            $reason = Get-GuardReason -Command 'rg "WavePlan" src/'
+
+            $reason | Should -Not -BeNullOrEmpty
+            $reason | Should -Not -Match 'graphId\s+"?stub"?'
+            $reason | Should -Match 'list_graphs'
+        }
+
+        It 'sends the reader to list_graphs for the id rather than to a guess' {
+            $reason = Get-GuardReason -Command 'rg "WavePlan" src/'
+
+            # The placeholder survives into both example queries, so neither can be
+            # pasted with a wrong id already filled in.
+            $reason | Should -Match 'find_nodes graphId=<graphId>'
+            $reason | Should -Match 'get_node graphId=<graphId>'
+        }
+
+        It 'names the solution above the tree a Grep actually searches' {
+            # The worse half: a search over another repo was told to query THIS repo's
+            # graph -- not unhelpful, but a different codebase answering.
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{
+                pattern = 'WavePlan'
+                path    = (Join-Path $script:otherRepo 'src')
+            }
+
+            $reason | Should -Not -BeNullOrEmpty
+            $reason | Should -Match ([regex]::Escape('Other.slnx'))
+            $reason | Should -Not -Match ([regex]::Escape('Stub.slnx'))
+        }
+
+        It 'falls back to the project solution when a Grep names no path' {
+            # The control for the test above: without a path there is no tree to read,
+            # and the project's own solution is the right answer rather than a guess.
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' }
+
+            $reason | Should -Match ([regex]::Escape('Stub.slnx'))
+        }
+
+        It 'admits it cannot tell which tree a shell command walks' {
+            # Shell paths are not parsed, deliberately, so the project's solution is a
+            # guess. Saying so is the difference between a useful default and a wrong
+            # assertion -- and it is what would have caught the author sooner.
+            $reason = Get-GuardReason -Command 'rg "WavePlan" src/'
+
+            $reason | Should -Match "SESSION'S project"
+        }
+
+        It 'does not add that caveat when the Grep path settled the question' {
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{
+                pattern = 'WavePlan'
+                path    = (Join-Path $script:otherRepo 'src')
+            }
+
+            $reason | Should -Not -Match "SESSION'S project"
         }
     }
 }
