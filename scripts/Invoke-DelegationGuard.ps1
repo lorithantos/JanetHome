@@ -35,9 +35,17 @@
     the single thing whose absence caused the failure. A brittle multi-check gate that
     tried to regex the rest of the kickoff checklist would get disabled.
 
-    The denial does the work. It finds the solution file, derives the graphId from it,
-    and hands back a ready-to-paste block with real tool and file names in it, rather
-    than a template full of brackets, or a scolding.
+    The denial does the work. It finds the solution file and hands back a ready-to-paste
+    block with real tool and file names in it, rather than a template full of brackets,
+    or a scolding.
+
+    It deliberately does NOT derive a graphId. Until 2026-09-14 it took one from the
+    solution's file name, which is a convention nothing enforces -- the id is whatever
+    was passed to build_solution -- so the block asserted an id that need not exist, and
+    its own next line then read as licence to build a duplicate of a graph already
+    loaded under another name. That mattered more here than in Invoke-GraphGuard.ps1,
+    because this text is written INTO a subagent prompt: the agent inherits the wrong id
+    with no way to know better, and pays for it in a full Roslyn compile.
 
     PATH TWO, the hands-on volume warning (Read/Grep/Glob/Edit/Write/Bash/PowerShell).
     Path one only fires once the controller has ALREADY decided to delegate, so a
@@ -410,11 +418,21 @@ A dispatch or a new request from Lori resets the count. JANET_DELEGATION_GUARD=o
     $solution = Get-SolutionFile $projectDir
 
     if ($null -ne $solution) {
-        $graphId = [System.IO.Path]::GetFileNameWithoutExtension($solution.Name).ToLowerInvariant()
+        # NO graphId is derived here, and the omission is the correction. Filing a graph
+        # under its solution's file name is a convention nothing enforces -- the id is
+        # whatever was passed to build_solution -- so asserting one told the agent an id
+        # that need not exist, and the following line then read as licence to build a
+        # duplicate of a graph already loaded under another name. Fixed 2026-09-14,
+        # alongside the same defect in Invoke-GraphGuard.ps1: this guard writes the
+        # instruction INTO a subagent prompt, so a wrong id here is inherited by an agent
+        # with no way to know better.
         $graphBlock = @"
-Get a graph: call list_graphs; use graphId "$graphId" (built from $($solution.FullName)).
-If it is not listed: load_graph path=<saved .json> if one exists, else
-build_solution path=$($solution.FullName) graphId=$graphId (slow: a full Roslyn compile).
+Get a graph: call list_graphs and find the row whose source is
+  $($solution.FullName)
+and take its graphId. Read the id off that row rather than guessing it from the
+file name -- graphs are filed under whatever id built them.
+If NO row names that solution: load_graph path=<saved .json> if one exists, else
+build_solution path=$($solution.FullName) (slow: a full Roslyn compile).
 "@
     }
     else {
@@ -441,7 +459,9 @@ Agents inherit the tool surface and NONE of the operating rules. Paste this into
 ## RazorGraph -- FIRST for any question about C# structure
 Load the tools: ToolSearch("select:mcp__razorgraph__list_graphs,mcp__razorgraph__graph_summary,mcp__razorgraph__find_nodes,mcp__razorgraph__get_node,mcp__razorgraph__find_path,mcp__razorgraph__research")
 $graphBlock
-Pass graphId on every call. Check loadedAt against the edits you make -- rebuild after changing C#.
+Pass graphId on every call. Check builtAt -- NOT loadedAt -- against the edits you make, and
+rebuild after changing C#: loadedAt only says when a graph entered the server, so a graph loaded
+a minute ago can have been built days before.
 Graph first, grep second. Grep, Glob and Read are for (a) spot-checking a claim the graph made
 and (b) text the graph does not index -- prose, JSON, .ps1, config. They are never the first move
 on callers, implementers, blast radius or test reach. If ToolSearch returns no razorgraph tools,

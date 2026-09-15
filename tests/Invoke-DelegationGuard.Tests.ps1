@@ -437,6 +437,36 @@ Describe 'Invoke-DelegationGuard' {
                 Select-Object -ExpandProperty Decision | Should -Be 'deny'
         }
 
+        It 'writes no invented graphId into the prompt it hands back' {
+            # It used to say: use graphId "stub", taken from the solution's file name.
+            # Nothing files graphs under that name except convention, and this text goes
+            # INTO a subagent prompt -- so the agent inherited an id that need not exist
+            # and read the next line as licence to build a duplicate. The same defect
+            # was fixed in Invoke-GraphGuard.ps1 on 2026-09-14; this one shipped it to
+            # an agent that could not know better. Found only because the reason text
+            # had never been asserted by anything.
+            $raw = (Invoke-Guard -ToolName 'Agent' -ToolInput @{
+                    prompt = 'Refactor src\Nav.Core\Grid.cs and find the callers'
+                }).Raw
+            $reason = ($raw | ConvertFrom-Json).hookSpecificOutput.permissionDecisionReason
+
+            $reason | Should -Not -BeNullOrEmpty
+            $reason | Should -Not -Match 'graphId\s+"?stub"?'
+            $reason | Should -Match 'list_graphs'
+        }
+
+        It 'tells the agent to trust builtAt rather than loadedAt' {
+            # loadedAt says when a graph entered the server, not when it was built, so a
+            # graph loaded a minute ago can have been built days earlier. The block spent
+            # months naming the field that cannot answer the question it was asked.
+            $raw = (Invoke-Guard -ToolName 'Agent' -ToolInput @{
+                    prompt = 'Refactor src\Nav.Core\Grid.cs and find the callers'
+                }).Raw
+            $reason = ($raw | ConvertFrom-Json).hookSpecificOutput.permissionDecisionReason
+
+            $reason | Should -Match 'builtAt'
+        }
+
         It 'still denies while JANET_DELEGATION_GUARD is off' {
             # The off switch belongs to the volume warning, NOT to this gate. Path one is
             # ENFORCED in the manifest and was escalated from advisory after four prompts
