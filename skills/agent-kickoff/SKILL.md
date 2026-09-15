@@ -58,7 +58,7 @@ returns no razorgraph tools, say so in your report before falling back to text.
 A hook DENIES a text search over C# until this session has made a razorgraph call. Do
 NOT answer a denial by listing directories or reading whole files: that is strictly more
 expensive than the grep that was refused. Go back to the graph, then Read only the span
-a node names (lineDocs ?? lineStart through lineEnd).
+a node names (docsStart ?? lineStart through lineEnd).
 get_node is narrow by default: outgoing rows, incoming counts by type. Read
 availableFields and incoming.byType FIRST, then expand exactly one side with
 edges/edgeType. Never call it with edges="all".
@@ -78,17 +78,25 @@ parameter tag or the parameter-name attribute text -- describe such things in pr
 Send notes, next and status in separate calls; together, only the status lands.
 Any .ps1 you touch: `pwsh [repo]\scripts\Test-PowerShellRules.ps1 -Path <file>`; fix
 what it reports.
-[ENCODING -- PER REPO, CHECK BEFORE QUOTING. The rule is the repo's GATE, not its git
-config: both JanetHome and gamehub have core.autocrlf=true, so that setting does not
-tell them apart. JanetHome enforces CRLF and ASCII-only (write `--`, not em dashes)
-through .githooks\pre-commit; the Write tool emits LF, so convert and verify with
-`Test-FileEncoding.ps1 -Path <f> -ExpectCrlf`. gamehub has no gate, no .gitattributes,
-and mixed files -- measured 2026-09-06: 79 of 150 C# files carry em dashes, and a
-sample ran 2:1 LF to CRLF -- so an agent that "fixes" a gamehub file to CRLF and ASCII
-is making an unasked-for change. Settle it with `git config core.hooksPath` and a look
-for a pre-commit script, then say what THIS repo wants -- or say nothing.
-Never fix line endings with `sed -i 's/$/\r/'`: on a file already CRLF it doubles the
-carriage returns, and it rewrites every line to fix an encoding detail.]
+[ENCODING -- PER REPO, CHECK BEFORE QUOTING. Revised 2026-09-07; the previous version
+told agents the opposite of two of these.
+LINE ENDINGS ARE NOT A RULE. Say nothing about them, and never convert them. git
+normalises: core.autocrlf=true is set machine-wide and now pinned in each repo, and
+JanetHome, gamehub, RazorGraphTool and RetirementCore all declare `* text=auto`, so an
+LF working file and a CRLF one commit to the same blob. JanetHome's gate does not check
+them either -- Test-FileEncoding.ps1 only enforces them under -ExpectCrlf, which the
+pre-commit hook does not pass. Never `sed -i 's/$/\r/'` either: on a file already CRLF
+it doubles the carriage returns, and it rewrites every line to fix nothing.
+ASCII IS PER REPO, and it governs what you WRITE, not what you find. JanetHome enforces
+ASCII-only through .githooks\pre-commit, so author `--` there rather than em dashes,
+and no smart quotes, in code, comments and test names alike. Other repos may not
+enforce it. SETTLE IT rather than assume: `git config core.hooksPath` plus a look for a
+REAL pre-commit script -- a .sample is not one -- then follow what THIS repo enforces,
+or say nothing. No file counts appear here on purpose: a clause asserting what a repo
+does NOT enforce is falsified the day someone adds the gate, while "it enforces X"
+stays true, so the command governs and the measurements live in the catalog.
+What you find in a file you did NOT come to change is a scope question, not an encoding
+one -- see "Do not".]
 
 ## Testing
 Mutation-check every test you add: break the subject, see the test fail, restore, see it
@@ -104,6 +112,10 @@ generated file, a formatter). A summary hides both, because from inside they wor
 ## Do not
 Commit or push unless told. Edit outside [scope]. Fix when asked only to investigate.
 Report a narrative instead of findings.
+Normalise a file you are editing -- encoding, formatting, line endings, import order. A
+hundred-file diff nobody asked for costs more to review than the fix it was hiding, and
+it buries the change that mattered. If something genuinely needs a sweep, say so and let
+it be decided; do not fold it into an unrelated edit.
 ```
 
 ## Checklist before sending

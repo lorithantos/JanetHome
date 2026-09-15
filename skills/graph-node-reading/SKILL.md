@@ -78,14 +78,20 @@ edge. A smaller answer is fine; a confidently wrong one is not.
 ## Reading the source the node points at
 
 The node tells you what to read, not just where to look. Take
-`lineDocs ?? lineStart` through `lineEnd` and you have the declaration and its
+`docsStart ?? lineStart` through `lineEnd` and you have the declaration and its
 documentation, exactly -- no opening a file at a line number and guessing how
 far down to go.
 
-- `lineDocs` absent means **undocumented**, on a graph built 2026-09-05 or
+- `docsStart` absent means **undocumented**, on a graph built 2026-09-05 or
   later. On an older graph it means nothing was recorded. Check `loadedAt`
   before reading absence as a fact.
-- Attributes sit between `lineDocs` and `lineStart`, because `lineStart` points
+- The field was spelled `lineDocs` before graph format 2.0, because beside
+  `lineStart` and `lineEnd` that name read as a COUNT of documentation lines
+  and a consumer took it for one. A 1.x graph is translated as it loads, so a
+  current server answers `docsStart` whatever the file on disk spells it. A
+  server rotated before 2026-09-15 still says `lineDocs`; `server_info` is how
+  you tell which you are talking to.
+- Attributes sit between `docsStart` and `lineStart`, because `lineStart` points
   at the declaration rather than at the `[`. An attributed but undocumented
   member therefore has attributes just above `lineStart` that no line names.
 - `fileWrittenSince: true` means the file changed after the graph was built.
