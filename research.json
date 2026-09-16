@@ -134,7 +134,7 @@
         "-ProjectDir SINCE 2026-09-04: the repo the SESSION works in, defaulting to $env:CLAUDE_PROJECT_DIR then the current directory. Two things read it. (1) The {projectName} args token -- the leaf name -- substituted into every args string before binding; any other {token} left over is a 'problems' entry and therefore a hard stop, because an unresolved one reaches -Area as a literal and returns the empty item list of an area nothing is filed under, which reads as a finished backlog. Substitution happens before binding on purpose, so the brief's run entry reports the RESOLVED args and thus says which area it narrowed to. (2) The enforcedBy check, which already resolved hook paths against the project dir but computed it from the launching shell's cwd; Start-Janet now passes its -Path, so both answer for the session about to start rather than for wherever the launcher was invoked. Note $ProjectDir is BOTH the parameter and the script-level local -- the $full/$text collision in the caveat above, deliberate here."
       ],
       "tags": ["startup", "session", "validation", "entrypoint"],
-      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget", "script.ensure-mcp-server", "script.test-config-paths"]
+      "links": ["file.startup-manifest", "pattern.manifest-startup", "pattern.circuit-breakers", "note.startup-brief-budget", "script.ensure-mcp-server", "script.test-config-paths", "pattern.gate-frames"]
     },
     {
       "id": "script.get-research",
@@ -388,7 +388,7 @@
         "Module requirements are conditional and fail legibly when unmet: PSScriptAnalyzer only when .ps1 files are staged, Pester 5+ only when *.Tests.ps1 files exist. Both installed CurrentUser 2026-08-03 (PSScriptAnalyzer 1.25.0, Pester 6.0.1); full gate verified green end-to-end on a clean staged file the same day."
       ],
       "tags": ["pre-commit", "validation", "quality"],
-      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules", "script.test-deep-nesting", "script.test-output-contracts", "file.skill-checking-in"]
+      "links": ["script.test-file-encoding", "pattern.reviewer-principles", "script.test-powershell-rules", "script.test-deep-nesting", "script.test-output-contracts", "file.skill-checking-in", "pattern.gate-frames"]
     },
     {
       "id": "script.get-script-catalog",
@@ -504,7 +504,7 @@
         "The prose asserts mechanisms that nothing verifies, and it has been wrong: section 3 claimed writers serialise on a named mutex for several commits after the port moved them to Janet.Core's WriteQueue (corrected 2026-08-12 in 512e3d2). Startup guarantees this file is read, not that it is true, so check a mechanism claim against the catalog node or the code before repeating it. Plan to stop it recurring: note.design-notes-projection."
       ],
       "tags": ["patterns", "architecture", "agent"],
-      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-items", "note.build-retrospective", "note.discriminator-front-end", "note.design-notes-projection"]
+      "links": ["pattern.manifest-startup", "pattern.progressive-disclosure", "pattern.thread-items", "note.build-retrospective", "note.discriminator-front-end", "note.design-notes-projection", "pattern.gate-frames"]
     },
 
     {
@@ -1402,7 +1402,7 @@
         "Not wired into Test-PreCommit.ps1. Pre-commit gates on staged files, and these are frozen files nothing stages -- run this after a history rewrite, a filter-branch, or any operation that could move the recorded commits."
       ],
       "tags": ["powershell", "gate", "provenance", "verification", "contract"],
-      "links": ["file.standalone", "script.git", "note.janet-mcp-port", "script.test-output-contracts", "script.test-mutation-catches"]
+      "links": ["file.standalone", "script.git", "note.janet-mcp-port", "script.test-output-contracts", "script.test-mutation-catches", "pattern.gate-frames"]
     },
 
     {
@@ -1420,7 +1420,7 @@
         "Verified by mutation 2026-08-12, eight ways: a field added, removed and renamed; a kind spelled differently; the contract number moved in code only; the schema edited alone; the schema edited with a bump but no script change. All caught."
       ],
       "tags": ["gate", "contract", "schema", "powershell", "verification", "json"],
-      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts", "script.test-mutation-catches", "script.get-thread-report", "file.az-token", "file.result-budget"]
+      "links": ["script.test-pre-commit", "script.get-assembly-api", "script.invoke-dotnet-check", "note.janet-mcp-port", "script.test-standalone-scripts", "script.test-mutation-catches", "script.get-thread-report", "file.az-token", "file.result-budget", "pattern.gate-frames"]
     },
 
     {
@@ -1439,7 +1439,7 @@
         "Dogfooded against Janet.Shared 2026-08-14: three real mutations caught with the exact test names (key filter -> 2 tests, coalescing window -> 3, cell alignment -> 1) and one deliberate no-op refused. The Janet.Shared working tree was byte-clean afterwards."
       ],
       "tags": ["testing", "verification", "gate", "powershell", "quality", "failure-modes"],
-      "links": ["script.invoke-dotnet-check", "script.test-output-contracts", "script.test-standalone-scripts", "pattern.reviewer-principles", "note.golden-tests"]
+      "links": ["script.invoke-dotnet-check", "script.test-output-contracts", "script.test-standalone-scripts", "pattern.reviewer-principles", "note.golden-tests", "pattern.gate-frames"]
     },
 
     {
@@ -1566,7 +1566,7 @@
         "WIRED INTO THE STARTUP MANIFEST 2026-09-01 as the fourth run entry, captureAs 'configPaths' -- captured, never a problem, so a foreign-dir launch still succeeds (verified from C:\\repos\\RetirementCore: 5 files scanned, 2 absolute paths, ok:true, 0 problems). In JanetHome's own config it finds zero drive-absolute paths, so the entry only earns its keep where a .mcp.json or settings file carries one; it costs about 100 ms per start."
       ],
       "tags": ["config", "validation", "startup"],
-      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.janet-machine-move"]
+      "links": ["script.invoke-janet-startup", "file.startup-manifest", "note.janet-machine-move", "pattern.gate-frames"]
     },
 
     {
@@ -1889,6 +1889,25 @@
       ],
       "tags": ["thread-items", "mcp", "powershell", "retrieval", "session", "contract"],
       "links": ["script.invoke-mcp-tool", "script.get-thread-report", "pattern.thread-items", "script.update-mcp-server", "note.janet-mcp-port"]
+    },
+
+    {
+      "id": "pattern.gate-frames",
+      "kind": "pattern",
+      "path": "DESIGN-NOTES.md",
+      "section": "13",
+      "summary": "For each gate -- anything that can say \"this is fine\" and be believed -- ask what it examines, what it silently does not, whether the uncovered set is a function of RISK or of ACCIDENT, and whether anything would ever tell you. A gate reports on what it examined and says nothing about its own frame, so green is ambiguous by construction. DESIGN-NOTES section 13 carries the claim and the three motivating instances; the caveats here carry the 2026-09-16 audit of this repo's own gates, which found the pattern live in the gate that had just been used to find it.",
+      "caveats": [
+        "THE PRE-COMMIT ANALYZER STEP FAILS ON ERROR ONLY, and this is the worst instance in the repo because it is not silence, it is contradiction. Invoke-ScriptAnalyzer over scripts\\ returns 403 findings: 351 Warning, 1 Error. The step prints the entire violation table and then prints [PASS]. The evidence and the verdict are on the same screen and they disagree. Among the warnings are 11 PSReviewUnusedParameter -- a parameter accepted and governing nothing, which is the same defect class the gate was credited with catching on 2026-09-16.",
+        "THE REPAIR THAT MOTIVATED THIS NODE REPRODUCED THE BLIND SPOT IT WAS REPAIRING. Commit 734027a removed a dead -Text switch from Add-, Update- and Complete-ThreadItem.ps1, found because an unrelated edit staged one of them and the gate lints STAGED files. Set-ActiveThread.ps1 carried the identical defect, was not staged, and was not mentioned -- so the fix covered the instances the gate happened to display rather than the class. Fixed separately once the audit named it. The lesson is not about that switch: a fix scoped to what a gate reported inherits that gate's frame, so a narrow gate produces narrow repairs that look complete.",
+        "STARTUP CAN PRINT ENFORCED FOR A HOOK THAT IS NOT WIRED, in the common case. Test-RuleEnforced has two arms. When the project dir is NOT this repo it reads ~\\.claude\\settings.json and checks the hook is actually declared. When the project dir IS this repo -- every ordinary session here -- it checks only Test-Path on the backing script, so deleting the entire hooks block from .claude\\settings.json while leaving the .ps1 files on disk leaves all four rules still reported ENFORCED with an empty enforcement field. The check is weaker in the case that matters, and the source comment documents the weakness of the OTHER arm. CLAUDE.md's claim that startup will not lie about enforcement holds for arm 2 and not for arm 1. Read from source 2026-09-16, not proven by an observed run, because proving it means editing settings.json.",
+        "TEST-OUTPUTCONTRACTS PINS SECTION KEYS, so the schemas are not the weak point -- the samples are. Every nested object in all four schemas carries additionalProperties:false plus a full required list (dotnet-check has 12 such nodes). But a subschema only applies to data that exists, and the sampler runs janet check --no-tests --no-graph, so tests comes back null, warnings and instances empty, baseline and diagnosis null. Thirteen required keys plus three item schemas under tests are never validated, nor the whole pending arm of the oneOf. The blind spot is not \"top level only\", it is \"populated shape only\", and the deeper a section sits the likelier a cheap sample leaves it empty. Already stated accurately in that script's own caveats; repeated here because the shape generalises to any schema gate fed by a sample.",
+        "NO TREE-WIDE POWERSHELL SCAN EXISTS ANYWHERE. Test-PowerShellRules.ps1 is not a pre-commit step; its only automated caller is the PostToolUse lint hook, one file at a time, on Write and Edit only -- and it passes no -Target, so the Ps51 rules never fire in automation at all. Between a staged-set analyzer and a per-edit linter, a file changed by hand, by a shell command, or by any path that is not a Write or Edit tool call is never house-rule linted. The two frames look complementary and leave a gap neither reports.",
+        "THE POSITIVE EXAMPLE, AND THE CHEAP HALF OF THE FIX: a gate should report its own DENOMINATOR. Test-ConfigPaths.ps1 does it best in this repo -- its envelope hands over filesScanned, checked, unchecked with per-item reasons, and a prose note, so a run that found nothing to look at says so in as many words (\"0 absolute path(s) across 3 file(s) all resolve\", checked:0). Runners-up: Test-OutputContracts's named skipped array saying \"Shape NOT checked this run\", Test-StandaloneScripts's gitChecked, Test-PowerShellRules's target and engine and filesChecked. None of these cost anything to add and each converts an ambiguous green into a legible one.",
+        "THE FOUR QUESTIONS NEED TWO AMENDMENTS, from running them once. Split question four -- \"would anything tell you\" -- into \"does it report a denominator\" and \"is a skip distinguishable from a pass\", because they came apart repeatedly: the Config Validation step fails both (Test-Config.ps1 does not exist and its absence renders as [PASS]), while File Encoding reports an LF count that is not a verdict. And add a fifth: \"when this gate was last repaired, was the fix aimed at the FIELD or at the FRAME?\" -- it was not on the original list and it found two of the three worst results. Question three discriminates poorly as phrased (the answer was ACCIDENT for 10 of 15 gates); better asked as \"name the property the uncovered set has\", whose answers are specific and actionable: recently edited, someone thought of it, populated in a cheap sample."
+      ],
+      "tags": ["gate", "verification", "failure-modes", "quality", "testing"],
+      "links": ["script.test-pre-commit", "script.test-output-contracts", "script.test-standalone-scripts", "script.test-mutation-catches", "script.test-config-paths", "script.invoke-janet-startup", "file.design-notes"]
     }
   ]
 }

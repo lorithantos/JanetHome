@@ -296,3 +296,52 @@ duplication scattered through nested conditionals is contraband -- and what a
 flow-equivalence prover adds.
 
 In `notes\discriminator-front-end.md` (`note.discriminator-front-end`).
+
+---
+
+## 13. Ask every gate what it does not look at
+
+**Pattern.** For each gate -- anything that can say "this is fine" and be believed --
+answer four questions. What does it examine? What does it silently NOT examine? Is the
+uncovered set a function of RISK or of ACCIDENT? And would anything ever tell you?
+
+**Why it is not obvious.** A gate reports on what it examined and says nothing about its
+own frame, so green is ambiguous by construction: it means "nothing wrong in here" and
+is read as "nothing wrong". The narrower the frame the more confident the green looks,
+and nothing in the output distinguishes a gate that checked everything from one that
+checked the single file you happened to touch.
+
+**Three instances, all found on 2026-09-16, none of them looked for.** A repository had
+no `GenerateDocumentationFile`, so CS1574 was never emitted and seven doc references
+naming renamed members sat broken indefinitely: the check did not exist, and the build
+was green. Schema tests pinned three sections of an envelope and not the fourth, so a
+field added to the code and not the schema would have shipped unpinned: the check
+existed and did not cover the section that changed. And the pre-commit linter gates on
+STAGED files, so an unused parameter survived thirty-nine days and surfaced only when an
+unrelated edit happened to stage one of the three files carrying it: the check exists,
+covers the right rules, and looks only where someone was already working.
+
+**The third question is the diagnostic one.** A frame chosen deliberately is a decision
+you can defend. A frame chosen for some other reason -- the staged set, the sampled
+formats, the mutations someone thought to write, the hooks that happen to be wired in
+this directory -- produces coverage that tracks edit traffic, or authoring effort, or
+which repo the session launched from, and not risk. Coverage that correlates with
+accident cannot be reasoned about, and it is thinnest exactly where nobody has been
+looking, which is where the defects are.
+
+**What made this a section rather than three caveats.** The pattern had already been
+written down three times, independently, each as a limitation of one script -- one
+saying the gate only sees staged files, another that it only catches the mutations
+someone wrote. Nobody noticed it was one thing, because each author believed they were
+recording a quirk of the tool in front of them. That is the strongest available evidence
+for a general claim and the easiest kind to miss: a catalog records instances, and a
+pattern is only visible by reading across them.
+
+**The fix is the cheap half.** A gate should report its own frame -- what it skipped,
+what it could not check, how much of what it examined. The instinct already exists here
+as the line "a check that could not run is not a check that passed", which is this same
+insight one step earlier: a gate that cannot run says so, and a gate that never looked
+should say so too.
+
+The audit of this repo's own gates, and which blind spots were already recorded against
+which were not, is on `pattern.gate-frames`.
