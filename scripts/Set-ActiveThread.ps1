@@ -34,8 +34,7 @@ param(
     [string]$Topic = '',
     [switch]$None,
     [string]$Area = '',
-    [string]$Path = '',
-    [switch]$Text
+    [string]$Path = ''
 )
 
 Set-StrictMode -Version Latest
