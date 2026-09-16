@@ -1089,6 +1089,14 @@ public static class ThreadItems
     }
 
     /// <summary>One stored item as Show carries it: lead or whole notes, and the size either way.</summary>
+    /// <remarks>
+    /// 'notesTruncated' is the lead measured against the STORED text, which is why it is derived
+    /// here rather than asked of <see cref="Lead"/>: it answers "is there more than this", and on
+    /// an archived item there always is -- the pointer header the lead now steps past -- even when
+    /// the log under that header would have fitted whole. Saying false there would tell a reader
+    /// they had seen the entire note while withholding the line naming where the rest of it went.
+    /// 'notesLength' is the stored size for the same reason, header included.
+    /// </remarks>
     private static ThreadShownItem Shown(ThreadItem item, bool full)
     {
         string notes = full ? item.Notes : Lead(item.Notes);
@@ -1259,11 +1267,26 @@ public static class ThreadItems
     private const int LeadLength = 200;
 
     /// <summary>
-    /// The first non-empty line of a note, trimmed and capped.
+    /// The first non-empty line of a note, trimmed and capped -- skipping an archive pointer.
     /// </summary>
     /// <remarks>
     /// First NON-EMPTY, not first: notes accumulated by appending start with a blank line, so the
     /// literal first line is empty for most items that have anything worth reading.
+    ///
+    /// AND FIRST REAL, not first non-empty, once an item has archived. The pointer header
+    /// <see cref="NotesSplit"/> leaves behind is the notes' first line and stays there -- it is
+    /// how a caller who never read the write envelope finds the moved text -- but it is longer
+    /// than <see cref="LeadLength"/>, so taking it as the lead replaces every archived item's
+    /// orientation line with a truncated file path. Archived items are the longest-running ones,
+    /// so that degrades exactly the items the startup brief exists to reorient a session about.
+    /// The header is still returned whole by full reads and by the write envelope's split.header;
+    /// only this one derived line steps past it.
+    ///
+    /// Detection is <see cref="NotesSplit.PointerIn"/> rather than a second header test here: two
+    /// detectors for one condition is how two answers for one question come to disagree.
+    ///
+    /// A note that is ONLY a pointer keeps the pointer as its lead. There is nothing else to say,
+    /// and an empty lead would read as "no notes" about an item whose entire log was just moved.
     /// </remarks>
     public static string Lead(string notes)
     {
@@ -1272,17 +1295,19 @@ public static class ThreadItems
             return string.Empty;
         }
 
-        string? line = notes
+        string[] lines = [.. notes
             .Replace("\r\n", "\n")
             .Split('\n')
-            .FirstOrDefault(l => l.Trim().Length > 0);
+            .Where(l => l.Trim().Length > 0)];
 
-        if (line is null)
+        if (lines.Length == 0)
         {
             return string.Empty;
         }
 
-        string trimmed = line.Trim();
+        int index = NotesSplit.PointerIn(notes) is not null && lines.Length > 1 ? 1 : 0;
+
+        string trimmed = lines[index].Trim();
 
         return trimmed.Length > LeadLength ? trimmed[..LeadLength] + "..." : trimmed;
     }

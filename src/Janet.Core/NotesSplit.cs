@@ -56,8 +56,11 @@ public sealed record NotesArchivePlan(
 /// old + blank line + new, and 'next' -- the resume cursor -- points at the present, so the
 /// notes that support it are the recent ones. The cost of keeping the tail is that the first
 /// line changes, and that cost is paid deliberately: the retained text opens with a pointer
-/// header, which makes it the notesLead in every report and in the startup brief. A caller that
-/// never reads the write envelope still finds the text.
+/// header, so a caller that never reads the write envelope still finds the text by reading the
+/// notes. The header is NOT the notesLead -- it was until 2026-09-16, and being longer than the
+/// lead's cap it replaced every archived item's orientation line with a truncated path, so
+/// <see cref="ThreadItems.Lead"/> now takes the first real line after it. The header remains the
+/// notes' first line for every reader that gets the notes whole.
 ///
 /// THE NAME IS CONTENT-ADDRESSED: slug of the topic, the date, and the first 8 hex of a
 /// SHA-256 of the archived text. There is no ordinal to probe and therefore no collision to

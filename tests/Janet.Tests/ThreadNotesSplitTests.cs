@@ -115,8 +115,7 @@ public class ThreadNotesSplitTests : IDisposable
     }
 
     /// <summary>
-    /// The pointer header is the first line of what is left, so it is the lead every report and
-    /// the startup brief show.
+    /// The pointer header is the first line of what is left, and a full read returns it.
     /// </summary>
     /// <remarks>
     /// This is the whole answer to a caller that never reads the write envelope: the path to the
@@ -124,7 +123,7 @@ public class ThreadNotesSplitTests : IDisposable
     /// new verb to learn.
     /// </remarks>
     [Fact]
-    public void ThePointerHeaderIsTheFirstLineAndBecomesTheReportsLead()
+    public void ThePointerHeaderIsTheFirstLineOfWhatIsLeft()
     {
         string path = Splittable();
 
@@ -136,11 +135,79 @@ public class ThreadNotesSplitTests : IDisposable
         Assert.StartsWith(split.Header, live, StringComparison.Ordinal);
         Assert.Equal(split.Header, live.Split('\n')[0]);
         Assert.Contains(split.Where, split.Header, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The lead of an archived item is the first real line of the log, not the pointer above it.
+    /// </summary>
+    /// <remarks>
+    /// The header is longer than the lead's cap, so a lead taken from it is a truncated file
+    /// path where an orientation line belongs -- and the items that archive are the
+    /// longest-running ones, which is to say the ones the startup brief most needs to reorient a
+    /// session about. Show and Report share one computation, so both are pinned here: the show
+    /// side through the item it carries, the report side through notesLead.
+    /// </remarks>
+    [Fact]
+    public void AnArchivedItemsLeadIsTheFirstRealLineAndNotThePointer()
+    {
+        string path = Splittable();
+
+        NotesArchive split = Assert.IsType<NotesArchive>(ThreadItems.Update(
+            path, Topic("splittable"), notes: Block(99, 600), appendNotes: true).Split);
+
+        string live = Notes(path, "splittable");
+        string firstRealLine = live.Split('\n').First(
+            l => l.Trim().Length > 0 && !l.StartsWith("ARCHIVED ", StringComparison.Ordinal));
 
         string? lead = ThreadItems.Report(path, topic: "splittable").Items.Single().NotesLead;
 
         Assert.Equal(ThreadItems.Lead(live), lead);
+        Assert.DoesNotContain("ARCHIVED ", lead, StringComparison.Ordinal);
+        Assert.DoesNotContain(split.Where, lead, StringComparison.Ordinal);
+        Assert.StartsWith(firstRealLine.Trim()[..40], lead, StringComparison.Ordinal);
+
+        // Show carries the same lead, and still states the STORED size, header included.
+        ThreadShownItem item = Assert.Single(
+            ThreadItems.Show(path, topic: "splittable").Items);
+
+        Assert.Equal(lead, item.Notes);
+        Assert.Equal(live.Length, item.NotesLength);
+        Assert.True(item.NotesTruncated);
+    }
+
+    /// <summary>
+    /// Notes that are ONLY a pointer lead with the pointer: there is nothing else to say, and an
+    /// empty lead would read as an item with no notes at all.
+    /// </summary>
+    [Fact]
+    public void AnItemWhoseNotesAreOnlyAPointerLeadsWithThePointer()
+    {
+        string path = Splittable();
+
+        NotesArchive split = Assert.IsType<NotesArchive>(ThreadItems.Update(
+            path, Topic("splittable"), notes: Block(99, 600), appendNotes: true).Split);
+
+        // Replace the log with its own header, which is the shape left when every line moved.
+        ThreadItems.Update(path, Topic("splittable"), notes: split.Header);
+
+        string? lead = ThreadItems.Report(path, topic: "splittable").Items.Single().NotesLead;
+
+        Assert.NotNull(lead);
+        Assert.NotEqual(string.Empty, lead);
         Assert.StartsWith("ARCHIVED ", lead, StringComparison.Ordinal);
+        Assert.Equal(ThreadItems.Lead(split.Header), lead);
+    }
+
+    /// <summary>An item that has never archived leads exactly as it always did.</summary>
+    [Fact]
+    public void AnItemWithNoPointerIsUnaffected()
+    {
+        string path = Empty();
+        ThreadItems.Add(path, "never archived", notes: "\n\nThe lead line.\n\nand more after it");
+
+        Assert.Equal(
+            "The lead line.",
+            ThreadItems.Report(path, topic: "never archived").Items.Single().NotesLead);
     }
 
     /// <summary>The envelope carries the whole of the machine-readable answer, and only when it happened.</summary>
