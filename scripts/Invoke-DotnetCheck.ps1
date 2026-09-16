@@ -18,7 +18,7 @@
     failures carry their payload up front and are read from TRX files rather than scraped.
     The exit code means exactly one thing: 0 when the build succeeded and every test passed.
 
-    THE CONTRACT IS NOW 7. Contract 4 added the 'status' discriminator, because the MCP tool
+    THE CONTRACT IS NOW 8. Contract 4 added the 'status' discriminator, because the MCP tool
     can answer "running" with a handle when a rebuild outlasts the client's call timeout;
     this script only ever produces "complete" -- every invocation is a fresh process, so
     there is nobody to poll -- but the field is present. Contract 5 makes 'tests' carry the
@@ -48,6 +48,17 @@
     and 'resultsDirectory'; each assembly adds the same two times plus 'resultsFile'. The TRX
     files now OUTLIVE the run -- a bounded number of recent result directories is kept -- so a
     session can open one instead of re-running a suite to see what the envelope did not carry.
+
+    Contract 8 adds 'build.diagnosis' (string or null), and it is the envelope half of a fix
+    to the build itself: dotnet's children no longer inherit a Platform variable. MSBuild
+    promotes every environment variable to a global property, so a shell that had run
+    vcvars64.bat -- which exports Platform=x64 -- handed "x64" to every build started from it,
+    and every solution declaring no x64 configuration failed MSB4126 in a fraction of a second,
+    before restore. The envelope reported that verbatim: a precise, confident verdict on a
+    repository, naming a platform this tool never passed, while the 21 real restore errors
+    underneath were never reached. 'diagnosis' carries the provenance -- what the tool passed,
+    what it scrubbed from the child's environment, what the target declares, and that restore
+    never ran, so 'errors' is not a census. NULL MEANS NOTHING TO SAY, not that all is well.
     The declared format is contracts\dotnet-check.schema.json.
 
     Baselines written under contract 3 are still read. The baseline file's format did not

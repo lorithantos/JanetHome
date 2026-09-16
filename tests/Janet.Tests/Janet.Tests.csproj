@@ -32,6 +32,13 @@
     <None Include="Goldens\**\*" CopyToOutputDirectory="PreserveNewest" />
 
     <!--
+      One fixture is a BUILDABLE solution: a .slnx declaring no configurations, which is the
+      shape that failed MSB4126 under an inherited Platform. Its source file is a fixture, not
+      this project's code, so the default glob must not compile it into the test assembly.
+    -->
+    <Compile Remove="Fixtures\**\*.cs" />
+
+    <!--
       The DECLARED envelope, copied live rather than frozen. Unlike the fixtures above, this
       one is meant to track the repository: the gate that validates a sample against it runs
       its sampler in build-only mode, so the entire tests section was declared and never

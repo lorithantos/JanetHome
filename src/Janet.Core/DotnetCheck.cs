@@ -25,6 +25,13 @@ public sealed record CheckRequest
 public sealed record BaselineReport(string Path, string? ComparedTo, bool Saved);
 
 /// <summary>The build half of the answer.</summary>
+/// <param name="Diagnosis">
+/// A sentence naming the PROVENANCE of a failure whose cause lies outside the repository under
+/// test, or null when there is nothing to say -- which is every run with no recognised
+/// early-exit code. Added at contract 8, after an inherited Platform=x64 made every non-x64
+/// solution on a machine fail MSB4126 before restore and the envelope reported that verbatim,
+/// correctly and uselessly: it named the rejected pair but not who asked for it.
+/// </param>
 public sealed record BuildReport(
     bool Succeeded,
     double DurationSeconds,
@@ -33,7 +40,8 @@ public sealed record BuildReport(
     int WarningCount,
     IReadOnlyList<Diagnostic>? NewWarnings,
     int? ResolvedWarningCount,
-    BaselineReport? Baseline);
+    BaselineReport? Baseline,
+    string? Diagnosis);
 
 /// <summary>A finished check.</summary>
 public sealed record CheckResult(
@@ -166,6 +174,17 @@ public static class DotnetCheck
             baselineReport = new BaselineReport(baselinePath, prior?.SavedAt, buildSucceeded);
         }
 
+        // The declared platforms are only read when something rejected one: a diagnosis is the
+        // only consumer, and a file read on every green build would be work nobody asked for.
+        bool platformRejected = errors.Any(e => e.Code == DotnetDiagnostics.SolutionConfigurationInvalid);
+
+        string? diagnosis = DotnetDiagnostics.Diagnose(
+            errors,
+            target,
+            platformPassed: null,
+            platformScrubbed: InheritedPlatform(),
+            declaredPlatforms: platformRejected ? DotnetDiagnostics.DeclaredPlatforms(target) : null);
+
         BuildReport build = new(
             buildSucceeded,
             Math.Round(stopwatch.Elapsed.TotalSeconds, 1),
@@ -174,7 +193,8 @@ public static class DotnetCheck
             warnings.Count,
             newWarnings,
             resolvedWarningCount,
-            baselineReport);
+            baselineReport,
+            diagnosis);
 
         TestRun? tests = null;
         if (buildSucceeded && !request.NoTests)
@@ -291,8 +311,38 @@ public static class DotnetCheck
         }
     }
 
-    private static (int ExitCode, IReadOnlyList<string> Lines) RunDotnet(
-        string verb, IReadOnlyList<string> arguments, CancellationToken cancellation)
+    /// <summary>
+    /// The variable removed from dotnet's environment before every build and test, because
+    /// MSBuild promotes environment variables to global properties and this one names a
+    /// solution configuration.
+    /// </summary>
+    public const string ScrubbedVariable = "Platform";
+
+    /// <summary>
+    /// Builds the ProcessStartInfo for one dotnet invocation, with the inherited
+    /// <see cref="ScrubbedVariable"/> removed from the child's environment.
+    /// </summary>
+    /// <remarks>
+    /// The scrub is the whole point, and it is separated from running the process so it can be
+    /// asserted without a build. MSBuild promotes every environment variable to a global
+    /// property, so a shell that has run vcvars64.bat -- which exports Platform=x64 -- silently
+    /// hands "x64" to every build started from it. A solution that declares no x64
+    /// configuration then fails MSB4126 in a fraction of a second, before restore, with an
+    /// error naming a platform nothing in the command line asked for. Measured 2026-09-16: the
+    /// resident janet-mcp server had descended from an x64 Native Tools prompt and could not
+    /// build any solution on the machine except the one that happened to declare x64, and the
+    /// envelope reported each refusal as though the repository were at fault.
+    /// <para>
+    /// ONLY Platform, and only dotnet's children. Configuration travels on the command line
+    /// (--configuration), and a global property from the command line beats the environment, so
+    /// it cannot be hijacked the same way. ProcessOutput.Capture also launches scripts\graph.ps1
+    /// and the server itself, where a repository's own shell is legitimately its own business;
+    /// scrubbing there would be a wider change than the defect.
+    /// </para>
+    /// </remarks>
+    /// <param name="verb">The dotnet verb, e.g. "build" or "test".</param>
+    /// <param name="arguments">Everything after the verb, in order.</param>
+    public static ProcessStartInfo StartInfo(string verb, IReadOnlyList<string> arguments)
     {
         ProcessStartInfo info = new() { FileName = "dotnet" };
 
@@ -301,6 +351,27 @@ public static class DotnetCheck
         {
             info.ArgumentList.Add(argument);
         }
+
+        // Reading info.Environment materialises this process's environment block into the
+        // dictionary the child will be given, so removing the key here removes it from the
+        // child and from nothing else.
+        info.Environment.Remove(ScrubbedVariable);
+
+        return info;
+    }
+
+    /// <summary>
+    /// The value of <see cref="ScrubbedVariable"/> this process inherited, or null when it
+    /// carries none. What <see cref="StartInfo"/> keeps out of the build, reported so a
+    /// diagnosis can say where a rejected platform did NOT come from.
+    /// </summary>
+    public static string? InheritedPlatform() =>
+        Environment.GetEnvironmentVariable(ScrubbedVariable) is { Length: > 0 } value ? value : null;
+
+    private static (int ExitCode, IReadOnlyList<string> Lines) RunDotnet(
+        string verb, IReadOnlyList<string> arguments, CancellationToken cancellation)
+    {
+        ProcessStartInfo info = StartInfo(verb, arguments);
 
         // Both streams, because MSBuild writes diagnostics to stdout and the driver writes its
         // own failures to stderr; reading one is how a build failure comes back with no errors

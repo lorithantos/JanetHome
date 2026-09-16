@@ -5,7 +5,7 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
-    "contract": 7,
+    "contract": 8,
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
@@ -22,7 +22,7 @@
       "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
       "properties": {
         "status": { "const": "complete" },
-        "contract": { "const": 7 },
+        "contract": { "const": 8 },
         "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
         "configuration": { "type": "string" },
         "succeeded": {
@@ -33,7 +33,7 @@
         "build": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["succeeded", "durationSeconds", "errors", "warnings", "warningCount", "newWarnings", "resolvedWarningCount", "baseline"],
+          "required": ["succeeded", "durationSeconds", "errors", "warnings", "warningCount", "newWarnings", "resolvedWarningCount", "baseline", "diagnosis"],
           "properties": {
             "succeeded": { "type": "boolean" },
             "durationSeconds": { "type": "number", "minimum": 0 },
@@ -105,6 +105,11 @@
                   "description": "Whether this run's census was written back. Only a successful build is: a failed build is a partial census."
                 }
               }
+            },
+
+            "diagnosis": {
+              "type": ["string", "null"],
+              "description": "NULL MEANS NOTHING TO SAY -- no recognised early-exit code -- not that the build was fine. Otherwise one sentence naming the PROVENANCE of a failure whose cause lies outside the target: what the tool passed, what it removed from the child's environment, what the target declares, and whether restore ran at all. Added at contract 8 because MSB4126 read as a precise verdict on a repository while naming a platform the tool never passed: MSBuild promotes environment variables to global properties, and a shell that had run vcvars64.bat exported Platform=x64, so every solution without an x64 configuration failed before restore and errors[] looked like a census when it was the first thing MSBuild refused."
             }
           }
         },
@@ -249,7 +254,7 @@
       "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
       "properties": {
         "status": { "const": "running" },
-        "contract": { "const": 7 },
+        "contract": { "const": 8 },
         "target": { "type": "string" },
         "configuration": { "type": "string" },
         "handle": {

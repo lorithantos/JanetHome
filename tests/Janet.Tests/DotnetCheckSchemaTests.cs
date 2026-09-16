@@ -65,11 +65,58 @@ public class DotnetCheckSchemaTests
             @"D:\Repos\Sample\App.slnx",
             "Debug",
             false,
-            new BuildReport(true, 1.2, [], [], 0, null, null, null),
+            new BuildReport(true, 1.2, [], [], 0, null, null, null, "MSB4126: ..."),
             run,
             null);
 
         return JsonNode.Parse(DotnetCheckJson.Serialize(result))!.AsObject()["tests"]!.AsObject();
+    }
+
+    /// <summary>The same run's build section.</summary>
+    /// <remarks>
+    /// The build section was declared and never held to the serializer until contract 8 added
+    /// a field to it: the gate that validates a live sample runs `janet check --no-tests`, so
+    /// build IS sampled there -- but the sampler needs a working repo build and a schema edit
+    /// alone passed this suite. The tests section has had this since contract 7 and the build
+    /// section had nothing, which is the asymmetry rather than a decision.
+    /// </remarks>
+    private static JsonObject EmittedBuild()
+    {
+        CheckResult result = new(
+            @"D:\Repos\Sample\App.slnx",
+            "Debug",
+            false,
+            new BuildReport(
+                false,
+                0.3,
+                [new Diagnostic("App.slnx", null, "error", "MSB4126", "invalid")],
+                [],
+                0,
+                null,
+                null,
+                null,
+                "MSB4126: App.slnx does not declare ..."),
+            null,
+            null);
+
+        return JsonNode.Parse(DotnetCheckJson.Serialize(result))!.AsObject()["build"]!.AsObject();
+    }
+
+    private static JsonObject BuildSchema() =>
+        Schema()["oneOf"]![0]!["properties"]!["build"]!.AsObject();
+
+    [Fact]
+    public void TheBuildSectionEmitsExactlyWhatTheSchemaDeclares()
+    {
+        Assert.Equal(
+            Declared(BuildSchema()),
+            EmittedBuild().Select(property => property.Key).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void TheBuildSectionRequiresEverythingItDeclares()
+    {
+        Assert.Equal(Declared(BuildSchema()), Required(BuildSchema()));
     }
 
     [Fact]

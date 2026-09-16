@@ -27,7 +27,7 @@ public class DotnetCheckJobTests
         JsonObject envelope = JsonNode.Parse(DotnetCheckJson.Serialize(pending))!.AsObject();
 
         Assert.Equal("running", envelope["status"]!.GetValue<string>());
-        Assert.Equal(7, envelope["contract"]!.GetValue<int>());
+        Assert.Equal(8, envelope["contract"]!.GetValue<int>());
         Assert.Equal(@"D:\Repos\Sample\App.slnx", envelope["target"]!.GetValue<string>());
         Assert.Equal("Debug", envelope["configuration"]!.GetValue<string>());
         Assert.Equal("abc123def456", envelope["handle"]!.GetValue<string>());
@@ -48,16 +48,16 @@ public class DotnetCheckJobTests
             @"D:\Repos\Sample\App.slnx",
             "Debug",
             true,
-            new BuildReport(true, 1.2, [], [], 0, null, null, null),
+            new BuildReport(true, 1.2, [], [], 0, null, null, null, null),
             null,
             null);
 
         JsonObject envelope = JsonNode.Parse(DotnetCheckJson.Serialize(result))!.AsObject();
 
         Assert.Equal("complete", envelope["status"]!.GetValue<string>());
-        Assert.Equal(7, envelope["contract"]!.GetValue<int>());
+        Assert.Equal(8, envelope["contract"]!.GetValue<int>());
 
-        // The three fields whose null is a statement rather than an absence. They are present
+        // The four fields whose null is a statement rather than an absence. They are present
         // and null, not missing: a reader has to be able to tell "not applicable" from "this
         // build of the tool does not report it".
         Assert.True(envelope.ContainsKey("tests"));
@@ -66,6 +66,8 @@ public class DotnetCheckJobTests
         Assert.Null(envelope["graph"]);
         Assert.True(envelope["build"]!.AsObject().ContainsKey("newWarnings"));
         Assert.Null(envelope["build"]!["newWarnings"]);
+        Assert.True(envelope["build"]!.AsObject().ContainsKey("diagnosis"));
+        Assert.Null(envelope["build"]!["diagnosis"]);
     }
 
     [Fact]

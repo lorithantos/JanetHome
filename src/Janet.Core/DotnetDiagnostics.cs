@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace Janet.Core;
 
@@ -76,8 +77,18 @@ public static class DotnetDiagnostics
     /// complaint: sessions were bypassing this envelope and re-running dotnet test themselves
     /// to learn things the run had already written down.
     /// </para>
+    /// <para>
+    /// 8 adds build.diagnosis (2026-09-16), and it is the envelope half of a correctness fix:
+    /// dotnet's children no longer inherit a Platform variable (DotnetCheck.StartInfo). The
+    /// fix alone would have left the envelope no better at saying WHY a build stopped before
+    /// restore. An inherited Platform=x64 had made every non-x64 solution on a machine fail
+    /// MSB4126 in 0.3 seconds, and the envelope reported that error verbatim -- precise,
+    /// confident, and about a property the tool never passed. diagnosis carries the
+    /// provenance: what the tool passed, what it removed from the environment, what the target
+    /// declares, and that restore never ran, so errors[] is not a census.
+    /// </para>
     /// </summary>
-    public const int Contract = 7;
+    public const int Contract = 8;
 
     /// <summary>
     /// The baseline file's own format, deliberately NOT the envelope's.
@@ -153,6 +164,188 @@ public static class DotnetDiagnostics
                     [.. g.Take(cap)],
                     Math.Max(0, g.Count() - cap)))
         ];
+    }
+
+    // ---- the diagnosis ------------------------------------------------------------------------
+
+    /// <summary>
+    /// MSBuild's code for a solution configuration the target does not declare. It is reported
+    /// against the solution, before restore, so a build that fails with it has not looked at
+    /// the repository at all.
+    /// </summary>
+    public const string SolutionConfigurationInvalid = "MSB4126";
+
+    /// <summary>The Configuration|Platform pair MSB4126 names, quoted in its message.</summary>
+    /// <remarks>
+    /// The pipe is what distinguishes it from the other quoted string in the same message --
+    /// MSBuild's own advice suggests /p:Platform="Any CPU" -- so the pattern requires one.
+    /// </remarks>
+    private static readonly Regex RejectedPair = new(
+        @"""(?<configuration>[^""|]*)\|(?<platform>[^""]*)""",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// A sentence naming the provenance of a failure whose cause lies outside the target, or
+    /// null when nothing here recognises the errors.
+    /// </summary>
+    /// <remarks>
+    /// A pure function of text, like the rest of this file's parsing half: no process, no file
+    /// system, so it is testable against a captured error and nothing else. The platforms the
+    /// target declares are READ BY THE CALLER and passed in (<see cref="DeclaredPlatforms"/>),
+    /// which is the only part that needs a disk.
+    /// <para>
+    /// Null means there is nothing to say, never that the build was fine. The envelope depends
+    /// on that reading, so a default sentence would be worse than silence: a reader who sees a
+    /// diagnosis on every failure stops reading them.
+    /// </para>
+    /// </remarks>
+    /// <param name="errors">The build's errors, as parsed by <see cref="Read"/>.</param>
+    /// <param name="target">The resolved target, named in the diagnosis by its file name.</param>
+    /// <param name="platformPassed">The platform the tool put on the command line, or null --
+    /// which is always, until a platform parameter exists.</param>
+    /// <param name="platformScrubbed">The Platform variable removed from the child's
+    /// environment, or null when this process carried none.</param>
+    /// <param name="declaredPlatforms">What the target declares; null when it was not read.</param>
+    public static string? Diagnose(
+        IReadOnlyList<Diagnostic> errors,
+        string target,
+        string? platformPassed,
+        string? platformScrubbed,
+        IReadOnlyList<string>? declaredPlatforms = null)
+    {
+        Diagnostic? rejected = errors.FirstOrDefault(e =>
+            string.Equals(e.Code, SolutionConfigurationInvalid, StringComparison.OrdinalIgnoreCase));
+
+        if (rejected is null)
+        {
+            return null;
+        }
+
+        string name = Path.GetFileName(target);
+        if (string.IsNullOrEmpty(name))
+        {
+            name = target;
+        }
+
+        Match pair = RejectedPair.Match(rejected.Message);
+        List<string> said =
+        [
+            pair.Success
+                ? $"{SolutionConfigurationInvalid}: {name} does not declare the solution configuration \"{pair.Groups["configuration"].Value}|{pair.Groups["platform"].Value}\" -- configuration {pair.Groups["configuration"].Value}, platform {pair.Groups["platform"].Value}."
+                : $"{SolutionConfigurationInvalid}: {name} does not declare the solution configuration MSBuild was asked for.",
+
+            platformPassed is null
+                ? "The check passed NO platform: its command line carries the configuration and nothing else, so the platform came from somewhere else."
+                : $"The check passed -p:Platform={platformPassed} on the command line.",
+
+            platformScrubbed is null
+                ? $"Its own environment carried no {DotnetCheck.ScrubbedVariable} variable to remove."
+                : $"Its own environment carried {DotnetCheck.ScrubbedVariable}={platformScrubbed}, inherited from the shell that started this process, and the check REMOVED it from dotnet's environment before building, so it is not the source of the pair above -- MSBuild promotes environment variables to global properties, which is how a prompt that ran vcvars64.bat once set the platform for every build started from it.",
+        ];
+
+        if (declaredPlatforms is not null)
+        {
+            said.Add(declaredPlatforms.Count == 0
+                ? $"{name} declares no platforms of its own, so MSBuild picks the default (Any CPU)."
+                : $"{name} declares: {string.Join(", ", declaredPlatforms)}.");
+        }
+
+        said.Add("RESTORE NEVER RAN -- this error stops the build before it -- so build.errors[] is not a census of what is wrong with this target.");
+
+        return string.Join(" ", said);
+    }
+
+    /// <summary>
+    /// The platforms a .sln or .slnx declares, in the order it declares them. Empty for a
+    /// target that declares none, and for a .csproj, which has no solution configurations and
+    /// accepts any platform it is handed.
+    /// </summary>
+    /// <remarks>
+    /// The impure half of <see cref="Diagnose"/>, kept apart from it so the sentence stays a
+    /// function of text. Deliberately a reader and not a chooser: MSBuild resolves its own
+    /// default perfectly well when nothing sets Platform, and re-implementing that resolution
+    /// would be a new way to produce a confident wrong platform. This exists to NAME what the
+    /// target declares, nothing more. An unreadable or malformed file reads as "declares
+    /// none": a diagnosis is best effort and must never fail a build.
+    /// </remarks>
+    public static IReadOnlyList<string> DeclaredPlatforms(string target)
+    {
+        try
+        {
+            string extension = Path.GetExtension(target);
+
+            if (string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase))
+            {
+                return
+                [
+                    .. XDocument.Load(target)
+                        .Descendants()
+                        .Where(e => e.Name.LocalName == "Platform")
+                        .Select(e => e.Attribute("Name")?.Value)
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Select(n => n!)
+                        .Distinct(StringComparer.Ordinal)
+                ];
+            }
+
+            if (string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase))
+            {
+                return [.. SolutionPlatforms(File.ReadLines(target))];
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        {
+            // Best effort by design: see the remarks.
+        }
+
+        return [];
+    }
+
+    /// <summary>
+    /// The platform half of each entry in a .sln's SolutionConfigurationPlatforms section,
+    /// where a line reads "Debug|Any CPU = Debug|Any CPU".
+    /// </summary>
+    private static IEnumerable<string> SolutionPlatforms(IEnumerable<string> lines)
+    {
+        bool inside = false;
+        HashSet<string> seen = new(StringComparer.Ordinal);
+
+        foreach (string line in lines)
+        {
+            string trimmed = line.Trim();
+
+            if (trimmed.StartsWith("GlobalSection(SolutionConfigurationPlatforms)", StringComparison.Ordinal))
+            {
+                inside = true;
+                continue;
+            }
+
+            if (!inside)
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith("EndGlobalSection", StringComparison.Ordinal))
+            {
+                yield break;
+            }
+
+            int equals = trimmed.IndexOf('=', StringComparison.Ordinal);
+            string left = equals < 0 ? trimmed : trimmed[..equals];
+            int pipe = left.IndexOf('|', StringComparison.Ordinal);
+
+            if (pipe < 0)
+            {
+                continue;
+            }
+
+            string platform = left[(pipe + 1)..].Trim();
+
+            if (platform.Length > 0 && seen.Add(platform))
+            {
+                yield return platform;
+            }
+        }
     }
 
     // ---- the baseline ------------------------------------------------------------------------
