@@ -137,6 +137,29 @@ meaning "the one active item", because there is no longer exactly one: they now 
 exactly one area holds focus and refuse otherwise with every cursor named, which is the house
 rule for an ambiguous topic applied to an ambiguous *cursor*.
 
+**A fourth missing verb, and what got built instead of it.** Notes are inline and were
+capped at 8,000 characters on 2026-09-05, refusal rather than truncation, because silently
+cutting a log loses the last line -- the one saying what to do next. The cap then produced
+its own missing verb: nothing split an over-ceiling item, so callers improvised with a
+destructive replace, which is a read-modify-write over notes performed *outside* the lock,
+the exact loss the write queue exists to stop. On 2026-09-16 the answer was an ARCHIVE, not
+a split, and the reason is naming. A split needs a name for the second half; a topic here is
+a dictionary key that no verb can change afterwards; and a name a machine derives from "the
+first 6,142 characters of an append log" is a false label forever. An archive is reached
+through a pointer rather than by browsing, so an opaque identifier is not merely acceptable
+there, it is correct. So an `appendNotes` over the ceiling now moves the oldest paragraphs to
+`notes\<slug>-<date>-<hash8>.md` beside the store and keeps the newest half live; a
+replacement, an add, and an append with nowhere to cut are all still refused whole. Three
+things in that are worth carrying elsewhere. The name is content-addressed, so there is no
+ordinal to probe and a race writes identical bytes. The retention target is HALF the ceiling
+rather than the ceiling, because cutting back to one character under a limit means crossing
+it again on the next write -- ten files where one was wanted. And the pointer is written as
+the first LINE of what stays, not only into the response envelope, because the first line is
+what `notesLead` publishes: a caller that never reads the envelope still finds the text. The
+honest cost is that this is not a two-phase commit, and it is not pretended to be: the file
+is written before anything is queued, so a failure leaves an orphan file with nothing
+pointing at it, and never a half-archived item.
+
 **The general lesson, which outlives this tool.** A structure chosen for the operation you
 first imagined -- descend, unwind -- will quietly forbid the operations you actually turn
 out to need: note, amend, finish. The tell is callers reaching for a destructive operation

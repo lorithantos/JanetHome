@@ -65,6 +65,18 @@ public sealed record ThreadUpdateResult(
     string Updated, IReadOnlyList<string> Changed, int Count, int Batched = 1)
     : IBatchedResult<ThreadUpdateResult>
 {
+    /// <summary>
+    /// What an automatic archive moved out of this item's notes, or null when none happened.
+    /// </summary>
+    /// <remarks>
+    /// Null is the ordinary case and the serializer omits the key entirely, matching the
+    /// notesTruncated precedent: an absent key means there is nothing to go back for. It is a
+    /// property of its own rather than an entry in <see cref="Changed"/>, which keeps saying
+    /// 'notes' exactly as it did -- overloading that list would make every existing reader of it
+    /// wrong about what happened.
+    /// </remarks>
+    public NotesArchive? Split { get; init; }
+
     public ThreadUpdateResult WithBatch(int total, int batched) =>
         this with { Count = total, Batched = batched };
 }
@@ -602,8 +614,15 @@ public static class ThreadItems
     /// The ceiling is read per call rather than cached, so <see cref="NotesBudget.EnvironmentVariable"/>
     /// takes effect on the next write without a restart, as the result budget's does.
     /// </remarks>
+    /// <param name="because">
+    /// One sentence added to a ceiling refusal saying why an automatic archive did not save this
+    /// append -- archiving was off, there was nowhere to cut, the fragment was the whole of it,
+    /// or a concurrent writer made the prepared archive stale. Null everywhere archiving was
+    /// never in play.
+    /// </param>
     private static void EnsureWritable(
-        string topic, string? notesAfter, string? notesWritten, string? next, string? area)
+        string topic, string? notesAfter, string? notesWritten, string? next, string? area,
+        string? because = null)
     {
         MalformedInput.Ensure("notes", topic, notesWritten);
         MalformedInput.Ensure("next", topic, next);
@@ -613,7 +632,8 @@ public static class ThreadItems
 
         if (notesAfter is not null && notesAfter.Length > ceiling)
         {
-            throw new GraphException(NotesBudget.NotesRefusal(topic, notesAfter.Length, ceiling));
+            throw new GraphException(
+                NotesBudget.NotesRefusal(topic, notesAfter.Length, ceiling, because));
         }
 
         if (next is not null && next.Length > NotesBudget.NextCeiling)
@@ -697,10 +717,16 @@ public static class ThreadItems
     /// and "supplied as empty" cannot be the same thing. The PowerShell read
     /// $PSBoundParameters to tell them apart; here it is nullability.
     /// </remarks>
+    /// <param name="split">
+    /// Let an over-ceiling APPEND archive the oldest part of the notes rather than be refused.
+    /// Default on, and on for appendNotes alone: a replacement is the caller stating the whole
+    /// text they want, and archiving half of what they just wrote in the same call is the tool
+    /// overruling them. False restores the refusal exactly, and the refusal then names the flag.
+    /// </param>
     public static ThreadUpdateResult Update(
         string? path, ThreadSelector selector, string? notes = null, string? next = null,
         IReadOnlyList<string>? refs = null, string? status = null,
-        bool appendNotes = false, bool appendRefs = false, string? area = null)
+        bool appendNotes = false, bool appendRefs = false, string? area = null, bool split = true)
     {
         if (notes is null && next is null && refs is null && area is null
             && string.IsNullOrEmpty(status))
@@ -713,6 +739,14 @@ public static class ThreadItems
             throw new GraphException(
                 $"Unknown status '{status}'. Valid statuses: {string.Join(", ", Statuses)}.");
         }
+
+        // BEFORE the queue, and this is the whole design: a queued operation must be pure with
+        // respect to disk, because in-process writers coalesce into one read-apply-write and a
+        // discarded operation's text must leave no side effect behind. So the archive file is
+        // written here, and the queued operation below only decides whether to use it.
+        (NotesArchivePlan? plan, string? because) = appendNotes && notes is { Length: > 0 }
+            ? PrepareArchive(path, selector, notes, split)
+            : (null, null);
 
         return Write(path, items =>
         {
@@ -732,7 +766,28 @@ public static class ThreadItems
                 ? null
                 : appendNotes && item.Notes.Length > 0 ? item.Notes + "\n\n" + notes : notes;
 
-            EnsureWritable(item.Topic, notesAfter: resultingNotes, notesWritten: notes, next, area);
+            // The plan is applied only against the text it was computed from. Another writer
+            // that landed in between leaves it describing prose that is no longer there, and
+            // archiving on a stale reading is how notes get lost -- so it is dropped, the
+            // refusal says so, and the orphan file costs disk and nothing else.
+            NotesArchive? archived = null;
+            string? refused = because;
+
+            if (plan is not null && resultingNotes is not null)
+            {
+                if (string.Equals(plan.Composed, resultingNotes, StringComparison.Ordinal))
+                {
+                    resultingNotes = plan.Notes;
+                    archived = plan.Archive;
+                }
+                else
+                {
+                    refused = NotesBudget.StaleRefusal(plan.Archive.Where);
+                }
+            }
+
+            EnsureWritable(
+                item.Topic, notesAfter: resultingNotes, notesWritten: notes, next, area, refused);
 
             if (resultingNotes is not null)
             {
@@ -779,8 +834,91 @@ public static class ThreadItems
 
             items[target] = item;
 
-            return new ThreadUpdateResult(item.Topic, changed, Live(items).Count);
+            return new ThreadUpdateResult(item.Topic, changed, Live(items).Count)
+            {
+                Split = archived,
+            };
         });
+    }
+
+    /// <summary>
+    /// Plans an archive for an over-ceiling append and writes the file, before anything is queued.
+    /// </summary>
+    /// <remarks>
+    /// Reads the store OUTSIDE the queue, which is exactly what a queued operation may not do.
+    /// That reading can be wrong -- another writer may land first -- so it is treated as a
+    /// proposal and re-checked under the lock against the text the batch actually read.
+    ///
+    /// Selection failures are swallowed rather than raised here: an unknown or ambiguous topic
+    /// is the queued operation's error to report, in its own words, and raising it twice from
+    /// two places is how two messages for one condition come to disagree.
+    ///
+    /// Returns the plan, or the one sentence explaining why there is none -- which is used only
+    /// if the ceiling then refuses the write, and is discarded if the append fits after all.
+    /// </remarks>
+    private static (NotesArchivePlan? Plan, string? Because) PrepareArchive(
+        string? path, ThreadSelector selector, string notes, bool split)
+    {
+        if (!split || !NotesBudget.Autosplit)
+        {
+            return (null, NotesBudget.AutosplitOffRefusal());
+        }
+
+        string store = Resolve(path);
+        ThreadItem item;
+
+        try
+        {
+            IReadOnlyList<ThreadItem> items = Read(store);
+            item = items[Find(items, selector)];
+        }
+        catch (GraphException)
+        {
+            return (null, null);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return (null, null);
+        }
+
+        if (item.Notes.Length == 0)
+        {
+            return (null, null);
+        }
+
+        string composed = item.Notes + "\n\n" + notes;
+        int ceiling = NotesBudget.Current;
+
+        if (composed.Length <= ceiling)
+        {
+            return (null, null);
+        }
+
+        // The blank line this append just created is protected along with the append itself:
+        // cutting there would archive the whole of the stored notes on the strength of a
+        // boundary the caller's own text supplied, which is how a single indivisible block
+        // would come to be "archived" without ever having had a boundary of its own.
+        int untouchable = notes.Length + 2;
+
+        NotesArchivePlan? plan = NotesSplit.Plan(
+            store, item.Topic, composed, untouchable, ceiling,
+            DateOnly.FromDateTime(DateTime.Now));
+
+        if (plan is null)
+        {
+            // Two different reasons, and the caller can act on the difference: prose with
+            // nowhere to cut at all, against prose whose newest block is simply too big.
+            int smallest = NotesSplit.SmallestRetained(composed, untouchable);
+
+            return (null, smallest < 0
+                ? NotesBudget.NoBoundaryRefusal(item.Notes.Length)
+                : NotesBudget.NoFitRefusal(
+                    smallest, NotesBudget.Retention(ceiling), notes.Length));
+        }
+
+        NotesSplit.Commit(plan);
+
+        return (plan, null);
     }
 
     public static ThreadCompleteResult Complete(string? path, ThreadSelector selector) =>

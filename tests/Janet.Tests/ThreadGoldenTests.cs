@@ -90,6 +90,14 @@ public class ThreadGoldenTests : IDisposable
     ///
     /// 'batched' (envelope): how many requests shared the write. See ThreadJson.
     ///
+    /// 'split' (envelope, 2026-09-16): what an automatic archive moved out of an item's notes,
+    /// written ONLY when an appendNotes crossed the ceiling and the oldest paragraphs went to a
+    /// file beside the store. None of the recorded cases archives -- the appended-notes case
+    /// writes 56 characters against an 8,000-character ceiling -- so this tolerance never fires
+    /// on the goldens as they stand, and it is declared anyway: the decision that the update
+    /// envelope may carry the key belongs in this diff, not in whichever future case first
+    /// happens to be large enough to produce one.
+    ///
     /// 'area' (item, 2026-09-03): the stored project label, added so that show and report can
     /// narrow to one project's items -- the list is shared by every repo on this machine. The
     /// envelope carries it resolved, so it reads '(unfiled)' for every item in these goldens:
@@ -100,7 +108,7 @@ public class ThreadGoldenTests : IDisposable
     /// default show made that the only way to keep the show cases green, the cases were dropped
     /// instead (Cases.Threads), so this list stays a tolerance and never becomes a rewrite.
     /// </remarks>
-    private static readonly string[] AddedToEnvelope = ["batched"];
+    private static readonly string[] AddedToEnvelope = ["batched", "split"];
 
     private static readonly string[] AddedToItems = ["area"];
 

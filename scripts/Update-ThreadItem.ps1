@@ -17,8 +17,33 @@
     get lost. -Index was removed on 2026-08-14 for the same reason: the list is keyed by topic,
     and a displayed position is wrong by the number of completed items above it.
 
+.PARAMETER Notes
+    Replacement notes, or '' to clear. Notes are CAPPED at 8,000 characters
+    (JANET_NOTES_BUDGET overrides), measured on what the item would hold after the write.
+
+    A REPLACEMENT over the ceiling is refused whole: long-form belongs in a catalogued note --
+    write it to notes\<slug>.md, `janet research add` it as note.<slug>, put the id in -Refs,
+    and replace the notes with a shorter working log. An -AppendNotes over the ceiling is not
+    refused; see -NoSplit.
+
+.PARAMETER Next
+    Replacement resume cursor, or '' to clear. Capped at 1,000 characters, with no override:
+    it is the one thing to do first on return, and a cursor needing a thousand characters is
+    notes wearing the wrong label. Put the detail in -Notes.
+
 .PARAMETER AppendNotes
     Add to the existing notes rather than replacing them, separated by a blank line.
+
+    An append that would cross the notes ceiling ARCHIVES the oldest paragraphs to
+    notes\<slug>-<date>-<hash>.md beside the store and keeps the newest half live behind a
+    pointer line naming that file. The response carries a 'split' object whose 'where' is the
+    path. It is refused instead when the stored notes are one block with nowhere to cut, or
+    when the text being appended leaves no room.
+
+.PARAMETER NoSplit
+    Refuse an over-ceiling -AppendNotes whole rather than archiving the oldest paragraphs, which
+    is how this behaved before archiving existed. JANET_NOTES_AUTOSPLIT=off does the same for a
+    whole process.
 
 .PARAMETER AppendRefs
     Add to the existing refs rather than replacing them. Repeats are kept, deliberately: a
@@ -40,6 +65,7 @@ param(
     [ValidateSet('active', 'parked', 'done')][string]$Status = '',
     [switch]$AppendNotes,
     [switch]$AppendRefs,
+    [switch]$NoSplit,
     [string]$Path = '',
     [switch]$Text
 )
@@ -68,6 +94,7 @@ if ($Status) { $arguments += @('--status', $Status) }
 if ($Path) { $arguments += @('--path', $Path) }
 if ($AppendNotes) { $arguments += '--append-notes' }
 if ($AppendRefs) { $arguments += '--append-refs' }
+if ($NoSplit) { $arguments += '--no-split' }
 
 & $janet @arguments
 exit $LASTEXITCODE

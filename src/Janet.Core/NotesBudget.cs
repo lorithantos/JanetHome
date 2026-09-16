@@ -41,6 +41,49 @@ public static class NotesBudget
     /// </summary>
     public const string EnvironmentVariable = "JANET_NOTES_BUDGET";
 
+    /// <summary>
+    /// Environment variable that turns automatic archiving off for a whole process.
+    /// </summary>
+    /// <remarks>
+    /// The process-level half of the opt-out, resolved per call exactly as
+    /// <see cref="EnvironmentVariable"/> is, and matching JANET_RESULT_BUDGET and
+    /// JANET_GRAPH_GUARD. The per-call half is the 'split' argument. Default is ON, and it is
+    /// the right default BECAUSE the fallback is a refusal rather than a corruption: the worst
+    /// an unwanted archive does is move old prose to a named file and say so twice, in the
+    /// response and in the notes.
+    /// </remarks>
+    public const string AutosplitVariable = "JANET_NOTES_AUTOSPLIT";
+
+    /// <summary>Whether automatic archiving is on for this process.</summary>
+    public static bool Autosplit => ResolveAutosplit(Environment.GetEnvironmentVariable(AutosplitVariable));
+
+    /// <summary>
+    /// Reads the autosplit switch. Only an explicit off spelling turns it off.
+    /// </summary>
+    /// <remarks>
+    /// Missing, blank and anything unrecognised all mean ON, so a typo leaves the behaviour the
+    /// default rather than silently disabling a feature whose absence looks like a refusal.
+    /// </remarks>
+    public static bool ResolveAutosplit(string? raw) =>
+        !OffSpellings.Contains(raw?.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] OffSpellings = ["off", "0", "false", "no"];
+
+    /// <summary>
+    /// How much an archive leaves behind: HALF the ceiling, never the ceiling.
+    /// </summary>
+    /// <remarks>
+    /// Cutting back to 7,999 characters means the next append archives again, and then again --
+    /// ten files, which is the failure the ceiling exists to avoid restated one level up.
+    /// Halving gives roughly a ceiling's worth of headroom back, so an item that grows a
+    /// paragraph at a time archives on the order of once a month rather than once an append.
+    /// It moves with the override: JANET_NOTES_BUDGET=20000 retains 10,000.
+    /// </remarks>
+    public static int Retention(int ceiling) => ceiling / 2;
+
+    /// <summary>The retention target in force, for the ceiling in force.</summary>
+    public static int CurrentRetention => Retention(Current);
+
     /// <summary>Where long-form belongs instead, stated in every refusal.</summary>
     public const string Escape =
         "Long-form belongs in a catalogued note: write it to notes\\<slug>.md in the repo, " +
@@ -63,7 +106,11 @@ public static class NotesBudget
     /// <param name="topic">The item being written.</param>
     /// <param name="length">The length the notes WOULD have had after the write.</param>
     /// <param name="ceiling">The ceiling in force when it was measured.</param>
-    public static string NotesRefusal(string topic, int length, int ceiling) =>
+    /// <param name="because">
+    /// One sentence saying why an automatic archive did not save this write, appended verbatim.
+    /// Null on the paths where archiving was never in play -- an add, or a replacement.
+    /// </param>
+    public static string NotesRefusal(string topic, int length, int ceiling, string? because = null) =>
         string.Format(
             CultureInfo.InvariantCulture,
             "Refused: notes for '{0}' would be {1:N0} characters, and the ceiling is {2:N0} " +
@@ -72,7 +119,64 @@ public static class NotesBudget
             length,
             ceiling,
             EnvironmentVariable,
-            Escape);
+            Escape) + (because is null ? string.Empty : " " + because);
+
+    /// <summary>Why an over-ceiling append could not be archived: there is nowhere to cut.</summary>
+    /// <remarks>
+    /// The 9,000-character single paragraph, which behaves exactly as it did before archiving
+    /// existed. A paragraph is one indivisible unit of prose and the tool has no business
+    /// guessing where a thought ends.
+    /// </remarks>
+    public static string NoBoundaryRefusal(int length) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "No paragraph or line boundary falls in the archivable range -- the stored notes are " +
+            "one block of {0:N0} characters, so nothing can be moved without cutting prose. " +
+            "Split it by hand, or write it to a note.",
+            length);
+
+    /// <summary>Why an over-ceiling append could not be archived: nothing may be cut out of what stays.</summary>
+    /// <remarks>
+    /// There are boundaries, but the smallest tail any of them leaves is still over the
+    /// retention target, because the newest stored block plus the text the caller sent in this
+    /// call is larger than it -- and text sent in this call is never cut, since splitting it
+    /// would put one authored passage in two places and the malformed-markup guard scans that
+    /// fragment whole.
+    /// </remarks>
+    public static string NoFitRefusal(int smallest, int retention, int fragment) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "Archiving cannot get these notes under the {0:N0}-character retention target: the " +
+            "smallest that can be kept is {1:N0} characters, because the newest stored block " +
+            "plus the {2:N0} characters you sent in this call stay together and text sent in " +
+            "this call is never cut. Send it a paragraph at a time, or replace the notes with a " +
+            "shorter working log.",
+            retention,
+            smallest,
+            fragment);
+
+    /// <summary>Why an over-ceiling append was not archived: the caller turned archiving off.</summary>
+    public static string AutosplitOffRefusal() =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "Automatic archiving of the oldest notes is off for this call (split=false, " +
+            "--no-split, or {0}=off), so the append was refused whole as it would have been " +
+            "before archiving existed.",
+            AutosplitVariable);
+
+    /// <summary>Why an over-ceiling append was not archived: somebody else wrote first.</summary>
+    /// <remarks>
+    /// The archive file is prepared before the write is queued, so a writer that changed this
+    /// item in between leaves the plan describing text that is no longer there. Applying it
+    /// would archive prose the plan never read; refusing costs one orphan file and a retry.
+    /// </remarks>
+    public static string StaleRefusal(string where) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "An archive to {0} was prepared for this append, but another writer changed the " +
+            "item first, so it describes text that is no longer there and was not applied. " +
+            "Nothing was written. Retry: the next attempt archives what is there now.",
+            where);
 
     /// <summary>The message a next write over its ceiling is refused with.</summary>
     public static string NextRefusal(string topic, int length) =>

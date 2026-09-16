@@ -160,7 +160,11 @@ static int Thread(Args args)
 
                 // Presence, not truthiness: --area '' returns an item filed by mistake to
                 // (unfiled), and reading the value alone would silently drop that request.
-                area: args.Has("--area") ? args.Value("--area") ?? string.Empty : null), pretty));
+                area: args.Has("--area") ? args.Value("--area") ?? string.Empty : null,
+
+                // Default on: an over-ceiling --append-notes archives the oldest paragraphs
+                // rather than being refused, and --no-split asks for the old refusal back.
+                split: !args.Flag("--no-split")), pretty));
 
             return 0;
 
@@ -724,7 +728,7 @@ static int Usage()
                               [--area TEXT] [--active]
         janet thread update   [--topic TEXT] [--notes TEXT] [--next TEXT]
                               [--ref ID]... [--status active|parked|done] [--area TEXT]
-                              [--append-notes] [--append-refs]
+                              [--append-notes] [--append-refs] [--no-split]
         janet thread complete [--topic TEXT]
         janet thread active   (--topic TEXT | --none [--area TEXT])
                               (topic is the only WRITE selector. Focus is one cursor PER
@@ -797,11 +801,16 @@ static int Usage()
         No selector means whatever is active. An ambiguous topic is refused, not guessed at.
         On update, an omitted --notes/--next/--ref leaves the field alone; --next '' clears it.
         Notes are CAPPED at 8,000 characters (JANET_NOTES_BUDGET overrides) and --next at
-        1,000, measured on what the item would hold after the write, so an --append-notes that
-        crosses the ceiling is refused whole. Long-form belongs in a catalogued note: write it
-        to notes\<slug>.md, research add it as note.<slug>, put the id in --ref, and replace
-        the notes with a shorter working log. Status, ref and area writes still succeed on an
-        item already over the ceiling.
+        1,000, measured on what the item would hold after the write. An --append-notes that
+        crosses the ceiling ARCHIVES the oldest paragraphs to notes\<slug>-<date>-<hash>.md
+        beside the store, keeps the newest half live behind a pointer line naming that file,
+        and reports it under 'split' in the response -- 'where' is the path. --no-split asks
+        for the old whole refusal instead, and JANET_NOTES_AUTOSPLIT=off does the same for a
+        whole process. A --notes REPLACEMENT over the ceiling, an add over it, and an append
+        whose own text leaves no room are all still refused whole. Long-form belongs in a
+        catalogued note: write it to notes\<slug>.md, research add it as note.<slug>, put the
+        id in --ref, and replace the notes with a shorter working log. Status, ref and area
+        writes still succeed on an item already over the ceiling.
 
         Every research command: [--base DIR] [--graph PATH]
         (graph defaults to research.json in JanetBase)

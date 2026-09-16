@@ -134,8 +134,12 @@ public static class ThreadTools
         "An ambiguous topic is refused and both candidates named, rather than resolved to a " +
         "first match -- amending the wrong item is how notes get lost. Notes are CAPPED at " +
         "8,000 characters (JANET_NOTES_BUDGET overrides) and next at 1,000, measured on what " +
-        "the item would hold AFTER the write -- so an appendNotes that crosses the ceiling is " +
-        "refused whole, not trimmed. The escape: write the long-form to notes\\<slug>.md, " +
+        "the item would hold AFTER the write. An appendNotes that crosses the ceiling ARCHIVES " +
+        "the oldest paragraphs to a file beside the store, keeps the newest half live behind a " +
+        "pointer line naming that file, and reports it under 'split' in this response -- set " +
+        "split=false to be refused whole instead. Everything else over the ceiling is still " +
+        "refused whole: a notes REPLACEMENT, an add, and an append whose own fragment leaves no " +
+        "room. The escape for those: write the long-form to notes\\<slug>.md, " +
         "`janet research add` it as note.<slug>, put the id in refs, and REPLACE notes with a " +
         "shorter working log. Writes that leave notes and next alone (status, refs, area) " +
         "still succeed on an item already over the ceiling.")]
@@ -163,10 +167,17 @@ public static class ThreadTools
             "Which project or area this item belongs to, or empty to unfile it. Omit to leave " +
             "alone. This is how an existing item gets labelled -- none were backfilled, so most " +
             "read as '(unfiled)' until someone says otherwise.")]
-        string? area = null) =>
+        string? area = null,
+        [Description(
+            "Let an over-ceiling appendNotes archive the OLDEST paragraphs to a file beside the " +
+            "store rather than be refused. On by default, and for appendNotes only. The live " +
+            "notes keep the newest half plus a first line naming the file, and the response " +
+            "carries 'split' with the path under 'where'. false restores the plain refusal; " +
+            "JANET_NOTES_AUTOSPLIT=off does the same for a whole process.")]
+        bool split = true) =>
         ThreadJson.Serialize(ThreadItems.Update(
             null, Selector(topic, index), notes, next, refs, status, appendNotes, appendRefs,
-            area));
+            area, split));
 
     [McpServerTool(Name = "thread_complete")]
     [Description(

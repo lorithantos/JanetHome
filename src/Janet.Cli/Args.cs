@@ -25,7 +25,11 @@ public sealed class Args
         "--help", "--no-trace",
 
         // Thread items. --no-lead is the reporter's: drop notesLead, keep notesLength.
-        "--active", "--none", "--append-notes", "--append-refs", "--no-lead",
+        // --no-split is update's: refuse an over-ceiling append instead of archiving the
+        // oldest notes. A switch missing from this set is not an unknown option -- it silently
+        // swallows whatever follows it as its value, so `--no-split --path X` would drop the
+        // path and act on the default store, which is the machine-wide live list.
+        "--active", "--none", "--append-notes", "--append-refs", "--no-lead", "--no-split",
 
         // API and assembly introspection. --compact is the opposite of --pretty and exists
         // because the two scripts disagreed: Get-ApiDoc printed compressed JSON and

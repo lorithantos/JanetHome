@@ -68,13 +68,48 @@ public static class ThreadJson
         [Batched] = result.Batched,
     }, pretty);
 
-    public static string Serialize(ThreadUpdateResult result, bool pretty = false) => Render(new JsonObject
+    /// <summary>
+    /// The update envelope, with 'split' appended when an append archived the oldest notes.
+    /// </summary>
+    /// <remarks>
+    /// APPENDED after 'batched', and present ONLY when an archive happened -- the same rule
+    /// 'notesTruncated' follows on the read envelope, where an absent key means there is nothing
+    /// to go back for. 'changed' is deliberately NOT overloaded: it keeps listing 'notes' as it
+    /// always has, because a reader that learned what that list means must not be made wrong by
+    /// a feature it has never heard of.
+    ///
+    /// There is no text view to match. Render exists for the report and show envelopes only, and
+    /// the CLI's update arm prints JSON unconditionally, so this object is the whole of the
+    /// machine-readable answer and the header written into the notes is the whole of the human
+    /// one.
+    /// </remarks>
+    public static string Serialize(ThreadUpdateResult result, bool pretty = false)
     {
-        ["updated"] = result.Updated,
-        ["changed"] = Strings(result.Changed),
-        ["count"] = result.Count,
-        [Batched] = result.Batched,
-    }, pretty);
+        JsonObject envelope = new()
+        {
+            ["updated"] = result.Updated,
+            ["changed"] = Strings(result.Changed),
+            ["count"] = result.Count,
+            [Batched] = result.Batched,
+        };
+
+        if (result.Split is NotesArchive split)
+        {
+            envelope["split"] = new JsonObject
+            {
+                ["archived"] = split.Archived,
+                ["retained"] = split.Retained,
+                ["boundary"] = split.Boundary,
+                ["paragraphs"] = split.Paragraphs,
+                ["kind"] = split.Kind,
+                ["where"] = split.Where,
+                ["generation"] = split.Generation,
+                ["header"] = split.Header,
+            };
+        }
+
+        return Render(envelope, pretty);
+    }
 
     public static string Serialize(ThreadCompleteResult result, bool pretty = false) => Render(new JsonObject
     {

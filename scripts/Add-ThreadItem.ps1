@@ -17,8 +17,16 @@
 .PARAMETER Topic
     What the investigation is about. One line, distinctive enough to select on later.
 
+.PARAMETER Notes
+    Detail too small or too fresh to be worth a research.json node. CAPPED at 8,000 characters
+    (JANET_NOTES_BUDGET overrides), and an add over the ceiling is refused whole: there is no
+    older half to archive, so the automatic archiving that rescues an over-ceiling append to an
+    existing item has nothing to work with here. Long-form belongs in a catalogued note -- write
+    it to notes\<slug>.md, `janet research add` it as note.<slug>, and put the id in -Refs.
+
 .PARAMETER Next
-    The resume cursor: the one thing to do first on return.
+    The resume cursor: the one thing to do first on return. Capped at 1,000 characters, with no
+    override: a cursor needing a thousand characters is notes wearing the wrong label.
 
 .PARAMETER Refs
     Catalog node ids carrying the context for this topic.
