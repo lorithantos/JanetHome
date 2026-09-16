@@ -66,8 +66,7 @@ param(
     [switch]$AppendNotes,
     [switch]$AppendRefs,
     [switch]$NoSplit,
-    [string]$Path = '',
-    [switch]$Text
+    [string]$Path = ''
 )
 
 Set-StrictMode -Version Latest

@@ -51,8 +51,7 @@ param(
     [string[]]$Refs = @(),
     [string]$Area = '',
     [switch]$Active,
-    [string]$Path = '',
-    [switch]$Text
+    [string]$Path = ''
 )
 
 Set-StrictMode -Version Latest

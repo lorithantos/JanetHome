@@ -24,8 +24,7 @@
 [CmdletBinding()]
 param(
     [string]$Topic = '',
-    [string]$Path = '',
-    [switch]$Text
+    [string]$Path = ''
 )
 
 Set-StrictMode -Version Latest
