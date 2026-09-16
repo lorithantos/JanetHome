@@ -56,7 +56,7 @@
         "PATH CORRECTED 2026-09-01 to C:\\repos\\RazorGraphTool, verified to exist. It previously named a location on the PREVIOUS MACHINE, and several nodes carried that dead path for weeks without anything failing -- see note.janet-machine-move for the full list, for the three silent-failure shapes involved, and for what still has no home on this machine."
       ],
       "tags": ["code-analysis", "roslyn", "lsp", "csharp", "agent"],
-      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots", "note.janet-machine-move", "file.skill-agent-kickoff", "file.skill-graph-node-reading", "script.invoke-graph-guard"]
+      "links": ["script.get-lsp-references", "script.get-type-overlap", "script.get-namespace-map", "file.provenance", "note.razorgraph-mcp-server", "note.razorgraph-js-scoping", "skill.christmas-tree-flattening", "skill.graph-first-code-analysis", "pattern.discriminator-backends", "note.razorgraph-cli", "note.razorgraph-cross-language", "note.census-the-population", "note.razorgraph-lua-scoping", "note.razorgraph-attribute-scoping", "script.find-divergent-state-roots", "note.janet-machine-move", "file.skill-agent-kickoff", "file.skill-graph-node-reading", "script.invoke-graph-guard", "note.retirementcore-extraction-survey"]
     },
     {
       "id": "pattern.deterministic-edits",
@@ -853,7 +853,7 @@
         "THE SLOT LIST IS FOR A REMOTE, AND CPU-BOUND FAN-OUT IS THE COUNTER-CASE. Worked through 2026-08-30 against RetirementCore's MonteCarlo.Run (10,000 simulation paths, Parallel.For with MaxDegreeOfParallelism). All four things the coordinator buys evaluate to zero there: results need no synchronization because each path writes a disjoint array slot; a faulting path is a bug rather than a transient so retry would reproduce it; K is a courtesy knob set once for co-tenants, not adaptive under 429s; and start order is irrelevant because stream seeds key on name and path index, making results identical at any cap (tested). Worse, the shape mismatches -- slots are built on Task/WhenAny and the body is synchronous CPU work, so you would Task.Run every item purely to have something to await, paying N task allocations and dispatches for work Parallel.For range-partitions and work-steals for free. The tax for having no coordinator is that a throwing iteration surfaces wrapped in AggregateException and must be flattened at the call site. Rule of thumb: slots when the limit is imposed by something outside the process, Parallel.For when the limit is the cores themselves -- and a remote adopted to gain throughput is usually slower than the local machine it replaced."
       ],
       "tags": ["architecture", "concurrency", "ui", "wpf", "performance", "patterns", "csharp", "failure-modes"],
-      "links": ["note.wpf-app-architecture"]
+      "links": ["note.wpf-app-architecture", "note.retirementcore-extraction-survey"]
     },
 
     {
@@ -866,7 +866,7 @@
         "DataTemplate resolution walking the type hierarchy for implicit templates is asserted from reasoning, not tested here; verify before relying on a base-class template."
       ],
       "tags": ["wpf", "csharp", "ui", "architecture", "concurrency", "debugging"],
-      "links": ["pattern.change-coalescing", "script.set-crash-dump-capture"]
+      "links": ["pattern.change-coalescing", "script.set-crash-dump-capture", "note.retirementcore-extraction-survey"]
     },
 
     {
@@ -1730,7 +1730,7 @@
         "THE 2026-09-07 CONTROLLER FAILURE HAD A SHAPE WORTH NAMING: the delegation decision was made ONCE, at the start of the task, and never revisited. One agent was dispatched for an inventory, and the following ninety-odd tool calls -- authoring fixtures, three prose surfaces, verification runs against another repo, a cross-repo config sweep -- were each rationalised as too small or too judgement-heavy to send out, which cumulatively was most of the work. That is why path two counts a STREAK rather than checking once: the doctrine's own volume test is applied per-decision, and a controller that passes it at minute one can fail it for the next hour without ever re-asking. The cheap self-detector, the same one this note already prescribes for graph use, is to look at your own last ten tool calls and ask what in them had to happen here."
       ],
       "tags": ["agent", "context-budget", "progressive-disclosure", "session", "retrieval"],
-      "links": ["pattern.progressive-disclosure", "skill.graph-first-code-analysis", "pattern.deterministic-edits", "script.git", "note.thread-item-projection", "file.skill-agent-kickoff", "script.invoke-delegation-guard", "script.invoke-graph-guard"]
+      "links": ["pattern.progressive-disclosure", "skill.graph-first-code-analysis", "pattern.deterministic-edits", "script.git", "note.thread-item-projection", "file.skill-agent-kickoff", "script.invoke-delegation-guard", "script.invoke-graph-guard", "note.retirementcore-extraction-survey"]
     },
 
     {
@@ -1908,6 +1908,22 @@
       ],
       "tags": ["gate", "verification", "failure-modes", "quality", "testing"],
       "links": ["script.test-pre-commit", "script.test-output-contracts", "script.test-standalone-scripts", "script.test-mutation-catches", "script.test-config-paths", "script.invoke-janet-startup", "file.design-notes"]
+    },
+
+    {
+      "id": "note.retirementcore-extraction-survey",
+      "kind": "note",
+      "path": "notes\\retirementcore-extraction-survey.md",
+      "summary": "What else in RetirementCore belongs in Janet.Shared, surveyed 2026-09-16 by two concurrent passes -- prose over its design documents and structure over a RazorGraph graph (graphId retirementcore, 4,002 nodes / 51,966 edges, 7 projects) -- and the METHOD is the finding: a document says what a thing IS, a compiler says what it DEPENDS ON, and two candidates the documents described as clean general machinery (FaultRouting, ScenarioSession) proved welded to the domain at the signature level, so the pattern is liftable and the type is not. Ranked candidates: PageTemplateHarness with BindingFailureListener and WpfApplicationFixture, which fails a test on any WPF binding error and so belongs beside CrashHardening as another of WPF's silent failures made loud, and which ships its own mutation check; StreamSeed, name-keyed value-independent RNG seeds giving common random numbers across edits; a cheap diff of RetirementCore's FakeTime, DeterministicPump and CoalescerHarness against Janet.Coalescing.Testing; charting (ChartPalette plus nine domain-free ChartBuilders members, HistogramChart, LiveChartsWarmup), BLOCKED on ThemeService.SkinChanged being a static event Janet.Wpf deliberately deleted; and Money, TimePoint and MonthRange as lift-and-reference-back at 269 and 204 incoming edges. Also records that the coalesced IProgress adapter DESIGN-COALESCING describes is NOT built, so that Janet.Coalescing gap is a build rather than an extraction, and that RetirementCore is a CONSUMER candidate for CrashHardening rather than a source of one.",
+      "caveats": [
+        "The candidates were not read line by line. Domain-freedom for the harness, the charting pieces and the small items rests on method SIGNATURES from the graph plus file headers, not on their bodies -- a strong prior, not a proven API claim. Confirm before packaging.",
+        "The XAML resource dictionaries are not indexed as code, so the theme-key contract ChartPalette and TimelineLane depend on is unchecked. Moving either needs those dictionaries or a stated fallback contract.",
+        "RetirementCore's ThemeService, GridSortMemory, ButtonChrome, PageScaffold and the two converters were identified as PRESENT and never diffed against Janet.Shared's. Whether either copy is ahead is unknown.",
+        "Written from two subagent reports rather than first-hand reading. File paths and node ids were graph-verified; the quotations from RetirementCore's design documents were relayed by those agents and not re-checked against the files.",
+        "The graph is graphId retirementcore built 2026-09-16 and goes stale with the repository. Rebuild before trusting a coupling claim, and check builtAt rather than loadedAt."
+      ],
+      "tags": ["architecture", "extraction", "wpf", "csharp", "code-analysis", "testing", "research"],
+      "links": ["pattern.change-coalescing", "note.wpf-app-architecture", "pattern.graph-first-analysis", "note.subagent-delegation"]
     }
   ]
 }
