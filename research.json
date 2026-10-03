@@ -256,9 +256,14 @@
       "id": "script.invoke-surgical-edit",
       "kind": "script",
       "path": "scripts\\Invoke-SurgicalEdit.ps1",
-      "summary": "Applies a batch of surgical code edits from a JSON plan file; supports dry run and skipping build/test.",
+      "summary": "Applies a batch of surgical edits from a JSON plan file; supports dry run and skipping build/test. Plan shape: { \"repoRoot\": \"<absolute dir>\", \"description\": \"...\", \"operations\": [ { \"type\": ..., \"path\": \"<relative to repoRoot>\", ... } ] }. Per type: delete {path}; removeLines {path, patterns[]}; removeParameter {path, parameter, methods[]}; removeProperty {path, property}; removeArgument {path, argument}; replace {path, old, new} (exact string, every occurrence); insertAfter {path, after, insert} (adds the insert line after the first line containing 'after'). Operations run in order; every non-delete path must exist or nothing runs.",
       "params": ["PlanFile", "DryRun", "NoBuild", "NoTest"],
-      "tags": ["editing", "agent", "determinism", "refactor"],
+      "caveats": [
+        "A replace whose 'old' is not found only WARNS and moves on, and the summary still counts it as applied. Run -DryRun first and read the output for 'Replace target not found' rather than trusting 'Operations applied: N'.",
+        "LINE ENDINGS: a '\\n' in 'old' or 'new' matches LF only. On a machine with core.autocrlf=true many working copies are CRLF, and an 'old' that starts or ends at '\\n' matches the LF half of a CRLF pair, leaving a lone CR. Git then reports the file as w/-text and diffs every line. Seen 2026-10-03 in neelam-aesthetics WIP.md, repaired with a replace of '\\r\\r\\n' with '\\r\\n'. Check with `git ls-files --eol -- <file>` before a multi-line replace, keep replaces inside one line where possible, and after running confirm `git diff --ignore-cr-at-eol --stat` matches `git diff --stat`.",
+        "replace writes UTF-8 WITHOUT a BOM (ReadAllText/WriteAllText with a no-BOM encoder), so a file that had a BOM loses it."
+      ],
+      "tags": ["editing", "agent", "determinism", "refactor", "json", "failure-modes"],
       "links": ["pattern.deterministic-edits"]
     },
     {
