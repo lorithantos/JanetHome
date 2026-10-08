@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/server-rotation.schema.json",
+  "title": "server_rotate / server_rotation envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
+    "contract": 1,
+    "produces": "server_rotate / server_rotation",
+    "surface": [
+      "src/Janet.Core/ServerRotation.cs",
+      "src/Janet.Core/ServerRotationJson.cs",
+      "src/Janet.Core/ServerEnvironment.cs",
+      "src/Janet.Mcp/ServerTools.cs"
+    ],
+    "node": "file.server-rotation",
+    "$comment.oneShape": "Both tools answer with this one shape. server_rotate answers state 'started' the moment the detached launcher is running; server_rotation reads the same files back later, after the server answering may itself have been replaced.",
+    "$comment.namesOnly": "servingEnvironment carries variable NAMES and never values: a launcher's environment can hold secrets, and this envelope is served to callers and written into transcripts."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "server", "state", "startedAt", "finishedAt", "launcherPid", "error", "currentBuild", "logPath", "logTail", "target", "servingEnvironment"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change."
+    },
+    "server": {
+      "type": "string",
+      "enum": ["janet", "razorgraph"],
+      "description": "Which server this rotation is of."
+    },
+    "state": {
+      "type": "string",
+      "enum": ["never", "started", "running", "succeeded", "failed", "unknown"],
+      "description": "never: no rotation is recorded. started: launched by this very call. running: the launcher is still alive and has written no result. succeeded / failed: the launcher wrote its result. unknown: the launcher is gone and left no result -- killed, or the machine restarted -- so the outcome cannot be told from here; 'currentBuild' and the log are the evidence left."
+    },
+    "startedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the launcher was started, UTC. Null only when state is never."
+    },
+    "finishedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the rotation script finished or threw, UTC. Null while it runs, and when it never reported."
+    },
+    "launcherPid": {
+      "type": ["integer", "null"],
+      "description": "The detached pwsh running the rotation. Not the new server's pid: the script starts that, and its own log names it."
+    },
+    "error": {
+      "type": ["string", "null"],
+      "description": "What the rotation script threw, verbatim -- a failed publish names the locked file; a server that died on start names its log. Null unless state is failed."
+    },
+    "currentBuild": {
+      "type": ["string", "null"],
+      "description": "The build directory the 'current' junction resolves to right now, which is what a restarted server runs from. Null when there is no junction yet."
+    },
+    "logPath": {
+      "type": "string",
+      "description": "The rotation script's full output, kept after the call."
+    },
+    "logTail": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The last non-blank lines of that log (at most 15), so a failure arrives with its context. Empty when there is no log."
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "root", "processName", "serverArguments", "toolProjects", "port"],
+      "description": "Exactly what Update-McpServer.ps1 is given for this server.",
+      "properties": {
+        "project": { "type": "string", "description": "The server .csproj published." },
+        "root": { "type": "string", "description": "Directory holding the build-* directories and the 'current' junction." },
+        "processName": { "type": "string", "description": "The process stopped and restarted. Only HTTP servers running from under root are stopped; stdio servers belong to their clients and are left alone." },
+        "serverArguments": { "type": "array", "items": { "type": "string" }, "description": "Arguments the new server starts with." },
+        "toolProjects": { "type": "array", "items": { "type": "string" }, "description": "Global tools packed and reinstalled in the same pass (the janet CLI). Empty for razorgraph." },
+        "port": { "type": ["integer", "null"], "description": "From .mcp.json. Passed as --port so the script waits for the new server to LISTEN; null when .mcp.json declares none, and then the script does not wait." }
+      }
+    },
+    "servingEnvironment": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["applied", "skippedBecause", "dropped", "changed", "keptFromLauncher"],
+      "description": "What the server answering THIS call did to its own launcher's environment at startup. Null when it did not run the normalisation at all (an older build).",
+      "properties": {
+        "applied": { "type": "boolean", "description": "False when the inherited environment was kept -- see skippedBecause." },
+        "skippedBecause": { "type": ["string", "null"], "description": "Why it was kept: JANET_KEEP_ENVIRONMENT set, or not Windows. Null when applied." },
+        "dropped": { "type": "array", "items": { "type": "string" }, "description": "Variables the launcher had and the clean environment does not -- the leaks, e.g. Platform from a Visual Studio prompt." },
+        "changed": { "type": "array", "items": { "type": "string" }, "description": "Variables whose value differed, typically PATH." },
+        "keptFromLauncher": { "type": "array", "items": { "type": "string" }, "description": "JANET_* variables carried over deliberately." }
+      }
+    }
+  }
+}

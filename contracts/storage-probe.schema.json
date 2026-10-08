@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/storage-probe.schema.json",
+  "title": "storage_probe envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "storage_probe (MCP only; no CLI verb)",
+    "surface": [
+      "src/Janet.Core/StorageProbe.cs",
+      "src/Janet.Core/Arm.cs",
+      "src/Janet.Core/AzureJson.cs",
+      "src/Janet.Mcp/AzureTools.cs"
+    ],
+    "node": "file.azure-tools",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.countsNeverNames": "There is deliberately no field that could carry a blob name or an entity. A probe can be pointed at an account holding someone else's data without copying any of it into a transcript; adding such a field is a change of purpose, not of format.",
+    "$comment.everyKey": "Every key is always present; a value that does not apply is null rather than absent."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "account", "subscription", "caller", "settings", "summary", "targets"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "account": {
+      "type": "string",
+      "description": "The storage account name, as the caller passed it."
+    },
+    "subscription": {
+      "$ref": "#/definitions/subscription",
+      "description": "The subscription the account was looked up in, and how that was decided."
+    },
+    "caller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectId", "name"],
+      "description": "Whose access was tested: the identity in the storage token's own claims, read and not validated. The answer to 'access for whom'.",
+      "properties": {
+        "objectId": {
+          "type": ["string", "null"],
+          "description": "The token's oid claim: the object id a data role must be granted to. Null when the token could not be read as a JWT or carried no oid."
+        },
+        "name": {
+          "type": ["string", "null"],
+          "description": "The token's upn, else unique_name, else appid (for a service principal). Null when none was present or the token could not be read."
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "resourceGroup", "location", "kind", "sku", "provisioningState", "statusOfPrimary", "allowSharedKeyAccess", "publicNetworkAccess", "networkDefaultAction", "networkBypass", "ipRules", "virtualNetworkRules", "privateEndpoints", "minimumTlsVersion", "blobEndpoint", "tableEndpoint"],
+      "description": "The account as the management plane describes it: the settings that decide who can reach the data. Each string is verbatim from ARM, and null means ARM did not report it.",
+      "properties": {
+        "id": { "type": "string", "description": "The account's full ARM id." },
+        "resourceGroup": { "type": "string", "description": "The resource group, read out of the id." },
+        "location": { "type": ["string", "null"], "description": "The Azure region, e.g. westeurope." },
+        "kind": { "type": ["string", "null"], "description": "StorageV2, BlobStorage and so on." },
+        "sku": { "type": ["string", "null"], "description": "The SKU name, e.g. Standard_LRS." },
+        "provisioningState": { "type": ["string", "null"], "description": "ARM's provisioningState for the account; Succeeded for one that is usable." },
+        "statusOfPrimary": { "type": ["string", "null"], "description": "Whether the primary location is available or unavailable." },
+        "allowSharedKeyAccess": {
+          "type": ["boolean", "null"],
+          "description": "False when account keys and SAS signed with them are refused, so only Entra tokens work. Null means unset, which Azure treats as ALLOWED."
+        },
+        "publicNetworkAccess": {
+          "type": ["string", "null"],
+          "description": "Enabled, Disabled or SecuredByPerimeter. Null means unset, which Azure treats as Enabled."
+        },
+        "networkDefaultAction": {
+          "type": ["string", "null"],
+          "description": "The firewall's answer to a caller no rule matches: Allow or Deny. With Deny, a caller outside ipRules and virtualNetworkRules gets forbidden with AuthorizationFailure."
+        },
+        "networkBypass": {
+          "type": ["string", "null"],
+          "description": "Which traffic skips the firewall, e.g. AzureServices, Logging, Metrics, None."
+        },
+        "ipRules": { "type": "integer", "minimum": 0, "description": "How many IP firewall rules there are. Counted, not listed." },
+        "virtualNetworkRules": { "type": "integer", "minimum": 0, "description": "How many virtual-network rules there are." },
+        "privateEndpoints": { "type": "integer", "minimum": 0, "description": "How many private endpoint connections there are. Non-zero with public access off makes 'unreachable' the expected answer from outside that network." },
+        "minimumTlsVersion": { "type": ["string", "null"], "description": "The lowest TLS version accepted, e.g. TLS1_2." },
+        "blobEndpoint": { "type": "string", "description": "The blob service URL the probe used: ARM's primary endpoint, or https://<account>.blob.core.windows.net/ when ARM gave none." },
+        "tableEndpoint": { "type": "string", "description": "The table service URL the probe used, decided the same way." }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "forbidden", "notFound", "unreachable", "error"],
+      "description": "How many targets ended in each status, every status listed even at zero.",
+      "properties": {
+        "ok": { "type": "integer", "minimum": 0, "description": "Targets read successfully." },
+        "forbidden": { "type": "integer", "minimum": 0, "description": "Targets that refused the caller; each one's errorCode says whether it was a missing role or a network rule." },
+        "notFound": { "type": "integer", "minimum": 0, "description": "Targets that do not exist." },
+        "unreachable": { "type": "integer", "minimum": 0, "description": "Targets where no HTTP answer came back at all." },
+        "error": { "type": "integer", "minimum": 0, "description": "Targets that answered with anything else." }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "description": "Each container, then each table, actually read over the data plane with an Entra token. The ones the caller named, or every one the management plane lists, sorted by name.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["service", "name", "status", "httpStatus", "errorCode", "message", "itemsSeen", "more"],
+        "properties": {
+          "service": {
+            "type": "string",
+            "enum": ["blob", "table"],
+            "description": "Which data-plane service: 'blob' for a container, 'table' for a table."
+          },
+          "name": {
+            "type": "string",
+            "description": "The container or table name. Never a blob's name or an entity's key: those are not reported anywhere."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "forbidden", "notFound", "unreachable", "error"],
+            "description": "Can the caller read it? 'ok': yes, and itemsSeen says how much it saw. 'forbidden': HTTP 403 -- with errorCode AuthorizationPermissionMismatch the caller lacks a data role (grant one); with AuthorizationFailure a network rule usually refused them. 'notFound': HTTP 404. 'unreachable': no HTTP answer at all -- DNS, TCP or TLS failed, as when a private endpoint has no route from here or a firewall drops silently. 'error': any other answer, including a success whose body did not parse."
+          },
+          "httpStatus": {
+            "type": ["integer", "null"],
+            "description": "The HTTP status the service answered with. Null exactly when status is 'unreachable'."
+          },
+          "errorCode": {
+            "type": ["string", "null"],
+            "description": "The service's own error code (x-ms-error-code, the XML Code element, or the table service's odata.error code), or 'HTTP nnn' when it gave none. Null when there is no error, and for 'unreachable'."
+          },
+          "message": {
+            "type": ["string", "null"],
+            "description": "The service's message, first line only (the rest is a request id and a time); for 'unreachable', the network failure's own message; for an unparseable success, what failed to parse. Null when there is nothing to say."
+          },
+          "itemsSeen": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "maximum": 5,
+            "description": "How many blobs or entities the probe read, at most 5. A count only. Null unless status is 'ok'."
+          },
+          "more": {
+            "type": ["boolean", "null"],
+            "description": "Whether the service said there was more than it returned. Null unless status is 'ok'."
+          }
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "subscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "source"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The subscription id, lower-cased."
+        },
+        "name": {
+          "type": ["string", "null"],
+          "description": "The subscription's display name when it was read from the Azure CLI profile. Null when the caller passed an id, which is used as given without a lookup."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["explicit", "az default", "scope"],
+          "description": "How it was decided. 'explicit': the caller named it, by id or by name. 'az default': the Azure CLI profile's default subscription. 'scope': read out of an ARM id the caller passed."
+        }
+      }
+    }
+  }
+}

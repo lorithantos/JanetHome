@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/azure-deployment.schema.json",
+  "title": "azure_deploy / azure_deployment envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "azure_deploy, azure_deployment (MCP only; no CLI verb)",
+    "surface": [
+      "src/Janet.Core/AzureDeployments.cs",
+      "src/Janet.Core/Arm.cs",
+      "src/Janet.Core/Bicep.cs",
+      "src/Janet.Core/AzureJson.cs",
+      "src/Janet.Mcp/AzureTools.cs"
+    ],
+    "node": "file.azure-tools",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.oneShape": "Unlike dotnet-check this is ONE shape for both statuses rather than a oneOf: a running deployment and a finished one carry the same fields, and only their values differ. 'status' is still the field to read first.",
+    "$comment.everyKey": "Every key is always present; a value that does not apply is null rather than absent.",
+    "$comment.sampledOnlyWhereSignedIn": "A live sample changes a resource group, so the gate never takes one. AzureSchemaTests holds the serializer to this file instead."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "status", "outcome", "path", "subscription", "resourceGroup", "name", "provisioningState", "timestamp", "duration", "correlationId", "diagnostics", "outputs", "error", "failedOperations"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "running"],
+      "description": "Is this the final answer? 'complete': nothing more will happen -- the deployment ended, or it never started (notCompiled, rejected). 'running': ARM was still working when the wait ran out; poll with azure_deployment / janet az deployment, passing resourceGroup and name."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["deployed", "failed", "canceled", "running", "notCompiled", "rejected"],
+      "description": "What happened. 'deployed': provisioningState Succeeded, and outputs are filled. 'failed': it ran and failed; error is usually a wrapper and failedOperations holds the reasons. 'canceled': someone cancelled it. 'running': not finished (status is 'running' too). 'notCompiled': the Bicep did not build and nothing was sent; diagnostics say why. 'rejected': ARM refused it before it began -- template validation, a policy, a quota -- and error says why."
+    },
+    "path": {
+      "type": ["string", "null"],
+      "description": "The full path of the file deployed. Null when this is a status read of a deployment by name, which has no file."
+    },
+    "subscription": {
+      "$ref": "#/definitions/subscription",
+      "description": "Which subscription the deployment is in, and how that was decided."
+    },
+    "resourceGroup": {
+      "type": "string",
+      "description": "The resource group deployed to, as the caller named it."
+    },
+    "name": {
+      "type": "string",
+      "description": "The deployment's name: the caller's, or the file's stem plus a UTC timestamp. The handle for a status read, and the name it carries in the portal's deployment history."
+    },
+    "provisioningState": {
+      "type": ["string", "null"],
+      "description": "ARM's own provisioningState, verbatim (Accepted, Running, Succeeded, Failed, Canceled, ...). Null when ARM never accepted the deployment: notCompiled and rejected."
+    },
+    "timestamp": {
+      "type": ["string", "null"],
+      "description": "ARM's timestamp for the deployment's last state change, verbatim. Null when ARM never accepted it or has not reported one."
+    },
+    "duration": {
+      "type": ["string", "null"],
+      "description": "How long ARM has spent, as the ISO 8601 duration it reports (e.g. PT41.2S). Null when ARM never accepted it or has not reported one."
+    },
+    "correlationId": {
+      "type": ["string", "null"],
+      "description": "ARM's correlation id, the thing to quote to support or search the activity log for. Null when ARM never accepted it."
+    },
+    "diagnostics": {
+      "type": "array",
+      "description": "What Bicep said while compiling. Empty for a status read by name, which compiles nothing.",
+      "items": { "$ref": "#/definitions/diagnostic" }
+    },
+    "outputs": {
+      "type": "object",
+      "description": "The template's outputs, output name to its value -- any JSON. The keys are the template's, so this is the one object in the envelope that is NOT closed. Empty until the deployment succeeds.",
+      "additionalProperties": true
+    },
+    "error": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/error" }],
+      "description": "Why it failed or was rejected, with ARM's nesting kept. For 'failed' this is usually the wrapper 'At least one resource deployment operation failed' and failedOperations is where the reason is. Null when there is no error."
+    },
+    "failedOperations": {
+      "type": "array",
+      "description": "For 'failed': each deployment operation that failed, with the resource it was working on, read from the deployment's operations list. Empty for every other outcome.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resourceType", "resourceName", "error"],
+        "properties": {
+          "resourceType": {
+            "type": ["string", "null"],
+            "description": "The type of the resource the operation was working on, e.g. Microsoft.Storage/storageAccounts. Null when ARM did not say."
+          },
+          "resourceName": {
+            "type": ["string", "null"],
+            "description": "That resource's name. Null when ARM did not say."
+          },
+          "error": {
+            "$ref": "#/definitions/error",
+            "description": "Why the operation failed. When ARM gave no error object, code is the operation's statusCode and message its raw statusMessage."
+          }
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "subscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "source"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The subscription id, lower-cased."
+        },
+        "name": {
+          "type": ["string", "null"],
+          "description": "The subscription's display name when it was read from the Azure CLI profile. Null when the caller passed an id, which is used as given without a lookup."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["explicit", "az default", "scope"],
+          "description": "How it was decided. 'explicit': the caller named it, by id or by name. 'az default': the Azure CLI profile's default subscription. 'scope': read out of the ARM id the caller passed as a scope."
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "target", "details"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "The service's error code, e.g. InvalidTemplateDeployment or AuthorizationFailed; 'HTTP nnn' when the service gave none, '(no code)' when ARM's error object lacked one."
+        },
+        "message": {
+          "type": "string",
+          "description": "The service's message, verbatim. Empty when it gave none."
+        },
+        "target": {
+          "type": ["string", "null"],
+          "description": "What the error is about -- a resource, a property -- when the service said. Null when it did not."
+        },
+        "details": {
+          "type": "array",
+          "description": "The nested errors, in the same shape, as deep as the service sent them. The outer error is often a wrapper and the reason is here.",
+          "items": { "$ref": "#/definitions/error" }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "code", "message", "file", "line", "column"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["error", "warning", "note", "none"],
+          "description": "SARIF's level vocabulary, which is what Bicep emits. A result with no level is a 'warning' (SARIF's default, and how Bicep marks linter findings)."
+        },
+        "code": {
+          "type": "string",
+          "description": "A BCPnnn compiler code, a linter rule name, '(no rule)' when SARIF gave none, or '(bicep)' when Bicep failed without SARIF and the message is what it printed."
+        },
+        "message": {
+          "type": "string",
+          "description": "Bicep's message, verbatim."
+        },
+        "file": {
+          "type": ["string", "null"],
+          "description": "Local path of the file the finding is in, which can be a module or a .bicepparam's template. Null when SARIF gave no location."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "1-based line; null when SARIF gave no region."
+        },
+        "column": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "1-based column in UTF-16 code units; null when SARIF gave no region."
+        }
+      }
+    }
+  }
+}

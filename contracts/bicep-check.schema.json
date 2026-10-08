@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/bicep-check.schema.json",
+  "title": "bicep_check envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "bicep_check (MCP only; no CLI verb)",
+    "surface": [
+      "src/Janet.Core/Bicep.cs",
+      "src/Janet.Core/BicepJson.cs",
+      "src/Janet.Mcp/BicepTools.cs"
+    ],
+    "node": "file.bicep-check",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.diagnosticShared": "The diagnostic item is the same shape in azure-whatif and azure-deployment, because one serializer (BicepJson.Diagnostics) writes all three. Changing it here means changing it there."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "path", "kind", "succeeded", "errors", "warnings", "notes", "diagnostics", "bicepVersion", "durationSeconds"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "path": {
+      "type": "string",
+      "description": "The full path of the file that was built, after resolving whatever relative path the caller passed."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["template", "parameters"],
+      "description": "What the file is. 'template' for a .bicep; 'parameters' for a .bicepparam, whose build compiles the template it names as well, so its diagnostics can point into that other file."
+    },
+    "succeeded": {
+      "type": "boolean",
+      "description": "Did the build produce output? Decided by Bicep's exit code, not by counting diagnostics: warnings never fail it, and a SARIF document that failed to parse cannot turn a failed build into a clean one."
+    },
+    "errors": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many diagnostics have level 'error'. Any at all means succeeded is false."
+    },
+    "warnings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many diagnostics have level 'warning' -- linter findings (no-unused-params and the like) and compiler warnings. The build still produced output."
+    },
+    "notes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many diagnostics have level 'note': linter rules configured at 'info'."
+    },
+    "diagnostics": {
+      "type": "array",
+      "description": "Everything the compiler and its linter said, in the order Bicep reported it, never truncated. Empty means a clean build.",
+      "items": { "$ref": "#/definitions/diagnostic" }
+    },
+    "bicepVersion": {
+      "type": "string",
+      "description": "What 'bicep --version' printed, or '(unknown)' when it printed nothing. Linter rules arrive and change between versions, so a finding is only comparable against the version that produced it."
+    },
+    "durationSeconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall time of the build, rounded to hundredths. Excludes the separate --version call."
+    }
+  },
+
+  "definitions": {
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "code", "message", "file", "line", "column"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["error", "warning", "note", "none"],
+          "description": "SARIF's level vocabulary, which is what Bicep emits. A result that carries no level is a 'warning' -- SARIF's default, and how Bicep marks linter findings -- so 'warning' here does not mean Bicep said the word. 'none' is in SARIF's vocabulary and is passed through if it ever arrives; it is counted in none of errors, warnings or notes."
+        },
+        "code": {
+          "type": "string",
+          "description": "The rule: a BCPnnn compiler code, a linter rule name such as no-unused-params, '(no rule)' when SARIF gave none, or '(bicep)' when Bicep failed and wrote no SARIF at all -- then the message is whatever it printed."
+        },
+        "message": {
+          "type": "string",
+          "description": "Bicep's message, verbatim, including the documentation link it appends."
+        },
+        "file": {
+          "type": ["string", "null"],
+          "description": "The file the finding is in, as a local path converted from SARIF's file:/// URI. Can differ from the envelope's path: a .bicepparam reports into its template, and a module into the module. Null when SARIF gave no location."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "1-based line. Null when SARIF gave no region."
+        },
+        "column": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "1-based column in UTF-16 code units, as Bicep reports it (SARIF's charOffset). Null when SARIF gave no region."
+        }
+      }
+    }
+  }
+}

@@ -94,10 +94,11 @@ public sealed record AzTokenResult
 /// </summary>
 /// <remarks>
 /// WHY THE CLI AND NOT A SERVICE PRINCIPAL: there is no service principal. The machine signs in
-/// with `az login` as a user, and every Azure operation in this repo already runs through `az`
-/// (see Invoke-BuildDeploy.ps1). Borrowing that same sign-in means no secret to store, no app
-/// registration to keep in step with the roles it needs, and one identity to reason about
-/// instead of two.
+/// with `az login` as a user, and Invoke-BuildDeploy.ps1 runs through `az` as that user.
+/// Borrowing that same sign-in means no secret to store, no app registration to keep in step
+/// with the roles it needs, and one identity to reason about instead of two. The native Azure
+/// tools (AzureHttp in Arm.cs) take their tokens from here for the same reason, so a deployment
+/// or role change made through Janet runs as exactly the person `az` would have.
 ///
 /// WHY A CACHE AT ALL: `az account get-access-token` is a Python process. It keeps its own
 /// on-disk MSAL cache, so it rarely does real network work -- but it pays process startup every

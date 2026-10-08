@@ -52,6 +52,12 @@ for (int i = 0; i < args.Length; i++)
     }
 }
 
+// The environment a fresh sign-in would give this server, not the launching terminal's. First,
+// before anything is started: every child -- dotnet, bicep, a rotation script and the server it
+// starts -- inherits it. JANET_* survives, so the settings read below still arrive.
+// JANET_KEEP_ENVIRONMENT=1 keeps the inherited environment instead. See ServerEnvironment.
+ServerEnvironment.Apply();
+
 // How long dotnet_check waits before handing back a handle instead of an answer. An
 // environment variable rather than a flag because the only callers that care are the process
 // supervisor and the harness that tests the running arm -- which is otherwise unreachable,

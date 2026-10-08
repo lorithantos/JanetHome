@@ -56,6 +56,27 @@ internal static class Narrowing
                 "CLI twin `janet check` has no result limit -- redirect it to a file and read the " +
                 "failures you need.",
             ["az_token"] = BoundedByConstruction,
+            ["bicep_check"] =
+                "a file with thousands of findings is the only way here; fix the errors first, " +
+                "then check again.",
+            ["azure_whatif"] =
+                "drop includeUnchanged if you set it -- unchanged resources are still counted in " +
+                "'summary'; or what-if a smaller template.",
+            ["azure_deploy"] =
+                "the deployment ran regardless; its failed operations are what grew the answer, " +
+                "so read them in the portal by the deployment's name.",
+            ["azure_deployment"] =
+                "its failed operations are what grew the answer; read them in the portal by the " +
+                "deployment's name.",
+            ["azure_role_list"] =
+                "pass assignee for one principal, or a narrower scope -- a resource group or a " +
+                "resource rather than the subscription.",
+            ["azure_role_assign"] = BoundedByConstruction,
+            ["azure_role_remove"] = BoundedByConstruction,
+            ["storage_probe"] =
+                "pass containers and tables to probe a few targets rather than all of them.",
+            ["server_rotate"] = BoundedByConstruction,
+            ["server_rotation"] = BoundedByConstruction,
         };
 
     /// <summary>

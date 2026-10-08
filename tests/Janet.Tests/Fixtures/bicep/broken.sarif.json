@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "bicep"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "no-unused-params",
+          "message": {
+            "text": "Parameter \"location\" is declared but never used. [https://aka.ms/bicep/linter-diagnostics#no-unused-params]"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///C:/Fixture/broken.bicep"
+                },
+                "region": {
+                  "startLine": 3,
+                  "charOffset": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "BCP057",
+          "level": "error",
+          "message": {
+            "text": "The name \"locaton\" does not exist in the current context. [https://aka.ms/bicep/core-diagnostics#BCP057]"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///C:/Fixture/broken.bicep"
+                },
+                "region": {
+                  "startLine": 5,
+                  "charOffset": 23
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "columnKind": "utf16CodeUnits"
+    }
+  ]
+}

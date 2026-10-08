@@ -45,6 +45,18 @@
       checked. DotnetCheckSchemaTests reads this copy and holds the serializer to it.
     -->
     <None Include="..\..\contracts\dotnet-check.schema.json" Link="Contracts\dotnet-check.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\server-rotation.schema.json" Link="Contracts\server-rotation.schema.json" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
+      The Bicep and Azure envelopes, for the same reason and more so: a live Azure sample needs
+      a sign-in and a resource group, a deployment changes that group, and one sample reaches
+      one outcome. AzureSchemaTests holds every arm of each serializer to its schema here.
+    -->
+    <None Include="..\..\contracts\bicep-check.schema.json" Link="Contracts\bicep-check.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\azure-whatif.schema.json" Link="Contracts\azure-whatif.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\azure-deployment.schema.json" Link="Contracts\azure-deployment.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\azure-roles.schema.json" Link="Contracts\azure-roles.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\storage-probe.schema.json" Link="Contracts\storage-probe.schema.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

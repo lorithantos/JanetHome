@@ -1,0 +1,263 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/azure-whatif.schema.json",
+  "title": "azure_whatif envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "azure_whatif (MCP only; no CLI verb)",
+    "surface": [
+      "src/Janet.Core/AzureDeployments.cs",
+      "src/Janet.Core/Arm.cs",
+      "src/Janet.Core/Bicep.cs",
+      "src/Janet.Core/AzureJson.cs",
+      "src/Janet.Mcp/AzureTools.cs"
+    ],
+    "node": "file.azure-tools",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.everyKey": "Every key is always present; a value that does not apply is null rather than absent, so a reader can tell 'not applicable' from 'this version does not report it'.",
+    "$comment.sampledOnlyWhereSignedIn": "A live sample needs 'az login' and a resource group to compare against. AzureSchemaTests holds the serializer to this file without either."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "path", "subscription", "resourceGroup", "deploymentName", "outcome", "diagnostics", "summary", "unresolved", "includesUnchanged", "changes", "error", "durationSeconds"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "path": {
+      "type": "string",
+      "description": "The full path of the .bicep or .bicepparam that was compiled and compared."
+    },
+    "subscription": {
+      "$ref": "#/definitions/subscription",
+      "description": "Which subscription the comparison ran against, and how that was decided."
+    },
+    "resourceGroup": {
+      "type": "string",
+      "description": "The resource group compared against, as the caller named it."
+    },
+    "deploymentName": {
+      "type": "string",
+      "description": "The deployment name the what-if was posted under: the caller's, or the file's stem plus a UTC timestamp. A what-if creates no deployment record, so this name is not something to look up afterwards."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["compared", "notCompiled", "rejected"],
+      "description": "What happened. 'compared': ARM answered, and changes/summary are the answer. 'notCompiled': the Bicep did not build, nothing was sent to Azure, and diagnostics say why. 'rejected': ARM refused the what-if or it failed while running, and error says why. Only 'compared' carries changes."
+    },
+    "diagnostics": {
+      "type": "array",
+      "description": "What Bicep said while compiling, errors and warnings alike -- present whatever the outcome, because a template that compares can still carry warnings.",
+      "items": { "$ref": "#/definitions/diagnostic" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "delete", "modify", "deploy", "noChange", "ignore", "unsupported"],
+      "description": "How many resources fall under each of ARM's change types, counting EVERY resource -- including the noChange and ignore ones that changes leaves out unless includesUnchanged. All zeros unless outcome is 'compared'.",
+      "properties": {
+        "create": { "type": "integer", "minimum": 0, "description": "Resources the deployment would create." },
+        "delete": { "type": "integer", "minimum": 0, "description": "Resources that would be deleted. Incremental mode, the only one this tool uses, deletes nothing the template leaves out, so a non-zero count here deserves a close look." },
+        "modify": { "type": "integer", "minimum": 0, "description": "Existing resources whose properties would change. Includes resources ARM only THINKS would change because a value is an unevaluated expression -- see unresolved." },
+        "deploy": { "type": "integer", "minimum": 0, "description": "Resources that would be redeployed but whose change ARM cannot predict." },
+        "noChange": { "type": "integer", "minimum": 0, "description": "Resources that exist and would stay as they are." },
+        "ignore": { "type": "integer", "minimum": 0, "description": "Resources in the group the template does not mention, which incremental mode leaves alone." },
+        "unsupported": { "type": "integer", "minimum": 0, "description": "Resources the what-if service cannot evaluate; each listed change says why in unsupportedReason." }
+      }
+    },
+    "unresolved": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many LISTED changes carry at least one value the what-if could not evaluate (a reference() to a resource it has not deployed, and kin). Those are reported as changes whether or not anything will change, so this is the count to discount before believing modify."
+    },
+    "includesUnchanged": {
+      "type": "boolean",
+      "description": "Whether noChange and ignore resources are listed in changes. False means they are counted in summary and left out of changes."
+    },
+    "changes": {
+      "type": "array",
+      "description": "One entry per resource, in ARM's order. Empty unless outcome is 'compared'.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["changeType", "resource", "resourceId", "unresolved", "deltas", "fields", "fieldsTruncated", "unsupportedReason"],
+        "properties": {
+          "changeType": {
+            "type": "string",
+            "enum": ["create", "delete", "modify", "deploy", "noChange", "ignore", "unsupported"],
+            "description": "ARM's changeType, camel-cased. The meanings are those under summary."
+          },
+          "resource": {
+            "type": "string",
+            "description": "The resource id relative to its resource group (provider/type/name), for reading; the full id when it lies outside a resource group."
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "The full ARM resource id, for passing on."
+          },
+          "unresolved": {
+            "type": "boolean",
+            "description": "True when a delta's after-value or a field's value is an ARM expression the what-if could not evaluate. Such a change may be no change at all."
+          },
+          "deltas": {
+            "type": "array",
+            "description": "For a modify: each property that would change, flattened to a leaf path. Empty for every other change type.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "change", "before", "after", "unresolved"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Dotted path from the resource root, nested children joined; an array index is written [i], e.g. properties.ipRules[0]."
+                },
+                "change": {
+                  "type": "string",
+                  "enum": ["create", "delete", "modify", "array", "noEffect"],
+                  "description": "ARM's propertyChangeType, camel-cased. 'create': the property appears. 'delete': it disappears. 'modify': its value changes. 'array': an array changes in ways its children describe (only seen when it has none). 'noEffect': it differs but ARM will not change it, such as a read-only property."
+                },
+                "before": {
+                  "type": ["string", "null"],
+                  "description": "The value before: a string as itself, anything else as compact JSON, cut at 200 characters with '...' appended. Null when there was none, as for a 'create'."
+                },
+                "after": {
+                  "type": ["string", "null"],
+                  "description": "The value after, rendered the same way. Null when there will be none, as for a 'delete'."
+                },
+                "unresolved": {
+                  "type": "boolean",
+                  "description": "True when after is an unevaluated ARM expression such as \"[reference(...)]\". A value starting \"[[\" is ARM's escaped literal bracket and is NOT one."
+                }
+              }
+            }
+          },
+          "fields": {
+            "type": "array",
+            "description": "For a create or a delete: the resource's own properties (after for a create, before for a delete), scalars flattened to paths starting 'properties'. This is what tells a role assignment for the right principal from one for the wrong one. Empty for every other change type.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "value", "unresolved"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Dotted path, array indexes written [i], e.g. properties.principalId."
+                },
+                "value": {
+                  "type": "string",
+                  "description": "The scalar, rendered as for a delta and cut at 200 characters; the JSON literal 'null' written as the string null."
+                },
+                "unresolved": {
+                  "type": "boolean",
+                  "description": "True when the value is an unevaluated ARM expression, as for a delta."
+                }
+              }
+            }
+          },
+          "fieldsTruncated": {
+            "type": "boolean",
+            "description": "True when the resource had more than 25 scalar properties and fields lists only the first 25."
+          },
+          "unsupportedReason": {
+            "type": ["string", "null"],
+            "description": "Why ARM could not evaluate this resource, for an 'unsupported' change. Null otherwise."
+          }
+        }
+      }
+    },
+    "error": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/error" }],
+      "description": "Why ARM refused, for outcome 'rejected', with its nesting kept. Null for 'compared' and for 'notCompiled', whose reasons are in diagnostics."
+    },
+    "durationSeconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall time from start to answer, compile and polling included, rounded to hundredths."
+    }
+  },
+
+  "definitions": {
+    "subscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "source"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The subscription id, lower-cased."
+        },
+        "name": {
+          "type": ["string", "null"],
+          "description": "The subscription's display name when it was read from the Azure CLI profile. Null when the caller passed an id, which is used as given without a lookup."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["explicit", "az default", "scope"],
+          "description": "How it was decided. 'explicit': the caller named it, by id or by name. 'az default': the Azure CLI profile's default subscription. 'scope': read out of the ARM id the caller passed as a scope."
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "target", "details"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "The service's error code, e.g. InvalidTemplateDeployment or AuthorizationFailed; 'HTTP nnn' when the service gave none, '(no code)' when ARM's error object lacked one."
+        },
+        "message": {
+          "type": "string",
+          "description": "The service's message, verbatim. Empty when it gave none."
+        },
+        "target": {
+          "type": ["string", "null"],
+          "description": "What the error is about -- a resource, a property -- when the service said. Null when it did not."
+        },
+        "details": {
+          "type": "array",
+          "description": "The nested errors, in the same shape, as deep as the service sent them. The outer error is often a wrapper and the reason is here.",
+          "items": { "$ref": "#/definitions/error" }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "code", "message", "file", "line", "column"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["error", "warning", "note", "none"],
+          "description": "SARIF's level vocabulary, which is what Bicep emits. A result with no level is a 'warning' (SARIF's default, and how Bicep marks linter findings)."
+        },
+        "code": {
+          "type": "string",
+          "description": "A BCPnnn compiler code, a linter rule name, '(no rule)' when SARIF gave none, or '(bicep)' when Bicep failed without SARIF and the message is what it printed."
+        },
+        "message": {
+          "type": "string",
+          "description": "Bicep's message, verbatim."
+        },
+        "file": {
+          "type": ["string", "null"],
+          "description": "Local path of the file the finding is in, which can be a module or a .bicepparam's template. Null when SARIF gave no location."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "1-based line; null when SARIF gave no region."
+        },
+        "column": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "1-based column in UTF-16 code units; null when SARIF gave no region."
+        }
+      }
+    }
+  }
+}

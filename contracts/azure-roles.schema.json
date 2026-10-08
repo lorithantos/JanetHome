@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/azure-roles.schema.json",
+  "title": "azure_role_list / azure_role_assign / azure_role_remove envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "azure_role_list, azure_role_assign, azure_role_remove (MCP only; no CLI verb)",
+    "surface": [
+      "src/Janet.Core/RoleAssignments.cs",
+      "src/Janet.Core/Arm.cs",
+      "src/Janet.Core/AzureJson.cs",
+      "src/Janet.Mcp/AzureTools.cs"
+    ],
+    "node": "file.azure-tools",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.oneEnvelope": "One envelope for list, assign and remove, so a caller reads all three the same way. 'operation' says which produced it.",
+    "$comment.everyKey": "Every key is always present; a value that does not apply is null rather than absent."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "operation", "subscription", "scope", "assignee", "outcome", "principalNames", "count", "assignments"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["list", "assign", "remove"],
+      "description": "Which call produced this. 'list': assignments in force at, above and below scope. 'assign': one assignment made or found. 'remove': one assignment removed or found already gone."
+    },
+    "subscription": {
+      "$ref": "#/definitions/subscription",
+      "description": "The subscription the scope is in. Source is 'scope' whenever the scope names one, which every scope but a management group does."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The ARM id asked about, trailing slash removed but otherwise as given. For a remove, the scope the removed assignment was at."
+    },
+    "assignee": {
+      "type": ["string", "null"],
+      "description": "The principal object id: the one a list was narrowed to, the one assigned, or the one the removed assignment was for. Null for an unnarrowed list and for a remove that found nothing."
+    },
+    "outcome": {
+      "type": ["string", "null"],
+      "enum": ["created", "exists", "removed", "absent", null],
+      "description": "What changed. Null for a list, which changes nothing. 'created': a new assignment was made. 'exists': an assignment giving the same role to the same principal at the same scope was already there -- under the name this tool derives, or under another (ARM's RoleAssignmentExists) -- and nothing was made. 'removed': the assignment was deleted. 'absent': there was no such assignment, which is the state a remove wanted."
+    },
+    "principalNames": {
+      "type": "string",
+      "pattern": "^(resolved|partial|none|unavailable: .+)$",
+      "description": "Can principalName be trusted to be filled in? 'resolved': every principal was found in the directory. 'partial': some were not (deleted principals keep their assignments). 'none': there were no principals to name. 'unavailable: <why>': the directory could not be read -- usually a guest account without directory read access -- so every principalName is null for that reason and not because the principal has no name."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many entries assignments holds."
+    },
+    "assignments": {
+      "type": "array",
+      "description": "Nearest first: assigned at the scope, then inherited from above it, then below it; within each, by scope then role. For an assign or a remove, the one assignment concerned; empty for 'absent'.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "scope", "relation", "role", "roleType", "roleDefinitionId", "principalId", "principalType", "principalName", "description", "createdOn", "createdBy"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The assignment's full ARM id -- what azure_role_remove takes."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Where the assignment is made, verbatim from ARM, whose casing of segments such as resourceGroups is not consistent."
+          },
+          "relation": {
+            "type": "string",
+            "enum": ["at", "inherited", "below"],
+            "description": "Where the assignment sits relative to the scope asked about, compared case-insensitively. 'at': at that scope. 'inherited': above it -- a parent resource group, the subscription, a management group or the root -- and so in force there. 'below': on something inside it, so in force there and not at the scope itself."
+          },
+          "role": {
+            "type": ["string", "null"],
+            "description": "The role's name, e.g. Storage Blob Data Reader. Null when the role definition is not among the subscription's, such as one defined at a management group."
+          },
+          "roleType": {
+            "type": ["string", "null"],
+            "description": "BuiltInRole or CustomRole. Null exactly when role is."
+          },
+          "roleDefinitionId": {
+            "type": "string",
+            "description": "The role definition's ARM id, verbatim."
+          },
+          "principalId": {
+            "type": "string",
+            "description": "The principal's object id."
+          },
+          "principalType": {
+            "type": ["string", "null"],
+            "description": "User, Group, ServicePrincipal, ForeignGroup or whatever else ARM records. Null when ARM did not say."
+          },
+          "principalName": {
+            "type": ["string", "null"],
+            "description": "A user's sign-in name, or a group's or service principal's display name. Null when the directory did not return the principal; principalNames says whether that is because it is gone or because the directory could not be asked."
+          },
+          "description": {
+            "type": ["string", "null"],
+            "description": "The free-text description the assignment was made with. Null when it has none."
+          },
+          "createdOn": {
+            "type": ["string", "null"],
+            "description": "When the assignment was made, verbatim from ARM. Null when ARM did not say."
+          },
+          "createdBy": {
+            "type": ["string", "null"],
+            "description": "The object id of whoever made it, verbatim from ARM. Null when ARM did not say, as for assignments it made itself."
+          }
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "subscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "source"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The subscription id, lower-cased."
+        },
+        "name": {
+          "type": ["string", "null"],
+          "description": "The subscription's display name when it was read from the Azure CLI profile. Null when it was taken from an id -- the caller's, or the scope's -- which is used as given without a lookup."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["explicit", "az default", "scope"],
+          "description": "How it was decided. 'explicit': the caller named it, by id or by name. 'az default': the Azure CLI profile's default subscription. 'scope': read out of the ARM id the caller passed as a scope."
+        }
+      }
+    }
+  }
+}

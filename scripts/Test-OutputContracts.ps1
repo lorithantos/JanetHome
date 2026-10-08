@@ -57,6 +57,38 @@ if (-not (Test-Path $Path)) {
 
 . (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
 
+function Invoke-JanetMcpSample {
+    <#
+    .SYNOPSIS
+        One tool call against the running janet-mcp, returned as a sample or as a reason to skip.
+    .DESCRIPTION
+        For formats with no CLI verb. A server that does not answer is a SKIP with the reason, not
+        a failure: like a machine with no Azure sign-in, it is an environment this run could not
+        exercise, and must read as neither a pass nor a broken format. The port is janet's
+        convention (7717), the same one .mcp.json declares and Ensure-McpServer.ps1 starts.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Tool,
+        [Parameter(Mandatory)][hashtable]$Arguments
+    )
+
+    $mcp = Join-Path $Root 'scripts\Invoke-McpTool.ps1'
+    $text = @(& $mcp -Tool $Tool -Arguments $Arguments -Uri 'http://127.0.0.1:7717/' -Raw 2>&1) -join "`n"
+
+    if ($LASTEXITCODE -ne 0) {
+        return [pscustomobject]@{ samples = @(); json = $null; skipped = "janet-mcp on 7717 did not answer $Tool ($text)" }
+    }
+
+    # TWO LAYERS, as script.get-thread-backlog warns: Invoke-McpTool emits ITS OWN call envelope
+    # (ok, uri, server, tool, elapsedSec, result), and the tool's answer is inside it under
+    # 'result' -- with -Raw, as the tool's text. Validating the outer envelope against the tool's
+    # schema fails on every field, which is how this was found: the gate refused the first commit.
+    $call = $text | ConvertFrom-Json
+    return [pscustomobject]@{ samples = @(); json = [string]$call.result; skipped = $null }
+}
+
 # The command that produces a sample envelope for each contract. Held here rather than in
 # the schema file because it is a test fixture, not part of the format: the format has to
 # be readable by someone who never runs this.
@@ -92,6 +124,113 @@ $samplers = @{
                 [pscustomobject]@{ label = 'literal scope, no alias'; json = $literal }
             )
         }
+    }
+
+    # ---- Formats served only over MCP ------------------------------------------------------
+    #
+    # These six have no CLI verb: sessions reach them as tools, so the sampler does too, through
+    # Invoke-McpTool against the RUNNING janet-mcp. That samples whatever build is serving, not the
+    # repo build the CLI samplers use -- rotate (server_rotate) after changing one of these formats
+    # and before trusting the gate on it. The exact key sets are also pinned from the code side by
+    # AzureSchemaTests and ServerRotationSchemaTests, which need no server.
+
+    'bicep-check' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Janet
+
+        $warn = Join-Path $Root 'tests\Janet.Tests\Fixtures\bicep\warn.bicep'
+        $broken = Join-Path $Root 'tests\Janet.Tests\Fixtures\bicep\broken.bicep'
+        if (-not (Test-Path $warn) -or -not (Test-Path $broken)) { return [pscustomobject]@{ samples = @() } }
+
+        $first = Invoke-JanetMcpSample -Root $Root -Tool 'bicep_check' -Arguments @{ path = $warn }
+        if ($first.skipped) { return $first }
+
+        # Both verdicts: one that builds with a warning, one that does not build.
+        $second = Invoke-JanetMcpSample -Root $Root -Tool 'bicep_check' -Arguments @{ path = $broken }
+        return [pscustomobject]@{
+            samples = @(
+                [pscustomobject]@{ label = 'builds, one warning'; json = $first.json }
+                [pscustomobject]@{ label = 'does not build'; json = $second.json }
+            )
+        }
+    }
+
+    'server-rotation' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Janet
+
+        # Read-only: the last rotation of each server as recorded on this machine, whatever its
+        # state -- 'never' is as valid a sample as 'succeeded'.
+        $janetRotation = Invoke-JanetMcpSample -Root $Root -Tool 'server_rotation' -Arguments @{ server = 'janet' }
+        if ($janetRotation.skipped) { return $janetRotation }
+
+        $razorgraph = Invoke-JanetMcpSample -Root $Root -Tool 'server_rotation' -Arguments @{ server = 'razorgraph' }
+        return [pscustomobject]@{
+            samples = @(
+                [pscustomobject]@{ label = 'janet'; json = $janetRotation.json }
+                [pscustomobject]@{ label = 'razorgraph'; json = $razorgraph.json }
+            )
+        }
+    }
+
+    'azure-roles' = {
+        param([string]$Janet, [string]$Root)
+
+        # Needs a live 'az login', like az-token, and skips the same way without one.
+        $probe = @(& $Janet az token --scope arm 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            return [pscustomobject]@{ samples = @(); skipped = "no Azure CLI sign-in on this machine; shape held by AzureSchemaTests ($($probe -join ' '))" }
+        }
+
+        $listed = Invoke-JanetMcpSample -Root $Root -Tool 'azure_role_list' -Arguments @{}
+        if ($listed.skipped) { return $listed }
+        return [pscustomobject]@{ samples = @([pscustomobject]@{ label = 'default subscription'; json = $listed.json }) }
+    }
+
+    'azure-whatif' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Janet
+
+        # A what-if needs a resource group to compare against, and which one is the machine's
+        # business, not the repo's. The empty fixture deploys nothing, so comparing it is harmless.
+        if (-not $env:JANET_SAMPLE_RESOURCE_GROUP) {
+            return [pscustomobject]@{ samples = @(); skipped = 'set JANET_SAMPLE_RESOURCE_GROUP to a resource group to what-if the empty fixture against; shape held by AzureSchemaTests' }
+        }
+
+        $empty = Join-Path $Root 'tests\Janet.Tests\Fixtures\bicep\empty.bicep'
+        $sample = Invoke-JanetMcpSample -Root $Root -Tool 'azure_whatif' -Arguments @{ path = $empty; resourceGroup = $env:JANET_SAMPLE_RESOURCE_GROUP }
+        if ($sample.skipped) { return $sample }
+        return [pscustomobject]@{ samples = @([pscustomobject]@{ label = 'empty template'; json = $sample.json }) }
+    }
+
+    'azure-deployment' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Janet
+
+        # Reads a deployment that already exists. Never deploys: a gate that changed Azure on
+        # every commit would be a deployment pipeline, not a check.
+        if (-not $env:JANET_SAMPLE_RESOURCE_GROUP -or -not $env:JANET_SAMPLE_DEPLOYMENT) {
+            return [pscustomobject]@{ samples = @(); skipped = 'set JANET_SAMPLE_RESOURCE_GROUP and JANET_SAMPLE_DEPLOYMENT to an existing deployment to read; shape held by AzureSchemaTests' }
+        }
+
+        $sample = Invoke-JanetMcpSample -Root $Root -Tool 'azure_deployment' -Arguments @{ resourceGroup = $env:JANET_SAMPLE_RESOURCE_GROUP; name = $env:JANET_SAMPLE_DEPLOYMENT }
+        if ($sample.skipped) { return $sample }
+        return [pscustomobject]@{ samples = @([pscustomobject]@{ label = 'existing deployment'; json = $sample.json }) }
+    }
+
+    'storage-probe' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Janet
+
+        # Counts only by design, so pointing it at an account is safe -- but which account is
+        # the machine's business, so it is configured rather than guessed.
+        if (-not $env:JANET_SAMPLE_STORAGE_ACCOUNT) {
+            return [pscustomobject]@{ samples = @(); skipped = 'set JANET_SAMPLE_STORAGE_ACCOUNT to a storage account to probe; shape held by AzureSchemaTests' }
+        }
+
+        $sample = Invoke-JanetMcpSample -Root $Root -Tool 'storage_probe' -Arguments @{ account = $env:JANET_SAMPLE_STORAGE_ACCOUNT }
+        if ($sample.skipped) { return $sample }
+        return [pscustomobject]@{ samples = @([pscustomobject]@{ label = 'configured account'; json = $sample.json }) }
     }
 
     'assembly-api' = {

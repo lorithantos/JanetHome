@@ -594,7 +594,7 @@
         "Manifest command lines execute as trusted code in the repo root - the manifest is project config, not untrusted input. Only push type azureWebAppZip exists so far; add types in the switch when a new target platform appears. Verify counts only HTTP 200 as healthy. Get-Prop uses the Properties indexer deliberately: .Properties.Name -contains throws under StrictMode when the JSON object is empty."
       ],
       "tags": ["deployment", "azure", "contract", "validation", "config"],
-      "links": ["pattern.manifest-startup", "note.azure-site-extension-mismatch", "file.az-token"]
+      "links": ["pattern.manifest-startup", "note.azure-site-extension-mismatch", "file.az-token", "file.azure-tools"]
     },
 
     {
@@ -1207,7 +1207,7 @@
         "Surfaced gained a second arm on 2026-09-03: after the tool runs, the filter sums the result's text blocks and throws McpException with that tool's narrowing hint when the total exceeds ResultBudget (file.result-budget). Never cut -- the same argument as the exception arm, read the other way: a truncated JSON document is a message that lies about what it is. The description caveat above still applies: the tool descriptions were updated to state the refusal, and whether a running session sees the new text without a restart was not re-tested."
       ],
       "tags": ["agent", "research", "retrieval", "csharp", "powershell", "contract", "session"],
-      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server", "file.az-token", "file.server-link", "script.invoke-mcp-tool", "file.result-budget", "script.get-thread-backlog"]
+      "links": ["script.get-research", "script.add-research-node", "script.update-research-node", "file.research", "note.razorgraph-cli", "note.razorgraph-mcp-server", "script.invoke-edit-guard", "note.startup-brief-budget", "script.update-mcp-server", "file.janet-core", "note.golden-tests", "script.swap-research-graph", "script.rename-research-node", "note.graph-write-queue", "file.standalone", "script.test-standalone-scripts", "script.get-api-doc", "script.get-assembly-api", "script.test-output-contracts", "script.invoke-dotnet-check", "script.ensure-mcp-server", "file.az-token", "file.server-link", "script.invoke-mcp-tool", "file.result-budget", "script.get-thread-backlog", "file.server-rotation"]
     },
 
     {
@@ -1226,7 +1226,7 @@
         "WAITS FOR THE LISTENER since 2026-09-01. The script used to return the moment the process was spawned, and the port stayed empty for up to 3 s after that: a client call inside that window failed with 'Unable to connect', the client's reconnect backoff outlasted a human's patience, and the whole thing read as the rotated server having died. It had not -- verified three ways, including a real rotation whose new pid was serving 16 s later. It now polls the port read from --port in -ServerArgument for up to 15 s, throws if the process exits first (current already points at the new build; repoint to roll back), warns if it is alive but silent, and says so when no --port was given. It also redirects the server's stdout/stderr to %TEMP%\\Janet\\<ProcessName>.out.log and .err.log, exactly as Ensure-McpServer does, so a start failure leaves a reason on disk."
       ],
       "tags": ["agent", "deployment", "tooling", "csharp", "powershell", "failure-modes"],
-      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server", "file.server-link", "script.ensure-razorgraph-server", "script.get-thread-backlog"]
+      "links": ["note.razorgraph-mcp-server", "note.razorgraph-cli", "note.janet-mcp-port", "script.ensure-mcp-server", "file.server-link", "script.ensure-razorgraph-server", "script.get-thread-backlog", "file.server-rotation"]
     },
 
     {
@@ -1465,7 +1465,7 @@
         "THE SERVER INHERITS THE ENVIRONMENT OF THE SHELL THAT STARTS IT, and that had teeth until 2026-09-16. Start-Process hands the calling shell's environment to the child, so a janet-mcp started from a Visual Studio x64 Native Tools prompt carries Platform=x64 (vcvars64.bat exports it) for as long as it runs. MSBuild promotes environment variables to global properties, so every dotnet_check build the server ran asked for a platform nobody passed, and every solution declaring no x64 configuration failed MSB4126 before restore -- reported as a confident verdict on the repository. Fixed on the other side: dotnet-check contract 8 scrubs Platform from dotnet's children, so the server is now immune and rotating from a vcvars shell is fine. Before that fix the only workaround was to start the servers from a plain pwsh. The general lesson stands whatever the variable: a resident server's environment is a property of the terminal that happened to launch it hours or days earlier, and nothing in the brief says which one that was."
       ],
       "tags": ["agent", "startup", "session", "contract", "powershell", "failure-modes", "verification"],
-      "links": ["script.get-thread-report", "file.server-link", "script.ensure-razorgraph-server", "script.update-mcp-server"]
+      "links": ["script.get-thread-report", "file.server-link", "script.ensure-razorgraph-server", "script.update-mcp-server", "file.server-rotation"]
     },
 
     {
@@ -1538,7 +1538,7 @@
         "Azure.Identity 1.21.0 ships its net10.0 lib as a 17KB facade that FORWARDS all 56 public types into Azure.Core. Reflection over the file reports zero types, and so does `janet assembly` -- correctly, but it reads exactly like a broken lookup. Resolve through GetForwardedTypes(), or introspect Azure.Core instead. The package's XML doc file is a 156-byte stub with no members, so `janet api` has nothing to say about it either."
       ],
       "tags": ["azure", "csharp", "contract", "session", "failure-modes", "agent"],
-      "links": ["file.janet-core", "file.server-link", "note.janet-mcp-port", "script.invoke-build-deploy", "script.test-output-contracts", "script.get-assembly-api", "script.ensure-mcp-server"]
+      "links": ["file.janet-core", "file.server-link", "note.janet-mcp-port", "script.invoke-build-deploy", "script.test-output-contracts", "script.get-assembly-api", "script.ensure-mcp-server", "file.azure-tools"]
     },
 
     {
@@ -1653,7 +1653,7 @@
         "The port is duplicated between this default (7718), the -ServerArgument it builds, and the url in .mcp.json. They must agree; nothing checks that they do."
       ],
       "tags": ["agent", "startup", "session", "powershell", "razorgraph", "entrypoint"],
-      "links": ["script.ensure-mcp-server", "script.update-mcp-server", "file.startup-manifest", "note.razorgraph-mcp-server", "script.invoke-mcp-tool"]
+      "links": ["script.ensure-mcp-server", "script.update-mcp-server", "file.startup-manifest", "note.razorgraph-mcp-server", "script.invoke-mcp-tool", "file.server-rotation"]
     },
 
     {
@@ -1784,7 +1784,7 @@
         "A refusal is an McpException, so the client sees it as a tool error carrying the message, prefixed by the SDK's 'An error occurred invoking' framing. dotnet_check is the awkward case: the build already ran when its result is refused, and the hint sends the caller to `janet check` redirected to a file rather than offering a narrowing selector."
       ],
       "tags": ["contract", "context-budget", "csharp", "agent", "failure-modes", "thread-items"],
-      "links": ["script.show-thread-items", "script.get-thread-report", "file.janet-core", "note.janet-mcp-port", "script.test-output-contracts", "note.thread-item-projection", "pattern.thread-items"]
+      "links": ["script.show-thread-items", "script.get-thread-report", "file.janet-core", "note.janet-mcp-port", "script.test-output-contracts", "note.thread-item-projection", "pattern.thread-items", "file.azure-tools"]
     },
 
     {
@@ -1929,6 +1929,56 @@
       ],
       "tags": ["architecture", "extraction", "wpf", "csharp", "code-analysis", "testing", "research"],
       "links": ["pattern.change-coalescing", "note.wpf-app-architecture", "pattern.graph-first-analysis", "note.subagent-delegation"]
+    },
+
+    {
+      "id": "file.azure-tools",
+      "kind": "file",
+      "path": "src\\Janet.Core\\Arm.cs",
+      "summary": "Native Azure for sessions, so live changes stop going through hand-typed az in PowerShell: azure_whatif / azure_deploy / azure_deployment (Bicep compiled locally, ARM REST, Incremental only), azure_role_list / azure_role_assign / azure_role_remove (roles and principals named, scope compared case-insensitively, assign idempotent by a name derived from scope+role+principal), and storage_probe (account access settings plus an actual Entra data-plane read of each container and table, counts only). One AzureHttp over ARM, the storage data plane and Graph with the cached az-login token from AzToken; no SDK management packages. Read tools and write tools are separate so the reads can be allow-listed while every live change is still prompted. Outcomes a caller acts on (notCompiled, rejected, failed with each failed operation) come back IN the envelope as fields, with ARM's nested error details; only requests that cannot be attempted are refused. MCP only -- no CLI verbs (the CLI twins were stopped 2026-10-08); the gate samples them over MCP via Invoke-McpTool. Contracts: azure-whatif, azure-deployment, azure-roles, storage-probe. First live use 2026-10-08: neelam test redeploy and LtImageSelector role narrowing.",
+      "caveats": [
+        "WHAT-IF REPORTS UNEVALUATED EXPRESSIONS AS MODIFICATIONS. A role assignment whose principalId is reference(site).identity.principalId shows as Modify principalId on every run, because ARM cannot evaluate the reference without deploying. Such values are flagged unresolved:true per delta and per change rather than hidden -- read them as 'cannot tell', not as changes. Policy assignments also show Delete properties.definitionVersion when the template omits it; that one is real and harmless.",
+        "SCOPE STRINGS DIFFER IN CASE BETWEEN AZURE APIS (/resourceGroups/ from one, /resourcegroups/ from another). Every comparison here is case-insensitive; a client-side filter that is not reports nothing assigned when something is. That is exactly how an az role assignment list --query in a neelam-aesthetics session (2026-10-08) returned an empty table for container-scoped roles.",
+        "Subscription Owner does not grant data access: storage_probe reads the data plane for that reason, and a 403 with AuthorizationPermissionMismatch means a missing data role while AuthorizationFailure usually means a network rule. 'unreachable' means no HTTP answer at all (DNS, TCP, TLS).",
+        "Principal names come from Microsoft Graph and degrade rather than fail: a guest account often cannot read the directory, and principalNames then says 'unavailable: ...'. A null principalName under that state means unknown, not nameless.",
+        "The default subscription is read from the Azure CLI's azureProfile.json (AZURE_CONFIG_DIR or ~/.azure) rather than by running az account show; the token comes from the same sign-in, so they cannot disagree. Pass subscription to override.",
+        "Complete deployment mode is deliberately not offered: it deletes whatever the template omits, and that should not be one parameter away. The app zip-deploy (Invoke-BuildDeploy.ps1) is NOT ported yet; it is a JanetHome thread item."
+      ],
+      "tags": ["azure", "deployment", "csharp", "contract", "agent", "failure-modes"],
+      "links": ["file.az-token", "script.invoke-build-deploy", "file.bicep-check", "file.result-budget", "file.server-rotation"]
+    },
+
+    {
+      "id": "file.bicep-check",
+      "kind": "file",
+      "path": "src\\Janet.Core\\Bicep.cs",
+      "summary": "bicep_check: builds a .bicep or .bicepparam and returns every compiler and linter finding as fields (level, code, message, file, line, column) in one envelope with the verdict, instead of Bicep's split of compiled JSON on stdout and findings on stderr. Runs the Bicep CLI with --diagnostics-format sarif and reads the SARIF from stderr; the linter runs inside build, so no separate lint pass. Bicep.Compile is the same run for azure_whatif / azure_deploy, returning the template, parameters and diagnostics -- a template that does not compile is a result (outcome notCompiled), not an exception. MCP only, no CLI verb.",
+      "caveats": [
+        "A SARIF result with no level is a WARNING (SARIF's default), and Bicep relies on it: linter findings carry no level, compiler errors say error. Measured with Bicep 0.47.16 on 2026-10-08.",
+        "SARIF goes to STDERR while --stdout sends the compiled JSON to stdout, so one run yields both. build-params --stdout prints an envelope whose templateJson and parametersJson are JSON documents held as STRINGS -- parse twice.",
+        "Success is Bicep's exit code, not the diagnostic count: a SARIF document that failed to parse must not read as a clean build. Column is SARIF charOffset, 1-based in UTF-16 units.",
+        "Needs the Bicep CLI on PATH (winget install Microsoft.Bicep) or JANET_BICEP; each check also runs bicep --version once."
+      ],
+      "tags": ["azure", "bicep", "csharp", "contract", "validation"],
+      "links": ["file.azure-tools"]
+    },
+
+    {
+      "id": "file.server-rotation",
+      "kind": "file",
+      "path": "src\\Janet.Core\\ServerRotation.cs",
+      "summary": "server_rotate / server_rotation: native front door to scripts\\Update-McpServer.ps1 for BOTH janet-mcp and razorgraph-mcp. Launches the script DETACHED through pwsh -EncodedCommand with a wrapper that logs its output and writes a result file in finally, answers 'started' at once (rotating janet replaces the very process answering), and reads state back from %TEMP%\\Janet\\rotation-<server>.{json,log,result.json}: never/started/running/succeeded/failed/unknown, the script's error verbatim, the build the 'current' junction resolves to, and the log tail. Ports come from .mcp.json and are passed as --port so the script waits for the new server to listen. Paired with ServerEnvironment: janet-mcp rebuilds its own environment at startup from the registry (machine + user, PATH machine-then-user), logon variables and JANET_*, dropping whatever the launching terminal held (Platform from a VS prompt was the motivating leak); every child it starts -- dotnet, bicep, the rotation script and the server that starts -- inherits the clean environment. servingEnvironment reports dropped/changed/kept by NAME only. JANET_KEEP_ENVIRONMENT=1 opts out.",
+      "caveats": [
+        "THE FIRST ROTATION ONTO THIS CODE CANNOT USE IT: a rotation runs from whatever build is serving, and the build serving when this landed did not have server_rotate. Bootstrapping it took one run of Update-McpServer.ps1 by hand; every later rotation can be native.",
+        "Reconnection is LAZY (note.janet-mcp-port): after rotating janet, make one janet call before reading server_rotation or searching the tool list, or the answer comes from the pre-rotation view.",
+        "RazorGraph only gets a clean environment when JANET rotates it (the launcher inherits janet's normalised environment). razorgraph-mcp started any other way -- Ensure-RazorGraphServer.ps1 from a developer prompt -- keeps its launcher's environment until RazorGraph normalises itself too (thread item, area RazorGraphTool).",
+        "Detached means NOTHING is redirected to the server: a child whose pipes the server held would die with it. The wrapper writes its own log and result, and its finally block writes the result even when the script throws -- a rotation with no result reads as running until its launcher pid is gone, then as unknown.",
+        "RazorGraphTool's checkout defaults to C:\\repos\\RazorGraphTool (machine-specific, the same default Ensure-RazorGraphServer.ps1 carries); JANET_RAZORGRAPH_REPO overrides it. The per-server argument table duplicates Ensure-*.ps1's, except ports, which come from .mcp.json.",
+        "SIGN-IN VALUES COME FROM HKCU\\Volatile Environment, NOT THE LAUNCHER, and both halves of that were learned live on 2026-10-08. The machine environment carries USERNAME=SYSTEM; the first cut applied the registry after the launcher's logon values and the rotated server ran as SYSTEM (visible as dotnet_check TRX files named SYSTEM_<machine>_...). Ordering logon values after the registry was not enough: the NEXT rotation's launcher was that server, so its 'logon' USERNAME was already SYSTEM and the error propagated a generation. Volatile Environment is what Windows writes per sign-in, so a launcher cannot corrupt it. Verified: after the fix and one native rotation the envelope listed USERNAME under changed and the TRX name read lori__LORI-VIDEO again.",
+        "VERIFIED END TO END 2026-10-08: two native rotations of janet (build-20261008-163158, then -163307), about 6 s each from server_rotate to state succeeded, with state running observed in between from the old server and the reconnect landing on the next call. The bootstrap before them was the one Update-McpServer.ps1 run by hand. The first rotation's servingEnvironment dropped 49 variables inherited from the Claude Code session that had started the server (CLAUDE_CODE_*, ANTHROPIC_BASE_URL, GIT_ASKPASS and others) -- the leak class this exists for, observed rather than hypothesised."
+      ],
+      "tags": ["mcp", "agent", "session", "tooling", "failure-modes", "csharp", "contract"],
+      "links": ["script.update-mcp-server", "script.ensure-mcp-server", "script.ensure-razorgraph-server", "note.janet-mcp-port", "file.azure-tools"]
     }
   ]
 }
