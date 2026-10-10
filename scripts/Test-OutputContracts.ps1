@@ -126,34 +126,58 @@ $samplers = @{
         }
     }
 
-    # ---- Formats served only over MCP ------------------------------------------------------
-    #
-    # These six have no CLI verb: sessions reach them as tools, so the sampler does too, through
-    # Invoke-McpTool against the RUNNING janet-mcp. That samples whatever build is serving, not the
-    # repo build the CLI samplers use -- rotate (server_rotate) after changing one of these formats
-    # and before trusting the gate on it. The exact key sets are also pinned from the code side by
-    # AzureSchemaTests and ServerRotationSchemaTests, which need no server.
-
     'bicep-check' = {
         param([string]$Janet, [string]$Root)
-        $null = $Janet
 
         $warn = Join-Path $Root 'tests\Janet.Tests\Fixtures\bicep\warn.bicep'
         $broken = Join-Path $Root 'tests\Janet.Tests\Fixtures\bicep\broken.bicep'
         if (-not (Test-Path $warn) -or -not (Test-Path $broken)) { return [pscustomobject]@{ samples = @() } }
 
-        $first = Invoke-JanetMcpSample -Root $Root -Tool 'bicep_check' -Arguments @{ path = $warn }
-        if ($first.skipped) { return $first }
+        # The CLI arm first, from the repo build like every other CLI sampler. It needs the Bicep
+        # CLI, which a build agent may not have, so it SKIPS without one, as az-token does without
+        # a sign-in. The probe asks for Bicep itself, by the name janet will run (JANET_BICEP, else
+        # bicep on PATH), rather than reading janet's exit code: a verb that went missing also
+        # exits non-zero, and that is a broken surface, not an environment to skip.
+        $bicep = if ($env:JANET_BICEP) { $env:JANET_BICEP } else { 'bicep' }
+        if (-not (Get-Command $bicep -ErrorAction SilentlyContinue)) {
+            return [pscustomobject]@{ samples = @(); skipped = "no Bicep CLI on this machine ('$bicep' does not resolve); shape held by AzureSchemaTests" }
+        }
+
+        # The warn fixture builds, so a non-zero exit there is a failure, and its stderr goes in
+        # as the sample so Test-Json names it rather than passing nothing. The broken fixture
+        # exits 1 by design, so its exit code is not read: an empty stdout fails Test-Json too.
+        $warnRun = @(& $Janet bicep $warn 2>&1)
+        $warnOut = @($warnRun | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n"
+        $cliWarn = if ($LASTEXITCODE -eq 0) { $warnOut } else { "janet bicep exited ${LASTEXITCODE}: $($warnRun -join ' ')" }
+        $cliBroken = @(& $Janet bicep $broken 2>$null) -join "`n"
+        if (-not $cliBroken) { $cliBroken = 'janet bicep wrote nothing to stdout for the broken fixture' }
 
         # Both verdicts: one that builds with a warning, one that does not build.
-        $second = Invoke-JanetMcpSample -Root $Root -Tool 'bicep_check' -Arguments @{ path = $broken }
-        return [pscustomobject]@{
-            samples = @(
-                [pscustomobject]@{ label = 'builds, one warning'; json = $first.json }
-                [pscustomobject]@{ label = 'does not build'; json = $second.json }
-            )
+        $samples = @(
+            [pscustomobject]@{ label = 'janet bicep: builds, one warning'; json = $cliWarn }
+            [pscustomobject]@{ label = 'janet bicep: does not build'; json = $cliBroken }
+        )
+
+        # The MCP arm too, from whatever build is serving, when a server answers. Not required:
+        # the CLI samples above already checked the shape, and BicepVerbTests pins the two arms
+        # to the same envelope from the code side.
+        $first = Invoke-JanetMcpSample -Root $Root -Tool 'bicep_check' -Arguments @{ path = $warn }
+        if (-not $first.skipped) {
+            $second = Invoke-JanetMcpSample -Root $Root -Tool 'bicep_check' -Arguments @{ path = $broken }
+            $samples += [pscustomobject]@{ label = 'bicep_check: builds, one warning'; json = $first.json }
+            $samples += [pscustomobject]@{ label = 'bicep_check: does not build'; json = $second.json }
         }
+
+        return [pscustomobject]@{ samples = $samples }
     }
+
+    # ---- Formats served only over MCP ------------------------------------------------------
+    #
+    # These five have no CLI verb: sessions reach them as tools, so the sampler does too, through
+    # Invoke-McpTool against the RUNNING janet-mcp. That samples whatever build is serving, not the
+    # repo build the CLI samplers use -- rotate (server_rotate) after changing one of these formats
+    # and before trusting the gate on it. The exact key sets are also pinned from the code side by
+    # AzureSchemaTests and ServerRotationSchemaTests, which need no server.
 
     'server-rotation' = {
         param([string]$Janet, [string]$Root)

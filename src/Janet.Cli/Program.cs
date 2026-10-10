@@ -54,6 +54,17 @@ static int Run(Args args)
         return Az(args);
     }
 
+    // The bicep_check envelope for callers that cannot speak MCP. The verb itself lives in
+    // Janet.Core (BicepVerb) so a test can reach it; nothing references this project.
+    if (command == "bicep")
+    {
+        return BicepVerb.Run(
+            args.Value("--path") ?? (args.Positional.Count > 1 ? args.Positional[1] : null),
+            args.Flag("--text"),
+            args.Flag("--pretty"),
+            Console.Out);
+    }
+
     if (command != "research")
     {
         Console.Error.WriteLine($"Unknown command '{args.Positional[0]}'.");
@@ -752,6 +763,9 @@ static int Usage()
                               [--test-filter EXPR] [--new] [--full] [--no-graph]
                               [--text] [--pretty]
                               (exit 0 iff the build succeeded and every test passed)
+        janet bicep           (PATH | --path PATH) [--text] [--pretty]
+                              (a .bicep or .bicepparam; the bicep_check envelope, exit 0
+                               iff succeeded -- warnings never fail it)
 
         janet az token       [--scope ALIAS|SCOPE] [--tenant ID] [--raw] [--refresh]
                               [--out-file PATH] [--local] [--no-launch] [--why]

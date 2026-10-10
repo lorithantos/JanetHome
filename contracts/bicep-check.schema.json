@@ -6,11 +6,13 @@
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
     "contract": 1,
-    "produces": "bicep_check (MCP only; no CLI verb)",
+    "produces": "bicep_check / janet bicep",
     "surface": [
       "src/Janet.Core/Bicep.cs",
       "src/Janet.Core/BicepJson.cs",
-      "src/Janet.Mcp/BicepTools.cs"
+      "src/Janet.Core/BicepVerb.cs",
+      "src/Janet.Mcp/BicepTools.cs",
+      "src/Janet.Cli/Program.cs"
     ],
     "node": "file.bicep-check",
     "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
