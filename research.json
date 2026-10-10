@@ -420,7 +420,7 @@
       "path": "notes\\powershell-house-rules.md",
       "summary": "PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, parameter/local name collisions, plus a 5.1 backward-compatibility section.",
       "tags": ["powershell", "rules", "strictmode", "encoding", "quality", "parameters"],
-      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget", "script.invoke-dotnet-check"]
+      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget", "script.invoke-dotnet-check", "note.csharp-house-rules"]
     },
     {
       "id": "note.insertion-mergesort-hybrid",
@@ -1186,7 +1186,7 @@
         "ADVISORY, not enforced: there is no C# rule-checker in this repo, only Test-PowerShellRules.ps1 for PowerShell.",
         "The failure is silent -- no error, no warning, just an empty JSON field on a populated object."
       ],
-      "links": ["note.dotnet-object-sizing", "script.get-drive-survey"]
+      "links": ["note.dotnet-object-sizing", "script.get-drive-survey", "note.csharp-house-rules"]
     },
 
     {
@@ -1980,6 +1980,19 @@
       ],
       "tags": ["mcp", "agent", "session", "tooling", "failure-modes", "csharp", "contract"],
       "links": ["script.update-mcp-server", "script.ensure-mcp-server", "script.ensure-razorgraph-server", "note.janet-mcp-port", "file.azure-tools"]
+    },
+
+    {
+      "id": "note.csharp-house-rules",
+      "kind": "note",
+      "path": "notes\\csharp-house-rules.md",
+      "summary": "C# and Blazor house rules: decided rules (flaky tests are priority 1; page checks read named data-testid elements, never whole-page substrings) plus candidates awaiting the owner (text and catalogues as data with one source, records not tuples across boundaries, JavaScript only where the browser demands it, server-rendered layout with on-change binding, and the Neelam vs ImageSelectorV2 style differences).",
+      "caveats": [
+        "Part 2 is candidates only: nothing there is a rule until the owner moves it to Part 1, and no code is refactored to a candidate.",
+        "ADVISORY until a test or analyzer enforces each rule; prefer adding the check over adding prose."
+      ],
+      "tags": ["csharp", "blazor", "style", "rules", "testing", "quality"],
+      "links": ["note.powershell-house-rules", "note.tuples-do-not-cross-boundaries"]
     }
   ]
 }
