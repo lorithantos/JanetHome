@@ -38,20 +38,28 @@ checks read the visible text, not the markup. Neelam's `RenderedPage` test helpe
 (`Named`, `Text`, `Links`) is the reference shape. Accessible names double as locators,
 so this rule and accessibility work pull the same way.
 
+### 3. Definitions and the text people read are JSON data read in, one source each
+
+Decided 2026-10-09: "Let's change the way these are created into json templates that
+are read in. This will allow more customization of template structures." Catalogues of
+things (block definitions, rule descriptions) and the text a user reads about them live
+in JSON files loaded and validated at startup, with each fact stated once; code keeps
+behaviour and the types that guarantee it. The app refuses to start when the data and
+the code disagree (an unknown type, a rule with no description, a duplicate). Parse with
+System.Text.Json; a JSON Schema, if any, is checked by the test project only.
+
+Why it bit: Neelam's `BlockGuide.All` held block descriptions, a prose restatement of
+each rule, and rule ids as hand-copied C# strings -- "data disguised as code", edited
+four times in one day. Because every text block shared one prose list, the Fine print
+block told the client both that "Any text here counts as the disclaimer a medical term
+needs" and that "A medical term needs a disclaimer in a fine-print block" -- a
+contradiction she found on her phone.
+
 ---
 
 ## Part 2 -- Candidates (the owner decides)
 
-### A. Text and catalogues are data, with one source each
-
-Example: Neelam `BlockGuide.All` -- the owner: "looks like data disguised as code". It
-holds user-facing block descriptions as C# strings, prose restating each rule with
-nothing tying it to the rule's logic, and rule ids as hand-copied strings policed by a
-test. It was edited four times in one day, once per new rule. Suggested shape: each rule
-carries its own id, plain description and the block types it applies to, beside its
-logic, and guides are generated from the rules; user-facing descriptions become content
-(a validated data file, or operator data editable without a deploy); behaviour stays in
-code.
+### A. (Decided -- now Part 1, rule 3.)
 
 ### B. Results that cross a method boundary are named records, not tuples
 
