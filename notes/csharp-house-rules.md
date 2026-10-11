@@ -55,6 +55,31 @@ block told the client both that "Any text here counts as the disclaimer a medica
 needs" and that "A medical term needs a disclaimer in a fine-print block" -- a
 contradiction she found on her phone.
 
+### 4. Shared state is immutable, or concurrent by design
+
+Decided 2026-10-10: "We love concurrency, and the concurrent collections are our
+friends." (and, on the bug that prompted it: "Can I just say I hate non-thread-safe
+code?") Anything reachable from a static field, or shared across requests, tests or
+threads, is read-only after construction. Where shared state must change, it uses a type
+built for it -- `ConcurrentDictionary`, `ConcurrentBag`, `ImmutableInterlocked`,
+`Lazy<T>`, `LazyInitializer` -- or a lock, never a plain `Dictionary`, `List` or field
+written from more than one thread. A library object we cannot vouch for is never shared
+bare: lock it or make one per use, and say why in a comment that cites the library's
+source.
+
+Why it bit: Neelam's test-only `ExportSchema` shared one JsonSchema.Net 7.4.0 `JsonSchema`.
+Its `Evaluate` clears the schema's cached constraint tree, unlocked, whenever it is given
+a different options object -- invisible at the call site, which reads like a pure
+function. Test classes evaluating in parallel let a broken export pass about one time in
+four under stress (2,552 of 10,000), and a full run failed once in three. Fixed with a
+lock in Neelam c06a1fe. Upstream had already fixed that one in 8.0 (json-everything
+#929), but checking it turned up a live race in 8.0-9.4.0: `JsonSchema.FindSubschema`
+caches into a plain `Dictionary` written by concurrent builds; a report with a suggested
+`ConcurrentDictionary` fix was prepared for the owner to post. Neelam's own code already met the rule: all 375
+static fields were readonly or const and never mutated after setup. Enforcement idea: a
+RazorGraph query for static or shared fields of a mutable collection type, or an
+analyzer.
+
 ---
 
 ## Part 2 -- Candidates (the owner decides)
@@ -105,19 +130,4 @@ The full survey lives in the Neelam session scratchpad
 (`style-survey-imageviewer-vs-neelam.md`); copy what the owner wants kept into this
 note when deciding.
 
-### F. Shared objects are immutable, or say plainly that they are not
-
-Anything reachable from a static field, or shared across requests or tests, is read-only
-after construction. A library object we cannot vouch for is never shared bare: wrap it
-with a lock, or make a fresh one per use, and say why in a comment that cites the
-library's source. The owner, 2026-10-10: "Can I just say I hate non-thread-safe code?"
-
-Why it bit: Neelam's test-only `ExportSchema` shared one JsonSchema.Net 7.4.0 `JsonSchema`.
-Its `Evaluate` clears the schema's cached constraint tree, unlocked, whenever it is given
-a different options object -- invisible at the call site, which reads like a pure
-function. Test classes evaluating in parallel let a broken export pass about one time in
-four under stress (2,552 of 10,000), and a full run failed once in three. Fixed with a
-lock in Neelam c06a1fe; reported upstream by the owner. Neelam's own code already met
-the rule: all 375 static fields were readonly or const and never mutated after setup.
-Enforcement idea: a RazorGraph query for static fields whose type is not immutable, or
-an analyzer.
+### F. (Decided -- now Part 1, rule 4.)
