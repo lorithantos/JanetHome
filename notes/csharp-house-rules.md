@@ -104,3 +104,20 @@ Each is a candidate for one house choice:
 The full survey lives in the Neelam session scratchpad
 (`style-survey-imageviewer-vs-neelam.md`); copy what the owner wants kept into this
 note when deciding.
+
+### F. Shared objects are immutable, or say plainly that they are not
+
+Anything reachable from a static field, or shared across requests or tests, is read-only
+after construction. A library object we cannot vouch for is never shared bare: wrap it
+with a lock, or make a fresh one per use, and say why in a comment that cites the
+library's source. The owner, 2026-10-10: "Can I just say I hate non-thread-safe code?"
+
+Why it bit: Neelam's test-only `ExportSchema` shared one JsonSchema.Net 7.4.0 `JsonSchema`.
+Its `Evaluate` clears the schema's cached constraint tree, unlocked, whenever it is given
+a different options object -- invisible at the call site, which reads like a pure
+function. Test classes evaluating in parallel let a broken export pass about one time in
+four under stress (2,552 of 10,000), and a full run failed once in three. Fixed with a
+lock in Neelam c06a1fe; reported upstream by the owner. Neelam's own code already met
+the rule: all 375 static fields were readonly or const and never mutated after setup.
+Enforcement idea: a RazorGraph query for static fields whose type is not immutable, or
+an analyzer.
