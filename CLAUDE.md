@@ -74,7 +74,12 @@ last run. `-OutFile` changes the path; `-OutFile ''` skips writing.
   project's -- and set `area` on what you add, or it lands in `(unfiled)`.
 - Run `scripts\Test-PowerShellRules.ps1` on any `.ps1` you touch. The hook does this
   when it is wired; do it yourself when it is not.
-- `dotnet test JanetHome.slnx` for the C# side. The catalog tests compare against
+- `janet check` for the C# side (`dotnet_check` over MCP), never bare `dotnet test` or
+  `dotnet build`. `--target tests\Janet.Tests` for the suite, `--test-filter` to narrow,
+  `--full` for a clean rebuild. Its envelope names every failure with its assert text and
+  file:line, and the TRX files survive under `%TEMP%\janet-trx`. A bare `dotnet test -v q`
+  on 2026-10-09 printed only "Failed: 1" and the test's name was never recovered. Write
+  `janet check` into any prompt that delegates a build or a test run. The catalog tests compare against
   recorded answers in `tests\Janet.Tests\Goldens`, captured from the PowerShell as it
   stood before the shims. Regenerate them with `dotnet run --project
   tests\Janet.Goldens`, not by hand -- a golden the implementation edits is not a

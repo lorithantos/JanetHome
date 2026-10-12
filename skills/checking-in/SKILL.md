@@ -110,7 +110,9 @@ PSScriptAnalyzer, the nesting check, Pester, config validation, the encoding
 audit and the output contracts over the staged files.
 
 The gate is not the verification. It checks style and encoding; it does not
-know whether your change works. Run `dotnet test JanetHome.slnx` yourself, and
+know whether your change works. Run `janet check --target tests\Janet.Tests`
+yourself -- never bare `dotnet test`, whose quiet output loses a failing test's name --
+and
 mutation-check any test you added -- break the subject, watch it fail, restore
 it -- so the closing line of the body is something you observed rather than
 something you assume.
