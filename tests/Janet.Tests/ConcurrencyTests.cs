@@ -13,7 +13,15 @@ namespace Janet.Tests;
 /// reason to keep them: each one reproduces a specific way concurrent writers corrupted the
 /// catalog. Two concurrent sessions is the normal case in this repo -- it is the stated reason
 /// the thread-item list needs a mutex at all -- and the catalog had no equivalent.
+/// <para>
+/// Runs alone, after every parallel collection: TheWriteLockExcludesASecondHolder lowers
+/// WriteQueue.LockTimeout, which is process-wide, to 200ms. While it did, any other class
+/// writing through the queue ran under that timeout too -- ThreadItemTests.ConcurrentWritersAllSurvive
+/// failed "Could not take the write lock ... within 0s" once in 30 full runs, and 17 in 20 when
+/// the two tests were run together.
+/// </para>
 /// </remarks>
+[Collection(WriteLockTimeoutCollection.Name)]
 public class ConcurrencyTests : IDisposable
 {
     private readonly Sandbox _sandbox = new();
@@ -261,4 +269,18 @@ public class ConcurrencyTests : IDisposable
         _sandbox.Dispose();
         GC.SuppressFinalize(this);
     }
+}
+
+/// <summary>
+/// The tests that set <see cref="WriteQueue.LockTimeout"/>, run with nothing else alongside.
+/// </summary>
+/// <remarks>
+/// A shared collection is not enough here, unlike ResultBudgetCollection: the readers of the
+/// timeout are every class that writes the catalog or the thread list, so the setter has to be
+/// kept away from all of them rather than queued behind a known few.
+/// </remarks>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public class WriteLockTimeoutCollection
+{
+    public const string Name = "WriteQueue.LockTimeout";
 }

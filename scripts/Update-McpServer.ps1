@@ -25,6 +25,14 @@
              the publish SUCCEEDS while sessions are attached; each new session then picks up
              the newest build through the junction, with no publish-time coordination at all.
 
+    GRAPHS SURVIVE A RAZORGRAPH ROTATION. A razorgraph server holds its graphs in memory,
+    so stopping it used to drop every one silently. When the running server serves
+    list_graphs, the graphs are saved to %TEMP%\Janet\razorgraph-rotation before the stop
+    and loaded back under their original ids once the new server listens -- the newest per
+    (main repo, graph kind) only, the previously current one last so it stays current. The
+    report is the last thing printed. A save or load failure is reported verbatim and never
+    fails the rotation. Decision logic: GraphCarryOver.Common.ps1.
+
 .PARAMETER Project
     The server .csproj to publish.
 
@@ -73,6 +81,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'GraphCarryOver.Common.ps1')
 if (-not $Root) { $Root = Join-Path $repoRoot '.janet-bin' }
 if (-not (Test-Path -LiteralPath $Project)) { throw "Project not found: $Project" }
 if (-not (Test-Path -LiteralPath $Root)) { New-Item -ItemType Directory -Path $Root | Out-Null }
@@ -130,6 +139,143 @@ function Get-ListenerPid {
         return [int]$conn[0].OwningProcess
     }
     catch { return $null }
+}
+
+# ---- Graph carry-over (razorgraph only) -------------------------------------
+
+$mcpTool = Join-Path $PSScriptRoot 'Invoke-McpTool.ps1'
+$carryDirectory = Join-Path ([System.IO.Path]::GetTempPath()) 'Janet\razorgraph-rotation'
+
+function Invoke-GraphTool {
+    # One call through Invoke-McpTool, as { Ok; Result; Error }. Never throws: the carry-over
+    # is a convenience and the swap is the job, so a failure here is reported, not raised.
+    # Error is the server's own text, verbatim, so the log says what actually went wrong.
+    param([string]$Tool, [hashtable]$Arguments = @{}, [Parameter(Mandatory)][string]$Uri, [switch]$ListTools)
+
+    $out = $null
+    $code = 0
+    try {
+        $out = if ($ListTools) { & $mcpTool -ListTools -Uri $Uri 2>&1 }
+        else { & $mcpTool -Tool $Tool -Arguments $Arguments -Uri $Uri 2>&1 }
+        $code = $LASTEXITCODE
+    }
+    catch { return [PSCustomObject]@{ Ok = $false; Result = $null; Error = $_.Exception.Message } }
+
+    $text = (@($out) | ForEach-Object { "$_" }) -join [Environment]::NewLine
+    $envelope = $null
+    try { $envelope = $text | ConvertFrom-Json }
+    catch { return [PSCustomObject]@{ Ok = $false; Result = $null; Error = $text } }
+
+    $ok = ($code -eq 0) -and ((Get-GraphCarryOverProperty $envelope 'ok') -eq $true)
+    $result = if ($ListTools) { $envelope } else { Get-GraphCarryOverProperty $envelope 'result' }
+    $errorText = $null
+    if (-not $ok) {
+        $errorText = [string](Get-GraphCarryOverProperty $envelope 'error')
+        if (-not $errorText) {
+            $errorText = if ($result -is [string]) { $result }
+            elseif ($null -ne $result) { $result | ConvertTo-Json -Depth 8 -Compress }
+            else { $text }
+        }
+    }
+    return [PSCustomObject]@{ Ok = $ok; Result = $result; Error = $errorText }
+}
+
+function Save-GraphCarryOver {
+    # Before the stop: list, decide, save. Returns $null when the server on $Port does not
+    # serve list_graphs -- that is the gate, so janet-mcp (and anything else) is untouched.
+    param([Parameter(Mandatory)][int]$Port)
+
+    $uri = "http://127.0.0.1:$Port/"
+    $state = [PSCustomObject]@{
+        Port = $Port; Uri = $uri; Directory = $carryDirectory; Plan = $null; HeldCount = 0
+        Saved = @(); Loaded = @(); Failures = @(); CurrentAfter = $null; Stage = 'listed'; Note = $null
+    }
+
+    $surface = Invoke-GraphTool -ListTools -Uri $uri
+    if (-not $surface.Ok) { return $null }   # Nothing answering: nothing loaded to lose.
+    $tools = @(Get-GraphCarryOverProperty $surface.Result 'tools')
+    if (-not ($tools -contains 'list_graphs' -and $tools -contains 'save_graph' -and $tools -contains 'load_graph')) {
+        return $null
+    }
+
+    $listed = Invoke-GraphTool -Tool 'list_graphs' -Uri $uri
+    if (-not $listed.Ok) {
+        $state.Note = 'list_graphs failed before the stop'
+        $state.Failures = @("list_graphs: $($listed.Error)")
+        return $state
+    }
+
+    $graphs = @(Get-GraphCarryOverProperty $listed.Result 'graphs')
+    $state.HeldCount = $graphs.Count
+    if ($graphs.Count -eq 0) {
+        $state.Plan = Select-GraphCarryOver -Graph @()
+        return $state
+    }
+
+    # The previous rotation's manifest first, BEFORE clearing: a graph it carried has the
+    # rotation file as its source now, and only the manifest knows which repo that was.
+    $remembered = Read-GraphCarryOverManifest -Directory $carryDirectory
+    $state.Plan = Select-GraphCarryOver -Graph $graphs -Current ([string](Get-GraphCarryOverProperty $listed.Result 'current')) -Remembered $remembered
+
+    $failures = [System.Collections.Generic.List[string]]::new()
+    try {
+        if (-not (Test-Path -LiteralPath $carryDirectory -PathType Container)) {
+            New-Item -ItemType Directory -Path $carryDirectory -Force | Out-Null
+        }
+        Get-ChildItem -LiteralPath $carryDirectory -File -Filter '*.json' -ErrorAction Stop |
+            Remove-Item -Force -ErrorAction Stop
+    }
+    catch {
+        $failures.Add("clearing $carryDirectory`: $($_.Exception.Message)")
+    }
+
+    $saved = [System.Collections.Generic.List[object]]::new()
+    foreach ($row in $state.Plan.Keep) {
+        $file = Join-Path $carryDirectory (Get-GraphCarryOverFileName -GraphId $row.GraphId)
+        $result = Invoke-GraphTool -Tool 'save_graph' -Arguments @{ outputPath = $file; graphId = $row.GraphId } -Uri $uri
+        if ($result.Ok -and (Test-Path -LiteralPath $file -PathType Leaf)) {
+            $saved.Add([PSCustomObject]@{ GraphId = $row.GraphId; Source = $row.Source; Kind = $row.Kind; File = $file })
+        }
+        elseif ($result.Ok) { $failures.Add("save $($row.GraphId): reported ok but $file does not exist") }
+        else { $failures.Add("save $($row.GraphId): $($result.Error)") }
+    }
+
+    try {
+        $manifest = @($saved | ForEach-Object { [ordered]@{ graphId = $_.GraphId; file = $_.File; source = $_.Source; kind = $_.Kind } })
+        ConvertTo-Json -InputObject $manifest -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $carryDirectory 'manifest.json') -Encoding utf8
+    }
+    catch { $failures.Add("writing the manifest: $($_.Exception.Message)") }
+
+    $state.Saved = $saved.ToArray()
+    $state.Failures = $failures.ToArray()
+    $state.Stage = 'saved'
+    return $state
+}
+
+function Restore-GraphCarryOver {
+    # After the new server listens: load each saved file under its ORIGINAL id, in the
+    # plan's order, so the previous current loads last and stays current.
+    param([Parameter(Mandatory)][object]$State)
+
+    $failures = [System.Collections.Generic.List[string]]::new()
+    foreach ($f in @($State.Failures)) { $failures.Add($f) }
+    $loaded = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($row in @($State.Saved)) {
+        $result = Invoke-GraphTool -Tool 'load_graph' -Arguments @{ path = $row.File; graphId = $row.GraphId } -Uri $State.Uri
+        if ($result.Ok) { $loaded.Add($row) }
+        else { $failures.Add("load $($row.GraphId): $($result.Error)") }
+    }
+
+    # Read back rather than assumed: "current is now X" is the claim the report makes.
+    $after = Invoke-GraphTool -Tool 'list_graphs' -Uri $State.Uri
+    if ($after.Ok) { $State.CurrentAfter = [string](Get-GraphCarryOverProperty $after.Result 'current') }
+    else { $failures.Add("list_graphs after the loads: $($after.Error)") }
+
+    $State.Loaded = $loaded.ToArray()
+    $State.Failures = $failures.ToArray()
+    $State.Stage = 'loaded'
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -210,6 +356,31 @@ if ($ProcessName) {
             'no reconnect. Its client will pick up the new build on its next start.')
     }
 
+    # The port is read from --port in -ServerArgument, here rather than at the listener wait,
+    # because the carry-over needs it before the stop.
+    $port = $null
+    for ($i = 0; $i -lt $ServerArgument.Count - 1; $i++) {
+        if ($ServerArgument[$i] -eq '--port') { $port = [int]$ServerArgument[$i + 1] }
+    }
+
+    # Graphs live in the server's memory, so stopping it used to drop every one of them
+    # without a word. Saved here, loaded back after the listener wait, reported at the end.
+    # Gated on the running server's tool list rather than a switch: server_rotate passes
+    # this script a fixed argument list per server, and a server that serves list_graphs is
+    # exactly the case where there is something to lose. Only when we are about to stop
+    # something -- no HTTP server of ours, no drop.
+    $carry = $null
+    if ($ours.Count -gt 0 -and $null -ne $port) {
+        try { $carry = Save-GraphCarryOver -Port $port }
+        catch {
+            $carry = [PSCustomObject]@{
+                Port = $port; Uri = "http://127.0.0.1:$port/"; Directory = $carryDirectory; Plan = $null; HeldCount = 0
+                Saved = @(); Loaded = @(); Failures = @("carry-over aborted before the stop: $($_.Exception.Message)")
+                CurrentAfter = $null; Stage = 'listed'; Note = 'the save step threw'
+            }
+        }
+    }
+
     foreach ($p in $ours) {
         Stop-Process -Id $p.ProcessId -Force
         Write-Host "  stopped pid $($p.ProcessId)" -ForegroundColor DarkGray
@@ -241,11 +412,6 @@ if ($ProcessName) {
     # not -- measured 2026-09-01, the rotated pid was serving 16 s later every time. The port is
     # read from --port in -ServerArgument; without one there is nothing to poll, and that is said
     # rather than guessed at.
-    $port = $null
-    for ($i = 0; $i -lt $ServerArgument.Count - 1; $i++) {
-        if ($ServerArgument[$i] -eq '--port') { $port = [int]$ServerArgument[$i + 1] }
-    }
-
     if ($null -eq $port) {
         Write-Host "  started pid $($started.Id) from current (no --port in -ServerArgument, so not waiting for it to listen)" -ForegroundColor Green
     }
@@ -260,8 +426,18 @@ if ($ProcessName) {
 
         if ($listening) {
             Write-Host "  started pid $($started.Id) from current, listening on $port" -ForegroundColor Green
+            if ($null -ne $carry -and $carry.Stage -eq 'saved') {
+                try { Restore-GraphCarryOver -State $carry }
+                catch {
+                    $carry.Failures = @($carry.Failures) + "carry-over aborted during the loads: $($_.Exception.Message)"
+                    $carry.Stage = 'loaded'
+                }
+            }
         }
         elseif ($started.HasExited) {
+            if ($null -ne $carry -and $carry.Stage -eq 'saved') {
+                Write-Host "  graph carry-over: NOT loaded, the new server died; $(@($carry.Saved).Count) saved graphs are in $carryDirectory" -ForegroundColor Yellow
+            }
             throw ("pid $($started.Id) exited (code $($started.ExitCode)) before listening on $port. " +
                 "See $logDir\$ProcessName.err.log. $currentLink already points at the new build; " +
                 'repoint it at the previous build-* directory to roll back.')
@@ -269,6 +445,10 @@ if ($ProcessName) {
         else {
             Write-Warning ("pid $($started.Id) is alive but nothing owns port $port after 15 s. Clients " +
                 "will fail until it listens; see $logDir\$ProcessName.out.log.")
+            if ($null -ne $carry -and $carry.Stage -eq 'saved') {
+                $carry.Stage = 'not-loaded'
+                $carry.Note = "nothing listened on $port within 15 s"
+            }
         }
     }
 
@@ -329,3 +509,10 @@ Write-Host ''
 Write-Host "Client config points at the junction, and never changes:" -ForegroundColor Cyan
 Write-Host "  $(Join-Path $currentLink $exe.Name)"
 Write-Host ''
+
+# Last, so it is the tail of the log: server_rotate's logTail shows the final 15 lines, and
+# a carry-over buried above the prune and junction lines is a drop nobody reads about.
+if ($null -ne $carry) {
+    $color = if (@($carry.Failures).Count -gt 0 -or $carry.Stage -eq 'not-loaded') { 'Yellow' } else { 'Cyan' }
+    foreach ($line in (Format-GraphCarryOverReport -State $carry)) { Write-Host $line -ForegroundColor $color }
+}
