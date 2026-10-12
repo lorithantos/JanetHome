@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     PreToolUse hook: answers a Grep inside a git working tree through razorgraph's grep
-    tool, and refuses a shell text search over C# source with that call ready to paste.
+    tool, and refuses a Bash or PowerShell search of files inside a git working tree with
+    that call ready to paste.
 
 .DESCRIPTION
     Graph first, at the controller's own keyboard. Invoke-DelegationGuard.ps1 gates the
@@ -25,13 +26,21 @@
                       parameter this hook does not know all let the Grep through, since
                       razorgraph cannot do them and a wrong answer is worse than grep.
                       Outside any git working tree it passes untouched.
-      Bash/PowerShell fires when the command runs grep, rg, Select-String, sls or
-                      findstr AND names .cs or a src\ path in the same command, in a
-                      project holding a solution -- EXCEPT a git command, which reads
-                      history and change text the graph does not index. `git grep` is
-                      still gated, being an ordinary working-tree search wearing git's
-                      name. The denial carries a paste-ready mcp__razorgraph__grep call.
-                      Shell searches are never executed here.
+      Bash/PowerShell denied when a search in the command -- grep, egrep, fgrep, rg, ag,
+                      ack, git grep, Select-String/sls, findstr, find -exec grep, xargs
+                      grep -- reads FILES inside a git working tree, any file type
+                      ("PowerShell and bash shouldn't be doing searches", Lori,
+                      2026-10-12; until then only a command naming .cs or src\ was).
+                      What a search reads: its file operands, a file fed in with <, the
+                      files an upstream cat/head/Get-Content (or for Select-String,
+                      Get-ChildItem) reads, a find's paths, or for a recursive search
+                      with no operand its directory. A search of another command's
+                      output (git diff | grep, dotnet test | Select-String) passes, as
+                      does one whose files all lie outside any git working tree. An
+                      operand this cannot resolve (a variable, an expression) lets the
+                      command run with one line of additionalContext. The denial
+                      carries a paste-ready mcp__razorgraph__grep call. Shell searches
+                      are never executed here.
       anything else   passes.
 
     WHEN RAZORGRAPH CANNOT ANSWER. Unreachable (connection refused or timed out): run
@@ -157,22 +166,6 @@ function Write-PassContext {
             additionalContext = $Message
         }
     } | ConvertTo-Json -Depth 4 -Compress
-}
-
-# Shallowest solution under the project dir. The shell trigger is about C# source, and a
-# project with no solution holds none worth refusing a search over.
-function Get-SolutionFile {
-    param([string]$Directory)
-
-    if (-not $Directory -or -not (Test-Path -LiteralPath $Directory)) { return $null }
-
-    foreach ($filter in @('*.slnx', '*.sln')) {
-        $hit = Get-ChildItem -LiteralPath $Directory -Filter $filter -File -Recurse -Depth 2 -ErrorAction SilentlyContinue |
-            Sort-Object { $_.FullName.Length } |
-            Select-Object -First 1
-        if ($null -ne $hit) { return $hit }
-    }
-    return $null
 }
 
 function Test-InsideGitWorkTree {
@@ -590,120 +583,868 @@ function Format-GrepAnswer {
     return $reason
 }
 
-# The shell trigger: a text-search command that names C# source in the same breath.
-function Get-ShellTrigger {
-    param([string]$ToolName, $ToolInput)
+# ---- The shell trigger ----------------------------------------------------------------
+#
+# "PowerShell and bash shouldn't be doing searches." (Lori, 2026-10-12.) A Bash or
+# PowerShell search whose INPUT is files inside a git working tree is denied, whatever
+# the file type. Until that day only a command naming .cs or a src\ path was, with every
+# command that mentioned git exempted wholesale.
+#
+# The command is split into pipelines and commands -- PowerShell by its own parser, Bash
+# by the small tokenizer below -- and each search command is asked one question: what
+# does it read? Its file operands; a file fed in with <; the files the nearest upstream
+# cat, head or Get-Content reads (for Select-String, also Get-ChildItem's items); the
+# paths a find hands to -exec or xargs; or, for a search that recurses when given no
+# operand, the directory it runs in. A search of another command's output -- git diff |
+# grep, dotnet test | Select-String -- reads no files and passes. That is also what
+# keeps git honest now: git diff, log, show and blame are not searches, git log --grep
+# and -S are flags of a command that is not one, and only `git grep` is.
+#
+# The search is never RUN. Reading pattern and folder out of arbitrary shell text is a
+# heuristic that rots, so this only redirects: the denial carries the razorgraph call
+# with what it could read, and a placeholder for the pattern when it could not. An
+# operand it cannot resolve -- a variable, an expression -- is not guessed at: when that
+# is all that stands between a command and a denial, the command runs with one line of
+# additionalContext saying so.
 
-    $command = [string](Get-Prop $ToolInput 'command')
-    if (-not $command) { return $null }
+$script:ShellPrefilter = '\b(grep|egrep|fgrep|rg|ag|ack|Select-String|sls|findstr)\b'
+$script:GrepVerbs = @('grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack')
+$script:ContentReaders = @('cat', 'type', 'Get-Content', 'gc', 'head', 'tail', 'less', 'more', 'tac')
+$script:ItemListers = @('Get-ChildItem', 'gci', 'ls', 'dir', 'Get-Item', 'gi')
+$script:PassThrough = @('Where-Object', 'where', '?', 'Select-Object', 'select', 'Sort-Object', 'sort', 'uniq', 'Out-String', 'tee', 'Tee-Object')
+$script:CommandPrefixes = @('sudo', 'command', 'builtin', 'time', 'nice', 'nohup', 'exec', 'if', 'then', 'else', 'elif', 'do', 'while', 'until', '!')
+$script:LocationVerbs = @('cd', 'chdir', 'pushd', 'Set-Location', 'sl', 'Push-Location')
+$script:ReaderValued = @('Encoding', 'TotalCount', 'Tail', 'Head', 'First', 'Last', 'ReadCount', 'Delimiter', 'Filter', 'Include', 'Exclude', 'Depth', 'Attributes', 'Stream', 'lines', 'bytes')
+$script:PathParameters = @('Path', 'LiteralPath', 'PSPath', 'LP')
+$script:SlsValued = @('Pattern', 'Path', 'LiteralPath', 'InputObject', 'Context', 'Encoding', 'Include', 'Exclude', 'Culture')
+$script:SlsSwitches = @('SimpleMatch', 'CaseSensitive', 'AllMatches', 'NotMatch', 'List', 'Quiet', 'Raw', 'NoEmphasis')
+$script:WorkTrees = @{}
 
-    # GIT IS NOT A CODE SEARCH. A diff, a log, a blame, a show or a status reads
-    # HISTORY and CHANGE TEXT, and the graph indexes neither -- it models one built
-    # state of the source, so "what changed" and "who touched this" are questions it
-    # cannot answer at all. Denying them sends the caller to a tool that has no answer.
-    # Three false positives on 2026-09-06 were this: `git status --short` beside a
-    # `git diff -- src/X.cs | Select-String` in one command line, refused because the
-    # text mentioned a search tool and a .cs path.
-    #
-    # `git grep` is the exception and stays gated: it searches the working tree exactly
-    # as grep does, so it is the same question in a different spelling.
-    #
-    # KNOWN HOLE, left open deliberately: a compound command that runs git AND a real
-    # source grep -- `git status; rg Foo src` -- is exempted by this. Closing it means
-    # parsing shell to decide which pipeline each search sits in, which is fragile in a
-    # hook that must be fast and legible, and the guard is about defaults rather than
-    # defence. Prefer the false negative: this guard's own risk is being clicked past.
-    if ($command -match '\bgit\b' -and $command -notmatch '\bgit\s+grep\b') { return $null }
-
-    if ($command -notmatch '\b(grep|rg|Select-String|sls|findstr)\b') { return $null }
-    if ($command -notmatch '\.cs\b' -and $command -notmatch 'src[\\/]') { return $null }
-
-    $shown = $command -replace '\s+', ' '
-    if ($shown.Length -gt 140) { $shown = $shown.Substring(0, 140) + '...' }
-    return "$ToolName command '$shown'"
+# Per tool: short options whose value follows (case-sensitive), long options whose value
+# is the next word when not given with =, and options that list files instead of
+# searching them (a listing is not a text search).
+$script:GrepOptions = @{
+    grep = @{ Short = 'efmABCdD'; Lists = @()
+        Long = @('regexp', 'file', 'max-count', 'after-context', 'before-context', 'context', 'include', 'exclude', 'exclude-dir', 'exclude-from', 'label', 'devices', 'directories', 'binary-files', 'group-separator') }
+    rg   = @{ Short = 'efgtTmABCjMErd'; Lists = @('files', 'type-list')
+        Long = @('regexp', 'file', 'glob', 'iglob', 'type', 'type-not', 'max-count', 'after-context', 'before-context', 'context', 'threads', 'max-columns', 'encoding', 'replace', 'max-depth', 'max-filesize', 'sort', 'sortr', 'colors', 'type-add', 'type-clear', 'pre', 'pre-glob', 'engine', 'path-separator', 'context-separator', 'ignore-file') }
+    ag   = @{ Short = 'ABCGmg'; Lists = @('g')
+        Long = @('ignore', 'ignore-dir', 'file-search-regex', 'depth', 'max-count', 'after', 'before', 'context', 'pager') }
+    ack  = @{ Short = 'ABCm'; Lists = @('f', 'g')
+        Long = @('type', 'ignore-dir', 'ignore-file', 'match', 'max-count', 'after-context', 'before-context', 'context', 'output') }
+    git  = @{ Short = 'efmABCO'; Lists = @()
+        Long = @('max-depth', 'threads', 'open-files-in-pager') }
 }
 
-# Reads pattern, folder, glob and case out of a shell search ONLY when the command is one
-# plain rg, grep or Select-String with no pipe, redirection, variable or flag this does not
-# know. Anything else returns $null and the denial shows placeholders instead.
-function Read-ShellSearch {
-    param([string]$Command, [string]$BaseDir)
+# One command-line word. Literal is false when the shell would expand it (a variable, a
+# subexpression), so it cannot be resolved here. Bare is false when it starts quoted,
+# so it cannot be an option. Items holds a PowerShell array argument's elements.
+function New-ShellWord {
+    param([string]$Text, [bool]$Literal = $true, [bool]$Bare = $true, [string[]]$Items)
+    $elements = if ($null -ne $Items -and $Items.Count -gt 0) { $Items } else { @($Text) }
+    [PSCustomObject]@{ Text = $Text; Literal = $Literal; Bare = $Bare; Items = $elements; Value = $null }
+}
 
-    if ($Command -match '[|;&()$`<>{}\r\n]') { return $null }
-
-    $tokens = @([regex]::Matches($Command.Trim(), '"([^"]*)"|''([^'']*)''|(\S+)') | ForEach-Object {
-        [PSCustomObject]@{ Text = ($_.Groups[1].Value + $_.Groups[2].Value + $_.Groups[3].Value); Bare = $_.Groups[3].Success }
-    })
-    if ($tokens.Count -lt 3) { return $null }
-
-    $verb = $tokens[0].Text
-    $pattern = $null; $path = $null
-    if ($verb -ceq 'rg' -or $verb -ceq 'grep') {
-        $ignoreCase = $false
-        $positional = New-Object System.Collections.Generic.List[string]
-        foreach ($token in $tokens[1..($tokens.Count - 1)]) {
-            if ($token.Bare -and $token.Text.StartsWith('-')) {
-                if (@('-i', '--ignore-case') -ccontains $token.Text) { $ignoreCase = $true }
-                elseif (@('-n', '--line-number', '-r', '-R', '--recursive', '-H') -cnotcontains $token.Text) { return $null }
-            }
-            else { $positional.Add($token.Text) }
-        }
-        if ($positional.Count -ne 2) { return $null }
-        $pattern = $positional[0]; $path = $positional[1]
+function New-ShellSegment {
+    [PSCustomObject]@{
+        Words      = New-Object System.Collections.Generic.List[object]
+        InputFiles = New-Object System.Collections.Generic.List[object]
     }
-    elseif ($verb -eq 'Select-String' -or $verb -eq 'sls') {
-        # Select-String is case-INsensitive unless told otherwise.
-        $ignoreCase = $true
-        for ($i = 1; $i -lt $tokens.Count; $i++) {
-            $name = $tokens[$i].Text
-            if (-not $tokens[$i].Bare) { return $null }
-            if ($name -eq '-CaseSensitive') { $ignoreCase = $false; continue }
-            if ($i + 1 -ge $tokens.Count) { return $null }
-            if ($name -eq '-Pattern') { $pattern = $tokens[$i + 1].Text }
-            elseif ($name -eq '-Path' -or $name -eq '-LiteralPath') { $path = $tokens[$i + 1].Text }
-            else { return $null }
+}
+
+function Get-WordRange {
+    param($Words, [int]$From)
+    $range = New-Object System.Collections.Generic.List[object]
+    for ($at = $From; $at -lt $Words.Count; $at++) { $range.Add($Words[$at]) }
+    return ,$range
+}
+
+function ConvertFrom-ArgumentAst {
+    param($Node)
+    if ($Node -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+        return (New-ShellWord -Text $Node.Value -Bare ($Node.StringConstantType -eq 'BareWord'))
+    }
+    if ($Node -is [System.Management.Automation.Language.ConstantExpressionAst]) {
+        return (New-ShellWord -Text ([string]$Node.Value))
+    }
+    if ($Node -is [System.Management.Automation.Language.ArrayLiteralAst]) {
+        $parts = New-Object System.Collections.Generic.List[string]
+        $constant = $true
+        foreach ($part in $Node.Elements) {
+            if ($part -is [System.Management.Automation.Language.StringConstantExpressionAst]) { $parts.Add($part.Value) }
+            else { $constant = $false }
+        }
+        if ($constant) { return (New-ShellWord -Text ($parts -join ',') -Bare $false -Items $parts.ToArray()) }
+    }
+    return (New-ShellWord -Text $Node.Extent.Text -Literal $false -Bare $false)
+}
+
+# A pipeline element as a segment. `(Get-Content f) | ...` stands for its last command.
+function ConvertFrom-PipelineElement {
+    param($Element)
+    $segment = New-ShellSegment
+    $command = $Element
+    if ($Element -is [System.Management.Automation.Language.CommandExpressionAst] -and
+        $Element.Expression -is [System.Management.Automation.Language.ParenExpressionAst] -and
+        $Element.Expression.Pipeline -is [System.Management.Automation.Language.PipelineAst]) {
+        $inner = @($Element.Expression.Pipeline.PipelineElements)
+        $command = $inner[$inner.Count - 1]
+    }
+    if ($command -isnot [System.Management.Automation.Language.CommandAst]) { return $segment }
+
+    foreach ($node in $command.CommandElements) {
+        if ($node -is [System.Management.Automation.Language.CommandParameterAst]) {
+            $word = New-ShellWord -Text ('-' + $node.ParameterName)
+            if ($null -ne $node.Argument) { $word.Value = ConvertFrom-ArgumentAst $node.Argument }
+            $segment.Words.Add($word)
+        }
+        else { $segment.Words.Add((ConvertFrom-ArgumentAst $node)) }
+    }
+    return $segment
+}
+
+# Every pipeline in a PowerShell command, script blocks and subexpressions included.
+function Split-PowerShellCommand {
+    param([string]$Text)
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$tokens, [ref]$errors)
+    $pipelines = New-Object System.Collections.Generic.List[object]
+    $found = $ast.FindAll({ param($candidate) $candidate -is [System.Management.Automation.Language.PipelineAst] }, $true)
+    foreach ($pipelineAst in $found) {
+        $segments = New-Object System.Collections.Generic.List[object]
+        foreach ($element in $pipelineAst.PipelineElements) { $segments.Add((ConvertFrom-PipelineElement $element)) }
+        $pipelines.Add($segments)
+    }
+    return ,$pipelines
+}
+
+function New-BashState {
+    [PSCustomObject]@{
+        Pipelines = New-Object System.Collections.Generic.List[object]
+        Segments  = New-Object System.Collections.Generic.List[object]
+        Segment   = New-ShellSegment
+        Word      = New-Object System.Text.StringBuilder
+        InWord    = $false
+        Literal   = $true
+        Bare      = $true
+        Redirect  = $null
+        Heredocs  = New-Object System.Collections.Generic.List[string]
+    }
+}
+
+function Complete-BashWord {
+    param($State)
+    if (-not $State.InWord) { return }
+    $text = $State.Word.ToString()
+    $redirect = $State.Redirect
+    $wasLiteral = $State.Literal
+    $wasBare = $State.Bare
+    [void]$State.Word.Clear()
+    $State.InWord = $false
+    $State.Literal = $true
+    $State.Bare = $true
+    $State.Redirect = $null
+
+    if ($redirect -eq 'heredoc') { $State.Heredocs.Add($text); return }
+    if ($redirect -eq 'in') { $State.Segment.InputFiles.Add((New-ShellWord -Text $text -Literal $wasLiteral -Bare $false)); return }
+    if ($redirect) { return }
+    # A brace group's braces are words of their own in bash, and they bound commands.
+    if ($wasBare -and ($text -eq '{' -or $text -eq '}')) { Complete-BashPipeline $State; return }
+    $State.Segment.Words.Add((New-ShellWord -Text $text -Literal $wasLiteral -Bare $wasBare))
+}
+
+function Complete-BashSegment {
+    param($State)
+    Complete-BashWord $State
+    if ($State.Segment.Words.Count -gt 0 -or $State.Segment.InputFiles.Count -gt 0) { $State.Segments.Add($State.Segment) }
+    $State.Segment = New-ShellSegment
+}
+
+function Complete-BashPipeline {
+    param($State)
+    Complete-BashSegment $State
+    if ($State.Segments.Count -gt 0) { $State.Pipelines.Add($State.Segments) }
+    $State.Segments = New-Object System.Collections.Generic.List[object]
+}
+
+# One redirection operator at Index ('<' or '>'), returning the index after it: an input
+# file, an output target, a heredoc delimiter or a descriptor duplication, recorded on
+# State. Split out of Split-BashCommand to keep its nesting within the gate's limit.
+function Step-BashRedirect {
+    param($State, [string]$Text, [int]$Index)
+    $n = $Text.Length
+    $i = $Index
+    $c = $Text[$i]
+    $next = if ($i + 1 -lt $n) { $Text[$i + 1] } else { [char]0 }
+
+    # A file-descriptor number before the operator belongs to it, not to a word.
+    if ($State.InWord -and $State.Word.ToString() -match '^\d+$') { [void]$State.Word.Clear(); $State.InWord = $false }
+    Complete-BashWord $State
+
+    if ($c -eq '<') {
+        if ($next -eq '(') { Complete-BashPipeline $State; return $i + 2 }
+        if ($next -ne '<') { $State.Redirect = 'in'; return $i + 1 }
+        $i += 2
+        if ($i -lt $n -and $Text[$i] -eq '<') { $State.Redirect = 'out'; return $i + 1 }
+        $State.Redirect = 'heredoc'
+        if ($i -lt $n -and $Text[$i] -eq '-') { $i++ }
+        return $i
+    }
+
+    $i++
+    if ($i -lt $n -and ($Text[$i] -eq '>' -or $Text[$i] -eq '|')) { $i++ }
+    if ($i -lt $n -and $Text[$i] -eq '&') {
+        $i++
+        while ($i -lt $n -and ([string]$Text[$i]) -match '[\d-]') { $i++ }
+        return $i
+    }
+    $State.Redirect = 'out'
+    return $i
+}
+
+# Bash words, commands and pipelines: quotes, escapes, $(...) and backticks kept inside
+# their word, redirections set aside (an input file kept), heredoc bodies skipped as
+# data. Not a shell: enough to say which command each word belongs to.
+function Split-BashCommand {
+    param([string]$Text)
+    $state = New-BashState
+    $n = $Text.Length
+    $i = 0
+    while ($i -lt $n) {
+        $c = $Text[$i]
+        $next = if ($i + 1 -lt $n) { $Text[$i + 1] } else { [char]0 }
+
+        if ($c -eq "`n") {
+            Complete-BashPipeline $state
             $i++
+            foreach ($delimiter in @($state.Heredocs)) {
+                while ($i -lt $n) {
+                    $end = $Text.IndexOf("`n", $i)
+                    if ($end -lt 0) { $end = $n }
+                    $line = $Text.Substring($i, $end - $i).Trim()
+                    $i = [Math]::Min($end + 1, $n)
+                    if ($line -eq $delimiter) { break }
+                }
+            }
+            $state.Heredocs.Clear()
+            continue
         }
-        if (-not $pattern -or -not $path) { return $null }
+        if ([char]::IsWhiteSpace($c)) { Complete-BashWord $state; $i++; continue }
+        if ($c -eq '#' -and -not $state.InWord) {
+            while ($i -lt $n -and $Text[$i] -ne "`n") { $i++ }
+            continue
+        }
+        if ($c -eq "'") {
+            if (-not $state.InWord) { $state.Bare = $false }
+            $state.InWord = $true
+            $close = $Text.IndexOf("'", $i + 1)
+            if ($close -lt 0) { $close = $n }
+            [void]$state.Word.Append($Text.Substring($i + 1, $close - $i - 1))
+            $i = $close + 1
+            continue
+        }
+        if ($c -eq '"') {
+            if (-not $state.InWord) { $state.Bare = $false }
+            $state.InWord = $true
+            $i++
+            while ($i -lt $n -and $Text[$i] -ne '"') {
+                if ($Text[$i] -eq '\' -and $i + 1 -lt $n -and '$`"\'.IndexOf($Text[$i + 1]) -ge 0) { $i++ }
+                elseif ($Text[$i] -eq '$' -or $Text[$i] -eq '`') { $state.Literal = $false }
+                [void]$state.Word.Append($Text[$i])
+                $i++
+            }
+            $i++
+            continue
+        }
+        if ($c -eq '\') {
+            if ($next -ne "`n") {
+                $state.InWord = $true
+                if ($i + 1 -lt $n) { [void]$state.Word.Append($next) }
+            }
+            $i += 2
+            continue
+        }
+        if ($c -eq '$' -and ($next -eq '(' -or $next -eq '{')) {
+            $state.InWord = $true
+            $state.Literal = $false
+            $open = $next
+            $shut = if ($next -eq '(') { ')' } else { '}' }
+            [void]$state.Word.Append($c)
+            $i++
+            $depth = 0
+            do {
+                $ch = $Text[$i]
+                if ($ch -eq $open) { $depth++ } elseif ($ch -eq $shut) { $depth-- }
+                [void]$state.Word.Append($ch)
+                $i++
+            } while ($i -lt $n -and $depth -gt 0)
+            continue
+        }
+        if ($c -eq '`') {
+            $state.InWord = $true
+            $state.Literal = $false
+            $close = $Text.IndexOf('`', $i + 1)
+            if ($close -lt 0) { $close = $n - 1 }
+            [void]$state.Word.Append($Text.Substring($i, $close - $i + 1))
+            $i = $close + 1
+            continue
+        }
+        if ($c -eq '$') { $state.Literal = $false }
+        if ($c -eq '|') {
+            if ($next -eq '|') { Complete-BashPipeline $state; $i += 2 }
+            else { Complete-BashSegment $state; $i += $(if ($next -eq '&') { 2 } else { 1 }) }
+            continue
+        }
+        if ($c -eq '&') {
+            if ($next -eq '&') { Complete-BashPipeline $state; $i += 2; continue }
+            if ($next -eq '>') {
+                Complete-BashWord $state
+                $state.Redirect = 'out'
+                $i += 2
+                if ($i -lt $n -and $Text[$i] -eq '>') { $i++ }
+                continue
+            }
+            Complete-BashPipeline $state
+            $i++
+            continue
+        }
+        if ($c -eq ';' -or $c -eq '(' -or $c -eq ')') { Complete-BashPipeline $state; $i++; continue }
+        if ($c -eq '<' -or $c -eq '>') { $i = Step-BashRedirect -State $state -Text $Text -Index $i; continue }
+        $state.InWord = $true
+        [void]$state.Word.Append($c)
+        $i++
     }
-    else { return $null }
+    Complete-BashPipeline $state
+    return ,$state.Pipelines
+}
+
+function Get-VerbName {
+    param([string]$Text)
+    $leaf = @($Text -split '[\\/]')[-1]
+    return ($leaf -replace '(?i)\.exe$', '')
+}
+
+# Where the command word sits, past VAR=x assignments and prefixes such as sudo or then.
+function Get-VerbIndex {
+    param($Words)
+    for ($at = 0; $at -lt $Words.Count; $at++) {
+        $text = $Words[$at].Text
+        if ($Words[$at].Bare -and $text -match '^[A-Za-z_][A-Za-z0-9_]*=') { continue }
+        $name = Get-VerbName $text
+        if ($script:CommandPrefixes -contains $name) { continue }
+        if ($name -eq 'env' -and $at + 1 -lt $Words.Count -and $Words[$at + 1].Text -match '^[A-Za-z_][A-Za-z0-9_]*=') { continue }
+        return $at
+    }
+    return -1
+}
+
+function New-SearchDescriptor {
+    param([string]$Tool)
+    [PSCustomObject]@{
+        Tool       = $Tool
+        Patterns   = New-Object System.Collections.Generic.List[object]
+        IgnoreCase = $false
+        Fixed      = $false
+        Operands   = New-Object System.Collections.Generic.List[object]
+        NoOperand  = 'stdin'
+        Glob       = $null
+        Base       = $null
+        Unsure     = $null
+    }
+}
+
+function Set-GrepOption {
+    param($Search, [string]$Name, $Value, [string]$Kind)
+    if ($Name -ceq 'e' -or $Name -ceq 'regexp') { $Search.Patterns.Add($Value) }
+    elseif ($Name -ceq 'f' -or $Name -ceq 'file') { $Search.Patterns.Add($null) }
+    elseif ($Name -ceq 'i' -or $Name -ceq 'ignore-case' -or ($Kind -eq 'grep' -and $Name -ceq 'y')) { $Search.IgnoreCase = $true }
+    elseif ($Name -ceq 'F' -or $Name -ceq 'fixed-strings' -or $Name -ceq 'literal' -or ($Name -ceq 'Q' -and $Kind -in 'ag', 'ack')) { $Search.Fixed = $true }
+    elseif ($Kind -eq 'grep' -and ($Name -ceq 'r' -or $Name -ceq 'R' -or $Name -clike '*recursive')) { $Search.NoOperand = 'cwd' }
+    elseif ($Name -ceq 'include' -or $Name -ceq 'glob' -or $Name -ceq 'iglob' -or ($Kind -eq 'rg' -and $Name -ceq 'g')) {
+        if ($null -ne $Value -and $Value.Literal -and (Test-PlainGlob $Value.Text)) { $Search.Glob = $Value.Text }
+    }
+    elseif ($Kind -eq 'rg' -and ($Name -ceq 't' -or $Name -ceq 'type')) {
+        if ($null -ne $Value -and $script:TypeGlobs.ContainsKey($Value.Text)) { $Search.Glob = $script:TypeGlobs[$Value.Text] }
+    }
+}
+
+# grep, egrep, fgrep, rg, ag, ack and git grep: options, pattern, file operands.
+function Read-GrepFamily {
+    param($Words, [string]$Kind, [string]$Tool)
+    $options = $script:GrepOptions[$Kind]
+    $search = New-SearchDescriptor $Tool
+    $search.NoOperand = if ($Kind -eq 'grep') { 'stdin' } else { 'cwd' }
+    $search.Fixed = ($Tool -eq 'fgrep')
+    $positional = New-Object System.Collections.Generic.List[object]
+    $done = $false
+    for ($at = 0; $at -lt $Words.Count; $at++) {
+        $word = $Words[$at]
+        $text = $word.Text
+        if (-not $done -and $word.Bare -and $text -eq '--') { $done = $true; continue }
+        if ($done -or -not $word.Bare -or $text -notmatch '^-.') { $positional.Add($word); continue }
+
+        if ($text.StartsWith('--')) {
+            $name = $text.Substring(2)
+            $value = $null
+            $eq = $name.IndexOf('=')
+            if ($eq -ge 0) {
+                $value = New-ShellWord -Text $name.Substring($eq + 1) -Literal $word.Literal
+                $name = $name.Substring(0, $eq)
+            }
+            elseif ($options.Long -contains $name -and $at + 1 -lt $Words.Count) { $at++; $value = $Words[$at] }
+            if ($options.Lists -contains $name) { return $null }
+            Set-GrepOption -Search $search -Name $name -Value $value -Kind $Kind
+            continue
+        }
+
+        $cluster = $text.Substring(1)
+        for ($k = 0; $k -lt $cluster.Length; $k++) {
+            $ch = [string]$cluster[$k]
+            if ($options.Lists -ccontains $ch) { return $null }
+            if (-not $options.Short.Contains($ch)) { Set-GrepOption -Search $search -Name $ch -Value $null -Kind $Kind; continue }
+            $rest = $cluster.Substring($k + 1)
+            $value = $null
+            if ($rest) { $value = New-ShellWord -Text $rest -Literal $word.Literal }
+            elseif ($at + 1 -lt $Words.Count) { $at++; $value = $Words[$at] }
+            Set-GrepOption -Search $search -Name $ch -Value $value -Kind $Kind
+            break
+        }
+    }
+
+    if ($search.Patterns.Count -eq 0) {
+        if ($positional.Count -eq 0) { return $null }
+        $search.Patterns.Add($positional[0])
+        $positional.RemoveAt(0)
+    }
+    foreach ($operand in $positional) { $search.Operands.Add($operand) }
+    return $search
+}
+
+# A grep-family command inside find -exec or xargs.
+function Read-InnerSearch {
+    param($Words)
+    $at = Get-VerbIndex $Words
+    if ($at -lt 0) { return $null }
+    $verb = Get-VerbName $Words[$at].Text
+    if ($script:GrepVerbs -notcontains $verb) { return $null }
+    $kind = if ($verb -in 'egrep', 'fgrep') { 'grep' } else { $verb.ToLowerInvariant() }
+    return (Read-GrepFamily -Words (Get-WordRange $Words ($at + 1)) -Kind $kind -Tool $verb)
+}
+
+# Only `git grep` searches; git diff, log, show and blame read history, and log's --grep
+# and -S are flags of a command that is not a search.
+function Read-GitGrep {
+    param($Words, [string]$BaseDir)
+    $at = 0
+    $gitDir = $null
+    while ($at -lt $Words.Count) {
+        $text = $Words[$at].Text
+        if ($text -ceq '-C') {
+            if ($at + 1 -lt $Words.Count) { $gitDir = $Words[$at + 1] }
+            $at += 2
+            continue
+        }
+        if ($text -ceq '-c' -or $text -ceq '--git-dir' -or $text -ceq '--work-tree' -or $text -ceq '--namespace') { $at += 2; continue }
+        if ($Words[$at].Bare -and $text.StartsWith('-')) { $at++; continue }
+        break
+    }
+    if ($at -ge $Words.Count -or $Words[$at].Text -cne 'grep') { return $null }
+
+    $search = Read-GrepFamily -Words (Get-WordRange $Words ($at + 1)) -Kind 'git' -Tool 'git grep'
+    if ($null -eq $search -or $null -eq $gitDir) { return $search }
+    $dir = if ($gitDir.Literal) { Resolve-ShellDirectory -Text $gitDir.Text -BaseDir $BaseDir } else { $null }
+    if ($dir) { $search.Base = $dir } else { $search.Unsure = "git -C $($gitDir.Text)" }
+    return $search
+}
+
+function Resolve-SlsParameter {
+    param([string]$Name)
+    if ($Name -eq 'LP' -or $Name -eq 'PSPath') { return 'LiteralPath' }
+    $all = @($script:SlsValued + $script:SlsSwitches)
+    $exact = @($all | Where-Object { $_ -eq $Name })
+    if ($exact.Count -eq 1) { return $exact[0] }
+    $prefixed = @($all | Where-Object { $_.StartsWith($Name, [StringComparison]::OrdinalIgnoreCase) })
+    if ($prefixed.Count -eq 1) { return $prefixed[0] }
+    return $null
+}
+
+function Read-SelectString {
+    param($Words, [string]$Tool)
+    $search = New-SearchDescriptor $Tool
+    $search.IgnoreCase = $true
+    $bound = @{}
+    $positional = New-Object System.Collections.Generic.List[object]
+    for ($at = 0; $at -lt $Words.Count; $at++) {
+        $word = $Words[$at]
+        if (-not ($word.Bare -and $word.Text -match '^-[A-Za-z]')) { $positional.Add($word); continue }
+        $name = Resolve-SlsParameter $word.Text.Substring(1)
+        if ($null -eq $name) { continue }
+        if ($null -ne $word.Value) { $bound[$name] = $word.Value }
+        elseif ($script:SlsValued -contains $name) {
+            if ($at + 1 -lt $Words.Count) { $at++; $bound[$name] = $Words[$at] }
+        }
+        else { $bound[$name] = New-ShellWord -Text '$true' }
+    }
+    if (-not $bound.ContainsKey('Pattern') -and $positional.Count -gt 0) { $bound['Pattern'] = $positional[0]; $positional.RemoveAt(0) }
+    $hasPath = $bound.ContainsKey('Path') -or $bound.ContainsKey('LiteralPath')
+    if (-not $hasPath -and $positional.Count -gt 0) { $bound['Path'] = $positional[0]; $hasPath = $true }
+    if (-not $bound.ContainsKey('Pattern')) { return $null }
+    if ($bound.ContainsKey('InputObject') -and -not $hasPath) { return $null }
+
+    $search.Patterns.Add($bound['Pattern'])
+    if ($bound.ContainsKey('CaseSensitive')) { $search.IgnoreCase = ($bound['CaseSensitive'].Text -eq '$false') }
+    if ($bound.ContainsKey('SimpleMatch')) { $search.Fixed = ($bound['SimpleMatch'].Text -ne '$false') }
+    foreach ($key in @('Path', 'LiteralPath')) { if ($bound.ContainsKey($key)) { $search.Operands.Add($bound[$key]) } }
+    if ($bound.ContainsKey('Include')) {
+        $include = $bound['Include']
+        if ($include.Literal -and @($include.Items).Count -eq 1 -and (Test-PlainGlob $include.Text)) { $search.Glob = $include.Text }
+    }
+    return $search
+}
+
+function Read-Findstr {
+    param($Words)
+    $search = New-SearchDescriptor 'findstr'
+    $positional = New-Object System.Collections.Generic.List[object]
+    $literal = $false
+    foreach ($word in $Words) {
+        if (-not ($word.Bare -and $word.Text -match '^[/-]([A-Za-z]+)(?::(.*))?$')) { $positional.Add($word); continue }
+        $flags = $Matches[1].ToLowerInvariant()
+        if ($Matches.ContainsKey(2)) {
+            $key = $flags[$flags.Length - 1]
+            $flags = $flags.Substring(0, $flags.Length - 1)
+            $value = $Matches[2].Trim('"')
+            if ($key -eq 'c') { $search.Patterns.Add((New-ShellWord -Text $value -Literal $word.Literal)); $literal = $true }
+            elseif ($key -eq 'g') { $search.Patterns.Add($null) }
+            elseif ($key -eq 'f') { $search.Unsure = "findstr $($word.Text)" }
+            elseif ($key -eq 'd') {
+                foreach ($dir in ($value -split ';')) { if ($dir) { $search.Operands.Add((New-ShellWord -Text $dir -Literal $word.Literal)) } }
+            }
+        }
+        if ($flags.Contains('l')) { $literal = $true }
+        if ($flags.Contains('r')) { $literal = $false }
+        if ($flags.Contains('i')) { $search.IgnoreCase = $true }
+    }
+    if ($search.Patterns.Count -eq 0) {
+        if ($positional.Count -eq 0) { return $null }
+        $first = $positional[0]
+        $positional.RemoveAt(0)
+        # Space-separated strings are alternatives; not worth translating.
+        if ($first.Text.Contains(' ')) { $search.Patterns.Add($null) } else { $search.Patterns.Add($first) }
+    }
+    foreach ($operand in $positional) { $search.Operands.Add($operand) }
+    $search.Fixed = $literal
+    return $search
+}
+
+# find's starting points (default .) and a plain -name glob.
+function Get-FindStarts {
+    param($Words)
+    $found = [PSCustomObject]@{ Words = (New-Object System.Collections.Generic.List[object]); Glob = $null; Unsure = $null; MustExist = $false }
+    $at = 0
+    while ($at -lt $Words.Count -and -not ($Words[$at].Bare -and $Words[$at].Text -match '^[-(!]')) { $found.Words.Add($Words[$at]); $at++ }
+    if ($found.Words.Count -eq 0) { $found.Words.Add((New-ShellWord -Text '.')) }
+    for (; $at + 1 -lt $Words.Count; $at++) {
+        if (($Words[$at].Text -ceq '-name' -or $Words[$at].Text -ceq '-iname') -and (Test-PlainGlob $Words[$at + 1].Text)) { $found.Glob = $Words[$at + 1].Text }
+    }
+    return $found
+}
+
+function Read-FindExec {
+    param($Words)
+    $exec = -1
+    for ($at = 0; $at -lt $Words.Count; $at++) {
+        if ($Words[$at].Text -in '-exec', '-execdir', '-ok', '-okdir') { $exec = $at; break }
+    }
+    if ($exec -lt 0) { return $null }
+    $inner = New-Object System.Collections.Generic.List[object]
+    for ($at = $exec + 1; $at -lt $Words.Count; $at++) {
+        $text = $Words[$at].Text
+        if ($text -eq ';' -or $text -eq '+') { break }
+        if ($text -ne '{}') { $inner.Add($Words[$at]) }
+    }
+    $search = Read-InnerSearch $inner
+    if ($null -eq $search) { return $null }
+    $starts = Get-FindStarts (Get-WordRange $Words 0)
+    $search.Operands.Clear()
+    $search.Operands.AddRange($starts.Words)
+    if (-not $search.Glob) { $search.Glob = $starts.Glob }
+    return $search
+}
+
+function Read-Xargs {
+    param($Words)
+    $at = 0
+    while ($at -lt $Words.Count -and $Words[$at].Bare -and $Words[$at].Text.StartsWith('-')) {
+        if ($Words[$at].Text -cin '-n', '-I', '-P', '-d', '-L', '-s', '-E', '-a') { $at++ }
+        $at++
+    }
+    $search = Read-InnerSearch (Get-WordRange $Words $at)
+    if ($null -ne $search -and $search.Operands.Count -eq 0) { $search.NoOperand = 'xargs' }
+    return $search
+}
+
+function Read-SearchSegment {
+    param([string]$Verb, $Words, [string]$BaseDir)
+    if ($Verb -eq 'git') { return (Read-GitGrep -Words $Words -BaseDir $BaseDir) }
+    if ($Verb -in 'Select-String', 'sls') { return (Read-SelectString -Words $Words -Tool $Verb) }
+    if ($Verb -eq 'findstr') { return (Read-Findstr $Words) }
+    if ($Verb -eq 'find') { return (Read-FindExec $Words) }
+    if ($Verb -eq 'xargs') { return (Read-Xargs $Words) }
+    if ($script:GrepVerbs -contains $Verb) {
+        $kind = if ($Verb -in 'egrep', 'fgrep') { 'grep' } else { $Verb.ToLowerInvariant() }
+        return (Read-GrepFamily -Words $Words -Kind $kind -Tool $Verb)
+    }
+    return $null
+}
+
+# The path operands of a reader or lister: positionals and -Path/-LiteralPath, with a
+# plain -Filter or -Include kept as a glob.
+function Get-ReaderOperands {
+    param($Words, [string]$Verb)
+    $found = [PSCustomObject]@{ Words = (New-Object System.Collections.Generic.List[object]); Glob = $null; Unsure = $null; MustExist = $true }
+    $valued = @($script:ReaderValued)
+    if ($Verb -in 'head', 'tail') { $valued += @('n', 'c') }
+    for ($at = 0; $at -lt $Words.Count; $at++) {
+        $word = $Words[$at]
+        if (-not ($word.Bare -and $word.Text -match '^--?([A-Za-z][\w-]*)')) { $found.Words.Add($word); continue }
+        $name = $Matches[1]
+        $isPath = $script:PathParameters -contains $name
+        $value = $word.Value
+        if ($null -eq $value -and ($isPath -or $valued -contains $name) -and -not $word.Text.Contains('=') -and $at + 1 -lt $Words.Count) {
+            $at++
+            $value = $Words[$at]
+        }
+        if ($null -eq $value) { continue }
+        if ($isPath) { $found.Words.Add($value) }
+        elseif ($name -in 'Filter', 'Include' -and $value.Literal -and @($value.Items).Count -eq 1 -and (Test-PlainGlob $value.Text)) { $found.Glob = $value.Text }
+    }
+    return $found
+}
+
+# What a search with no operand of its own is fed: the files the nearest upstream command
+# reads, past filters that only pass lines through, or nothing when that command is not
+# a file reader (git diff, dotnet test, env).
+function Get-UpstreamFiles {
+    param($Segments, [int]$Index, $Search)
+    $nothing = [PSCustomObject]@{ Words = (New-Object System.Collections.Generic.List[object]); Glob = $null; Unsure = $null; MustExist = $false }
+    for ($j = $Index - 1; $j -ge 0; $j--) {
+        $words = $Segments[$j].Words
+        $at = Get-VerbIndex $words
+        if ($at -lt 0) { return $nothing }
+        $verb = Get-VerbName $words[$at].Text
+        $rest = Get-WordRange $words ($at + 1)
+        if ($script:PassThrough -contains $verb) { continue }
+        if ($Search.NoOperand -eq 'xargs') {
+            if ($verb -eq 'find') { return (Get-FindStarts $rest) }
+            $nothing.Unsure = "xargs $($Search.Tool) fed by $verb"
+            return $nothing
+        }
+        if ($script:ContentReaders -contains $verb) {
+            $operands = Get-ReaderOperands -Words $rest -Verb $verb
+            if ($operands.Words.Count -eq 0) { continue }
+            return $operands
+        }
+        if ($script:ItemListers -contains $verb -and $Search.Tool -in 'Select-String', 'sls') {
+            $operands = Get-ReaderOperands -Words $rest -Verb $verb
+            if ($operands.Words.Count -eq 0) { $operands.Words.Add((New-ShellWord -Text '.')) }
+            return $operands
+        }
+        return $nothing
+    }
+    return $nothing
+}
+
+function Get-SearchSources {
+    param($Search, $Segments, [int]$Index)
+    $sources = [PSCustomObject]@{ Words = (New-Object System.Collections.Generic.List[object]); Glob = $null; Unsure = $null; MustExist = $false }
+    if ($Search.Operands.Count -gt 0) { $sources.Words.AddRange($Search.Operands); return $sources }
+    $inputs = $Segments[$Index].InputFiles
+    if ($inputs.Count -gt 0) { $sources.Words.AddRange($inputs); return $sources }
+    if ($Index -gt 0) { return (Get-UpstreamFiles -Segments $Segments -Index $Index -Search $Search) }
+    if ($Search.NoOperand -eq 'cwd') { $sources.Words.Add((New-ShellWord -Text '.')) }
+    return $sources
+}
+
+# Git Bash spells C:\x as /c/x.
+function ConvertFrom-BashPath {
+    param([string]$Text)
+    if ($Text -match '^/([A-Za-z])(/|$)') { return ($Matches[1].ToUpperInvariant() + ':\' + $Text.Substring(2).TrimStart('/')) }
+    if ($Text -eq '~' -or $Text -match '^~[\\/]') { return ($HOME + $Text.Substring(1)) }
+    return $Text
+}
+
+function Resolve-ShellDirectory {
+    param([string]$Text, [string]$BaseDir)
+    $path = ConvertFrom-BashPath $Text
+    if (-not [System.IO.Path]::IsPathRooted($path) -and -not $BaseDir) { return $null }
+    return (Resolve-FullPath -Path $path -BaseDir $BaseDir)
+}
+
+# A path operand as razorgraph's folder plus glob, and the nearest existing directory to
+# ask git about. $null when it is relative to a directory this could not follow.
+function Resolve-ShellTarget {
+    param([string]$Text, [string]$BaseDir)
+    $path = ConvertFrom-BashPath $Text
+    if (-not [System.IO.Path]::IsPathRooted($path) -and -not $BaseDir) { return $null }
+
+    $glob = $null
+    $parts = @($path -split '[\\/]')
+    $wild = -1
+    for ($k = 0; $k -lt $parts.Count; $k++) { if ($parts[$k] -match '[*?\[]') { $wild = $k; break } }
+    if ($wild -ge 0) {
+        $leaf = $parts[$parts.Count - 1]
+        $between = @(if ($parts.Count - 1 -gt $wild) { $parts[$wild..($parts.Count - 2)] })
+        if ((Test-PlainGlob $leaf) -and @($between | Where-Object { $_ -ne '**' }).Count -eq 0) { $glob = $leaf }
+        $path = if ($wild -eq 0) { '.' } else { ($parts[0..($wild - 1)] -join '\') + '\' }
+    }
 
     $full = Resolve-FullPath -Path $path -BaseDir $BaseDir
-    $leaf = Split-Path -Leaf $full.TrimEnd('\', '/')
-    $glob = $null
-    if ($leaf -match '[*?]') {
-        if (-not (Test-PlainGlob $leaf)) { return $null }
+    $exists = $true
+    if ($wild -ge 0) { $folder = $full; $exists = Test-Path -LiteralPath $full -PathType Container }
+    elseif (Test-Path -LiteralPath $full -PathType Container) { $folder = $full }
+    elseif (Test-Path -LiteralPath $full -PathType Leaf) {
         $folder = Split-Path -Parent $full
-        $glob = $leaf
-        if (-not (Test-Path -LiteralPath $folder -PathType Container)) { return $null }
+        $name = Split-Path -Leaf $full
+        if (Test-PlainGlob $name) { $glob = $name }
     }
-    elseif (Test-Path -LiteralPath $full -PathType Container) { $folder = $full.TrimEnd('\', '/') }
-    elseif (Test-Path -LiteralPath $full -PathType Leaf) { $folder = Split-Path -Parent $full; $glob = $leaf }
-    else { return $null }
+    else { $folder = $full; $exists = $false }
 
-    $arguments = [ordered]@{ pattern = $pattern; folder = $folder }
-    if ($glob) { $arguments['glob'] = $glob }
-    $arguments['ignoreCase'] = $ignoreCase
-    return $arguments
+    $folder = $folder.TrimEnd('\', '/')
+    if ($folder -match '^[A-Za-z]:$') { $folder += '\' }
+    $probe = $folder
+    while ($probe -and -not (Test-Path -LiteralPath $probe -PathType Container)) { $probe = Split-Path -Parent $probe }
+    if (-not $exists) { $folder = $probe }
+    return [PSCustomObject]@{ Folder = $folder; Glob = $glob; Exists = $exists; Probe = $probe }
+}
+
+function Test-ShellTargetInRepo {
+    param($Target)
+    if (-not $Target.Probe) { return $false }
+    if (-not $script:WorkTrees.ContainsKey($Target.Probe)) { $script:WorkTrees[$Target.Probe] = Test-InsideGitWorkTree $Target.Probe }
+    return $script:WorkTrees[$Target.Probe]
+}
+
+# pwsh -Command "...", bash -c "..." and cmd /c ...: the text they run.
+function Get-InnerCommand {
+    param([string]$Verb, $Words)
+    if ($Verb -in 'pwsh', 'powershell') { $shell = 'PowerShell'; $flag = '^-(c|co|com|comm|comma|comman|command)$' }
+    elseif ($Verb -in 'bash', 'sh', 'zsh') { $shell = 'Bash'; $flag = '^-[a-z]*c[a-z]*$' }
+    elseif ($Verb -eq 'cmd') { $shell = 'Bash'; $flag = '^/[ck]$' }
+    else { return $null }
+    for ($at = 0; $at -lt $Words.Count; $at++) {
+        if (-not ($Words[$at].Bare -and $Words[$at].Text -match $flag)) { continue }
+        $parts = @(for ($k = $at + 1; $k -lt $Words.Count; $k++) { $Words[$k].Text })
+        if ($Verb -in 'bash', 'sh', 'zsh') { $parts = @($parts | Select-Object -First 1) }
+        if ($parts.Count -eq 0) { return $null }
+        return [PSCustomObject]@{ Text = ($parts -join ' '); Shell = $shell }
+    }
+    return $null
+}
+
+# Search is set (with Target and Glob) when some search reads files inside a git working
+# tree; Unsure names the operands that could not be resolved.
+function Get-ShellVerdict {
+    param([string]$Command, [string]$Shell, [string]$BaseDir, [int]$Depth = 0)
+    $verdict = [PSCustomObject]@{ Search = $null; Target = $null; Glob = $null; Unsure = (New-Object System.Collections.Generic.List[string]) }
+    $pipelines = if ($Shell -eq 'PowerShell') { Split-PowerShellCommand $Command } else { Split-BashCommand $Command }
+    $location = $BaseDir
+
+    foreach ($segments in $pipelines) {
+        for ($index = 0; $index -lt $segments.Count; $index++) {
+            $words = $segments[$index].Words
+            $at = Get-VerbIndex $words
+            if ($at -lt 0) { continue }
+            $verb = Get-VerbName $words[$at].Text
+            $rest = Get-WordRange $words ($at + 1)
+
+            if ($script:LocationVerbs -contains $verb) {
+                $operands = (Get-ReaderOperands -Words $rest -Verb $verb).Words
+                $location = if ($operands.Count -eq 0) { $HOME }
+                elseif ($operands[0].Literal -and $operands[0].Text -ne '-') { Resolve-ShellDirectory -Text $operands[0].Text -BaseDir $location }
+                else { $null }
+                continue
+            }
+
+            $inner = Get-InnerCommand -Verb $verb -Words $rest
+            if ($null -ne $inner) {
+                if ($Depth -lt 3) {
+                    $nested = Get-ShellVerdict -Command $inner.Text -Shell $inner.Shell -BaseDir $location -Depth ($Depth + 1)
+                    if ($null -ne $nested.Search) { return $nested }
+                    $verdict.Unsure.AddRange($nested.Unsure)
+                }
+                continue
+            }
+
+            $search = Read-SearchSegment -Verb $verb -Words $rest -BaseDir $location
+            if ($null -eq $search) { continue }
+            if ($search.Unsure) { $verdict.Unsure.Add($search.Unsure); continue }
+
+            $sources = Get-SearchSources -Search $search -Segments $segments -Index $index
+            if ($sources.Unsure) { $verdict.Unsure.Add($sources.Unsure); continue }
+            if (-not $search.Glob) { $search.Glob = $sources.Glob }
+            $searchBase = if ($search.Base) { $search.Base } else { $location }
+            $itemCount = 0
+            foreach ($word in $sources.Words) { $itemCount += @($word.Items).Count }
+
+            foreach ($word in $sources.Words) {
+                if (-not $word.Literal) { $verdict.Unsure.Add($word.Text); continue }
+                foreach ($item in @($word.Items)) {
+                    if ($item -eq '-' -or $item -eq '{}') { continue }
+                    $target = Resolve-ShellTarget -Text $item -BaseDir $searchBase
+                    if ($null -eq $target) { $verdict.Unsure.Add($item); continue }
+                    if ($sources.MustExist -and -not $target.Exists) { continue }
+                    if (-not (Test-ShellTargetInRepo $target)) { continue }
+                    $verdict.Search = $search
+                    $verdict.Target = $target
+                    $verdict.Glob = if ($itemCount -eq 1 -and $target.Glob) { $target.Glob } else { $search.Glob }
+                    return $verdict
+                }
+            }
+        }
+    }
+    return $verdict
+}
+
+# The search pattern as a .NET regex, or $null when it cannot be read off the command.
+function Get-SearchPattern {
+    param($Search)
+    if ($Search.Patterns.Count -ne 1) { return $null }
+    $word = $Search.Patterns[0]
+    if ($null -eq $word -or -not $word.Literal) { return $null }
+    $items = @($word.Items | ForEach-Object { if ($Search.Fixed) { [regex]::Escape($_) } else { $_ } })
+    if ($items.Count -eq 1) { return $items[0] }
+    return (($items | ForEach-Object { "(?:$_)" }) -join '|')
 }
 
 function Get-ShellReason {
-    param([string]$Fired, [string]$Command, [string]$BaseDir)
+    param([string]$ToolName, [string]$Command, $Verdict)
 
-    $arguments = Read-ShellSearch -Command $Command -BaseDir $BaseDir
+    $search = $Verdict.Search
+    $pattern = Get-SearchPattern $search
+    $arguments = [ordered]@{
+        pattern = $(if ($null -ne $pattern) { $pattern } else { '<.NET regex>' })
+        folder  = $Verdict.Target.Folder
+    }
+    if ($Verdict.Glob) { $arguments['glob'] = $Verdict.Glob }
+    $arguments['ignoreCase'] = [bool]$search.IgnoreCase
+
     $fill = ''
-    if ($null -eq $arguments) {
-        $arguments = [ordered]@{ pattern = '<.NET regex>'; folder = '<absolute folder>'; ignoreCase = '<true|false>' }
-        $fill = "`nThis hook reads the pattern and folder out of a command only when it is one plain rg, grep or Select-String; this one is not, so fill in pattern, folder and ignoreCase (a JSON true or false). Add glob, a file-name wildcard such as *.cs, to narrow by file name."
+    if ($null -eq $pattern) {
+        $fill = "`nThis hook could not read the search pattern out of the command, so fill in pattern, a .NET regex. The folder, glob and ignoreCase are what the command would have searched."
     }
 
+    $shown = $Command -replace '\s+', ' '
+    if ($shown.Length -gt 140) { $shown = $shown.Substring(0, 140) + '...' }
+
     return @"
-Graph guard: $Fired is a text search over C# source. Run it through razorgraph instead -- one call returns the graph's name and literal hits and the disk's text hits together, with no line reported twice. A Grep inside a repo is answered that way automatically.
+Graph guard: $ToolName command '$shown' runs $($search.Tool) over files inside a git working tree, and Bash and PowerShell do not search files here. Run it through razorgraph instead -- one call returns the graph's name and literal hits and the disk's text hits together, with no line reported twice.
 
 ToolSearch("select:mcp__razorgraph__grep")
 $(Format-Call -Arguments $arguments -Offset 0 -DiskOffset 0)$fill
 
-Git history and diffs pass this guard. For a repo with no C#, set JANET_GRAPH_GUARD=off.
+The Grep tool is also available: inside a repo it is answered through razorgraph's grep in the same step. A search that reads only another command's output (git diff | grep, dotnet test | Select-String) passes, and so does one whose files all lie outside any git working tree.
 "@
 }
 
@@ -761,14 +1502,17 @@ try {
     }
 
     if ($toolName -eq 'Bash' -or $toolName -eq 'PowerShell') {
-        $fired = Get-ShellTrigger -ToolName $toolName -ToolInput $toolInput
-        if (-not $fired) { exit 0 }
+        $command = [string](Get-Prop $toolInput 'command')
+        if (-not $command -or $command -notmatch $script:ShellPrefilter) { exit 0 }
 
-        # No solution means no C# graph worth sending the search to.
-        $projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { $cwd }
-        if ($null -eq (Get-SolutionFile $projectDir)) { exit 0 }
-
-        Write-Deny (Get-ShellReason -Fired $fired -Command ([string](Get-Prop $toolInput 'command')) -BaseDir $cwd)
+        $verdict = Get-ShellVerdict -Command $command -Shell $toolName -BaseDir $cwd
+        if ($null -ne $verdict.Search) {
+            Write-Deny (Get-ShellReason -ToolName $toolName -Command $command -Verdict $verdict)
+        }
+        elseif ($verdict.Unsure.Count -gt 0) {
+            $unsure = Format-OneLine ((@($verdict.Unsure) | Select-Object -Unique) -join ', ') 120
+            Write-PassContext "Graph guard could not tell which files this $toolName search reads ($unsure), so it ran. Bash and PowerShell searches of files inside a repo are denied: search with mcp__razorgraph__grep, or with the Grep tool, which is answered through razorgraph."
+        }
     }
 }
 catch {

@@ -55,6 +55,7 @@ Text search goes through mcp__razorgraph__grep (folder = an absolute path; pass
 ignoreCase=false for a case-sensitive search): one call returns the graph's name and
 literal hits and the disk's text hits, with no line reported twice. A Grep inside a repo
 comes back answered by razorgraph in place of Grep -- read the results, do not rerun it.
+A Bash or PowerShell search of files is denied, so search with mcp__razorgraph__grep or Grep.
 If ToolSearch returns no razorgraph tools, say so in your report before falling back to
 text. Read only the span a hit or node names (docsStart ?? lineStart through lineEnd),
 never whole files.

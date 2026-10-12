@@ -6,8 +6,9 @@
 
 .DESCRIPTION
     Since 2026-10-11 the guard ANSWERS a Grep inside a git working tree through
-    razorgraph's grep and hands the results back inside the denial, and refuses a shell
-    text search over C# with that call ready to paste. Before that it denied both until
+    razorgraph's grep and hands the results back inside the denial. Since 2026-10-12 it
+    refuses ANY Bash or PowerShell search that reads files inside a git working tree with
+    that call ready to paste; before then only a search over C# was. Before that it denied both until
     the session had made any razorgraph call, and agents cleared it with one throwaway
     call and grepped anyway.
 
@@ -41,8 +42,8 @@ BeforeAll {
     '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__razorgraph__find_nodes"}]}}' |
         Set-Content -LiteralPath $script:warmTranscript -Encoding utf8
 
-    # A git working tree holding a solution: the shell trigger needs the solution, the
-    # Grep path needs the working tree. TestDrive sits under %TEMP%, outside any repo.
+    # A git working tree. Its solution is a leftover: the shell trigger needed one until
+    # 2026-10-12. TestDrive sits under %TEMP%, outside any repo.
     $script:projectDir = Join-Path $TestDrive 'repo'
     New-Item -ItemType Directory -Path (Join-Path $script:projectDir 'src') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $script:projectDir 'Stub.slnx') -Value '<Solution />' -Encoding utf8
@@ -217,7 +218,9 @@ Describe 'Invoke-GraphGuard' {
     Context 'git is not a code search' {
         # All three of these were denied on 2026-09-06. The graph models one built state
         # of the source: it cannot answer what changed, who changed it, or when, so a
-        # denial here sends the caller to a tool that has no answer to give.
+        # denial here sends the caller to a tool that has no answer to give. Since
+        # 2026-10-12 they pass because each search reads git's OUTPUT rather than files,
+        # not because the command mentions git.
 
         It 'lets a git diff piped into a search go through' {
             # The exact command that was refused: a version constant, read out of a diff.
@@ -228,7 +231,7 @@ Describe 'Invoke-GraphGuard' {
         It 'lets a git status beside a C# path go through' {
             # Every case in this context carries a search tool ON PURPOSE. Written
             # without one, the command passes whether the exemption exists or not --
-            # the shell trigger needs a search tool AND a C# path -- so the test would
+            # the shell trigger needs a search -- so the test would
             # be green for a reason unrelated to what it claims to check. Found by
             # mutation on 2026-09-06: removing the exemption failed one test of three,
             # and the two survivors were this shape.
@@ -312,17 +315,16 @@ Describe 'Invoke-GraphGuard' {
         }
     }
 
-    Context 'known false positive, pinned so a fix is deliberate' {
+    Context 'a former false positive, now the rule' {
 
-        It 'still refuses a byte-level encoding check over C# sources' {
-            # FOUND 2026-09-06 AND NOT FIXED. The question is which files contain a
-            # non-ASCII byte -- the graph indexes neither bytes nor line endings, so this
-            # denial is wrong in the same way the git ones were. It is left standing
-            # because the shell trigger ignores the search PATTERN entirely, and reading
-            # a pattern out of arbitrary shell text is the kind of heuristic that rots.
-            #
-            # If you fix it, this test SHOULD fail. Change it to 'pass' then, rather than
-            # deleting it -- the case is worth keeping either way.
+        It 'refuses a character check over C# sources, which razorgraph grep answers' {
+            # FOUND 2026-09-06 and pinned as a false positive: the question is which
+            # files hold a non-ASCII character, and the graph indexes no bytes. Since
+            # 2026-10-12 shell searches of files are denied whatever they look for, and
+            # this one has an answer: razorgraph grep's disk section is a .NET regex
+            # over every line, so a pattern such as [^\x00-\x7F] finds it. Raw bytes and line
+            # endings are still beyond it, and a [System.IO.File]::ReadAllBytes check
+            # is not a search, so it passes.
             Invoke-Guard -Command 'Get-ChildItem src -Filter *.cs | Select-String -Pattern ([char]0x2014)' |
                 Should -Be 'deny'
         }
@@ -573,13 +575,132 @@ Describe 'Invoke-GraphGuard' {
             $reason | Should -Match ([regex]::Escape('{"pattern":"Bar","folder":"' + $folder + '","glob":"Foo.cs","ignoreCase":true}'))
         }
 
-        It 'shows placeholders rather than guessing when the command is not plain' {
-            # The shell is not parsed beyond one plain search, so a pipeline gets the
-            # template -- never a folder the hook merely assumed.
+        It 'reads a pipeline into a paste-ready call' {
+            # Was a placeholder until 2026-10-12: the lister upstream of Select-String
+            # is now read for its folder and its -Filter.
             $reason = Get-GuardReason -Command 'Get-ChildItem src -Filter *.cs | Select-String -Pattern WavePlan'
 
-            $reason | Should -Match ([regex]::Escape('{"pattern":"<.NET regex>","folder":"<absolute folder>","ignoreCase":"<true|false>"}'))
-            $reason | Should -Match 'fill in pattern, folder and ignoreCase'
+            $folder = (Join-Path $script:projectDir 'src') -replace '\\', '\\'
+            $reason | Should -Match ([regex]::Escape('{"pattern":"WavePlan","folder":"' + $folder + '","glob":"*.cs","ignoreCase":true}'))
+        }
+
+        It 'shows a placeholder for a pattern it cannot read, never a guess' {
+            # The folder is what decided the denial, so it is always real; a pattern
+            # held in a variable is not read.
+            $reason = Get-GuardReason -Command 'Select-String -Path src\Foo.cs -Pattern $needle'
+
+            $folder = (Join-Path $script:projectDir 'src') -replace '\\', '\\'
+            $reason | Should -Match ([regex]::Escape('{"pattern":"<.NET regex>","folder":"' + $folder + '","glob":"Foo.cs","ignoreCase":true}'))
+            $reason | Should -Match 'fill in pattern'
+        }
+    }
+
+    Context 'any shell search of files in a repo is denied, 2026-10-12' {
+        # "PowerShell and bash shouldn't be doing searches." The question is what the
+        # search READS: files inside a git working tree are denied whatever their type,
+        # another command's output passes, and so do files outside any repo.
+
+        BeforeAll {
+            New-Item -ItemType Directory -Path (Join-Path $script:projectDir 'config') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $script:projectDir 'config\settings.json') -Value '{ "version": "1.3" }' -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $script:plainDir 'notes.txt') -Value 'WavePlan' -Encoding utf8
+            $script:configDir = Join-Path $script:projectDir 'config'
+        }
+
+        It 'refuses a recursive grep over a folder of non-C# files, with the call to paste' {
+            $reason = Get-GuardReason -ToolName 'Bash' -Command 'grep -rn "version" config'
+
+            $folder = $script:configDir -replace '\\', '\\'
+            $reason | Should -Match ([regex]::Escape('mcp__razorgraph__grep {"pattern":"version","folder":"' + $folder + '","ignoreCase":false}'))
+            $reason | Should -Match 'The Grep tool is also available'
+            $reason | Should -Match 'answered through razorgraph'
+        }
+
+        It 'refuses Select-String -Path over *.json and carries the glob' {
+            $reason = Get-GuardReason -Command 'Select-String -Path config\*.json -Pattern version'
+
+            $folder = $script:configDir -replace '\\', '\\'
+            $reason | Should -Match ([regex]::Escape('{"pattern":"version","folder":"' + $folder + '","glob":"*.json","ignoreCase":true}'))
+        }
+
+        It 'refuses Get-ChildItem -Recurse piped into Select-String' {
+            Invoke-Guard -Command 'Get-ChildItem -Recurse | Select-String version' | Should -Be 'deny'
+        }
+
+        It 'refuses git grep over non-C# files' {
+            Invoke-Guard -ToolName 'Bash' -Command 'git grep -n "version" -- "*.json"' | Should -Be 'deny'
+        }
+
+        It 'refuses a file read piped into grep' {
+            $reason = Get-GuardReason -ToolName 'Bash' -Command 'cat config/settings.json | grep version'
+
+            $reason | Should -Match ([regex]::Escape('"glob":"settings.json"'))
+        }
+
+        It 'refuses a file fed to grep through an input redirect' {
+            $reason = Get-GuardReason -ToolName 'Bash' -Command 'grep version < config/settings.json'
+
+            $reason | Should -Match ([regex]::Escape('"glob":"settings.json"'))
+        }
+
+        It 'reads a heredoc body as data, not as commands to judge' {
+            # Writing a file whose TEXT contains a grep is not a search.
+            $command = "cat <<'EOF' > notes.txt`ngrep -rn version config`nEOF"
+
+            Invoke-GuardRaw -ToolName 'Bash' -Command $command | Should -BeNullOrEmpty
+        }
+
+        It 'refuses find -exec grep and find | xargs grep' {
+            Invoke-Guard -ToolName 'Bash' -Command 'find config -name "*.json" -exec grep -l version {} \;' | Should -Be 'deny'
+            Invoke-Guard -ToolName 'Bash' -Command 'find config -name "*.json" | xargs grep version' | Should -Be 'deny'
+        }
+
+        It 'refuses a search inside pwsh -Command run from Bash' {
+            Invoke-Guard -ToolName 'Bash' -Command 'pwsh -NoProfile -Command "Select-String -Path config\settings.json -Pattern version"' |
+                Should -Be 'deny'
+        }
+
+        It 'refuses a real search beside a git command, the old exemption hole' {
+            # Until 2026-10-12 any command mentioning git passed whole, so this did.
+            Invoke-Guard -ToolName 'Bash' -Command 'git status --short; rg "WavePlan" src' | Should -Be 'deny'
+        }
+
+        It 'refuses in a repo that holds no solution' {
+            # scanRepo has no .slnx; the shell trigger needed one until 2026-10-12.
+            Invoke-Guard -ToolName 'Bash' -Command 'grep -n WavePlan b.ps1' -Cwd $script:scanRepo | Should -Be 'deny'
+        }
+
+        It 'lets a search of another command''s output through: <command>' -ForEach @(
+            @{ tool = 'Bash'; command = "git diff | grep '^@@'" }
+            @{ tool = 'Bash'; command = 'git log --oneline | grep WavePlan' }
+            @{ tool = 'PowerShell'; command = 'dotnet test | Select-String fail' }
+            @{ tool = 'Bash'; command = 'env | grep GIT_' }
+            @{ tool = 'Bash'; command = 'ps | grep pwsh' }
+            @{ tool = 'PowerShell'; command = '.\some.ps1 | Select-String WavePlan' }
+        ) {
+            Invoke-GuardRaw -ToolName $tool -Command $command | Should -BeNullOrEmpty
+        }
+
+        It 'lets git log --grep and -S through, which are not file searches' {
+            # Each names a path inside the repo ON PURPOSE: without one, a git log that
+            # was misread as a search would still have nothing to read.
+            Invoke-GuardRaw -ToolName 'Bash' -Command 'git log --grep=WavePlan -- config/settings.json' | Should -BeNullOrEmpty
+            Invoke-GuardRaw -ToolName 'Bash' -Command 'git log -S version --grep=fix -- config' | Should -BeNullOrEmpty
+        }
+
+        It 'lets a grep of a file outside any repo through' {
+            $outside = Join-Path $script:plainDir 'notes.txt'
+            Invoke-GuardRaw -ToolName 'Bash' -Command "grep -n WavePlan '$outside'" | Should -BeNullOrEmpty
+        }
+
+        It 'lets a relative grep through when the cwd is outside any repo' {
+            Invoke-GuardRaw -ToolName 'Bash' -Command 'grep -rn WavePlan .' -Cwd $script:plainDir | Should -BeNullOrEmpty
+        }
+
+        It 'runs a search it cannot resolve, and says so without allowing' {
+            $output = Invoke-GuardRaw -Command 'Select-String -Path $file -Pattern version'
+            Assert-FailedOpen -Output $output -Mentions 'could not tell which files'
+            $output.additionalContext | Should -Match ([regex]::Escape('$file'))
         }
     }
 }
