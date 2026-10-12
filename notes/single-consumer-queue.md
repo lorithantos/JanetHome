@@ -1,8 +1,8 @@
 # One consumer, not a lock
 
-**Rule.** In-process coordination is a single consumer reading a channel. No `lock`, no
-flag that decides who does the work, no semaphore election. When several threads need the
-same thing done, they put requests on a queue and exactly one loop does the work.
+**Rule.** In-process coordination is a single consumer draining a concurrent queue. No
+`lock`, no flag that decides who does the work, no semaphore election. When several threads
+need the same thing done, they put requests on a queue and exactly one loop does the work.
 
 Decided 2026-10-12, by Lori: *"We do not like locks -- they are easy to get wrong and waste
 tokens finding out why they are."*
@@ -44,38 +44,9 @@ election at all.
 
 ## The shape
 
-```csharp
-Channel<WorkItem> channel = Channel.CreateUnbounded<WorkItem>(
-    new UnboundedChannelOptions { SingleReader = true });
-
-// The one consumer:
-while (await channel.Reader.WaitToReadAsync(token))
-{
-    List<WorkItem> batch = [];
-    while (channel.Reader.TryRead(out WorkItem? item))   // greedy: take all that is waiting
-    {
-        batch.Add(item);
-    }
-
-    Apply(batch);
-}
-```
-
-Producers only ever write to the channel. There is one reader, so "who drains" is not a
-question anyone answers at runtime. Draining greedily makes the batch whatever arrived while
-the last one was being applied: coalescing for free, and no armed flag. This is the loop
-`pattern.change-coalescing` describes for UI change streams, and the same one
-ImageSelectorV2 uses for uploads and conversions (`UploadFinishService.ConsumeLoopAsync`,
-ImageSelectionTools\ImageSystem\UploadFinishService.cs). That one adds a K-slot worker pool
-that a strictly serial writer does not need.
-
-## Which queue: match it to the consumer
-
-- **An async consumer** (a hosted service, a loop that awaits) reads a `Channel<T>`, as above.
-- **A consumer on a dedicated synchronous thread** reads a `BlockingCollection<T>` over a
-  `ConcurrentQueue<T>`. `Take()` blocks until work arrives, `TryTake()` until empty forms the
-  batch, and `CompleteAdding()` closes it. The wait belongs to the library, so the code holds
-  no wake-up signal of its own.
+One consumer thread draining a `ConcurrentQueue<T>`. The reference implementation is
+`WriteQueue.Lane` (src\Janet.Core\WriteQueue.cs): one lane per file, its consumer a lazily
+started background thread, a `TaskCompletionSource` per item for the caller's answer.
 
 ```csharp
 BlockingCollection<WorkItem> queue = new(new ConcurrentQueue<WorkItem>());
@@ -85,6 +56,45 @@ while (true)
 {
     List<WorkItem> batch = [queue.Take()];               // blocks while idle
     while (queue.TryTake(out WorkItem? item))            // greedy: take all that is waiting
+    {
+        batch.Add(item);
+    }
+
+    Apply(batch);
+}
+```
+
+Producers only ever add to the queue. There is one consumer, so "who drains" is not a
+question anyone answers at runtime. Draining greedily makes the batch whatever arrived while
+the last one was being applied: coalescing for free, and no armed flag. This is the loop
+`pattern.change-coalescing` describes for UI change streams.
+
+`BlockingCollection` is the `ConcurrentQueue` plus the one thing a bare queue lacks: a way
+for the consumer to sleep while it is empty. A bare `ConcurrentQueue` polled in a loop
+either spins or needs a wake-up signal, and a hand-built signal is the thing this rule
+exists to delete. Let the library own the wait.
+
+## Which queue: match it to the consumer
+
+- **A consumer on a dedicated synchronous thread** -- the default here, because Janet's
+  callers block on their result -- drains a `BlockingCollection<T>` over a
+  `ConcurrentQueue<T>`, as above. `Take()` blocks until work arrives, `TryTake()` until empty
+  forms the batch, and `CompleteAdding()` closes it.
+- **An async consumer** (a hosted service, a loop that awaits, callers async end to end)
+  reads a `Channel<T>`, which is the same queue with an awaitable wait. ImageSelectorV2 uses
+  this form for uploads (`UploadFinishService.ConsumeLoopAsync`,
+  ImageSelectionTools\ImageSystem\UploadFinishService.cs), adding a K-slot worker pool that
+  a strictly serial writer does not need.
+
+```csharp
+Channel<WorkItem> channel = Channel.CreateUnbounded<WorkItem>(
+    new UnboundedChannelOptions { SingleReader = true });
+
+// The one consumer, as an async loop:
+while (await channel.Reader.WaitToReadAsync(token))
+{
+    List<WorkItem> batch = [];
+    while (channel.Reader.TryRead(out WorkItem? item))   // greedy: take all that is waiting
     {
         batch.Add(item);
     }
@@ -146,15 +156,17 @@ caller's continuation on the consumer's thread. The consumer completes or faults
   cycle. Then "nothing hangs unless the loop crashes" holds by construction, and a crash
   faults every waiter.
 
-## What a channel cannot replace
+## What an in-process queue cannot replace
 
-A channel lives in one process. Exclusion between PROCESSES -- the janet CLI runs fresh on
+A queue lives in one process. Exclusion between PROCESSES -- the janet CLI runs fresh on
 every hook and shim call, beside a resident janet-mcp -- still needs something the OS
 arbitrates. The two honest options:
 
-1. **A lock file beside the target**, taken by the single consumer. This is the one lock
-   that stays. With one consumer per process it is contended only by other processes, which
-   is its actual job, never by threads of its own process. The measurements behind putting
+1. **A lock file beside the target**, taken by the single consumer (`FileLock` in
+   WriteQueue.cs: a sidecar `.lock` opened with `FileShare.None`, bounded by
+   `LockTimeout`). This is the one lock that stays. With one consumer per process it is
+   contended only by other processes, which is its actual job, never by threads of its own
+   process. The measurements behind putting
    it beside the file rather than on it are on `note.graph-write-queue`.
 2. **A single writer process**, with every other process sending it requests. This removes
    the lock entirely, but every write then fails when that process is down.
