@@ -485,6 +485,56 @@ Describe 'Invoke-DelegationGuard' {
             }
         }
 
+        It 'denies structural vocabulary beside a Type.Member reference' {
+            Invoke-Guard -ToolName 'Agent' -ToolInput @{ prompt = 'Find the callers of ImageService.GetImageBitmapAsync and report them' } |
+                Select-Object -ExpandProperty Decision | Should -Be 'deny'
+        }
+
+        It 'denies structural vocabulary beside the word C#' {
+            Invoke-Guard -ToolName 'Agent' -ToolInput @{ prompt = 'List every implementation of the cache interface in this C# repo' } |
+                Select-Object -ExpandProperty Decision | Should -Be 'deny'
+        }
+    }
+
+    Context 'the prompt gate does not fire on plain English' {
+        # 2026-09-29: a claude-code-guide question about Remote Control asked for the
+        # "login method", and \bmethods?\b alone denied it as C# structural work. It was
+        # cleared by pasting the RazorGraph block in verbatim, which is the reflex a gate
+        # must not train. The structural words now need a C# signal beside them.
+
+        It 'passes a docs question that says "method" and nothing about C#' {
+            $prompt = 'In Claude Code, what are the prerequisites for Remote Control (plan, login method e.g. claude.ai OAuth vs API key, settings that disable it)?'
+            Invoke-Guard -ToolName 'Agent' -ToolInput @{ prompt = $prompt } |
+                Select-Object -ExpandProperty Decision | Should -Be 'pass'
+        }
+
+        It 'passes "class" and "caller" used as ordinary words' {
+            Invoke-Guard -ToolName 'Agent' -ToolInput @{ prompt = 'Which class of failure is this, and does the caller of the webhook retry?' } |
+                Select-Object -ExpandProperty Decision | Should -Be 'pass'
+        }
+
+        It 'passes a Type.Member mention with no structural question in it' {
+            Invoke-Guard -ToolName 'Agent' -ToolInput @{ prompt = 'Summarise what Janet.Core does, from its README' } |
+                Select-Object -ExpandProperty Decision | Should -Be 'pass'
+        }
+
+        It 'exempts claude-code-guide even when the prompt looks structural' {
+            # It has no edit, shell or graph tools; the instruction would govern nothing.
+            Invoke-Guard -ToolName 'Agent' -ToolInput @{
+                subagent_type = 'claude-code-guide'
+                prompt        = 'How do hooks see the callers in src\Foo.cs?'
+            } | Select-Object -ExpandProperty Decision | Should -Be 'pass'
+        }
+
+        It 'does not exempt a general-purpose agent with the same prompt' {
+            Invoke-Guard -ToolName 'Agent' -ToolInput @{
+                subagent_type = 'general-purpose'
+                prompt        = 'How do hooks see the callers in src\Foo.cs?'
+            } | Select-Object -ExpandProperty Decision | Should -Be 'deny'
+        }
+    }
+
+    Context 'dispatch and the volume path' {
         It 'never applies the volume warning to a dispatch' {
             # A long streak plus an Agent call is the moment the session is finally doing
             # the right thing. Warning there would be exactly backwards.

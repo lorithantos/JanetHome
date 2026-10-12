@@ -27,9 +27,13 @@
     agent does not skip a step from fatigue, it skips from rationalisation.
 
     Deliberately narrow. It fires only when the prompt looks like C# structural work --
-    a .cs, .csproj or .slnx file, a src path, or the words caller, method, class,
-    namespace, implementations, blast radius. Prose, config, PowerShell and web research
-    pass untouched, because a guard that fires on everything gets clicked past.
+    a .cs, .csproj or .slnx file, a src path or a graph id on its own; or a Type.Member
+    reference or the word C# together with one of caller, method, class, namespace,
+    implementation, blast radius. Those words used to fire alone, and on 2026-09-29 a
+    question about Claude Code's "login method" was denied as C# work. Agent types with no
+    tools to do C# work (claude-code-guide, statusline-setup) are exempt outright. Prose,
+    config, PowerShell and web research pass untouched, because a guard that fires on
+    everything gets clicked past.
 
     One check, not five: does the prompt contain the literal mcp__razorgraph__. That is
     the single thing whose absence caused the failure. A brittle multi-check gate that
@@ -156,26 +160,59 @@ function Get-Prop {
     return $null
 }
 
-# The narrow trigger: a file extension or path shape that only occurs in a C# repo, or
-# one of the structural words that name exactly the questions the graph answers better
-# than text does -- callers, implementers, blast radius.
+# Agent types that cannot do C# structural work whatever their prompt says: they have no
+# edit, shell or graph tools, so the graph-first instruction has nothing to govern. The
+# guard fired on a claude-code-guide docs question on 2026-09-29 and was cleared by pasting
+# the block in verbatim -- which is the reflex a gate must not train.
+$script:ExemptAgentTypes = @('claude-code-guide', 'statusline-setup')
+
+# The narrow trigger, in two strengths.
+#
+# STRONG signals only occur in C# work -- a .cs/.csproj/.slnx file, a src path, a graph id,
+# a Type.Member reference, the word C# -- and fire alone.
+#
+# WEAK signals are the structural words that name exactly the questions the graph answers
+# better than text does -- callers, implementers, blast radius -- and they are also plain
+# English. Until 2026-09-29 each fired alone, and "login method" in a question about Claude
+# Code's Remote Control was denied as C# structural work. They now need a strong signal
+# beside them. The residual gap is a prompt naming a bare identifier with no dot, path or
+# language -- "the callers of GetImageBitmapAsync" -- and that is accepted: a bare PascalCase
+# word is just as likely to be PowerShell or JanetHome.
 function Test-CSharpStructuralPrompt {
     param([string]$Prompt)
 
-    $patterns = @(
+    $strong = @(
         '\.cs\b',
         '\.csproj\b',
-        '\.slnx\b',
+        '\.slnx?\b',
         '\bsrc[\\/]',
+        '\b[mtpfe]:[A-Z]\w*\.',
+        '\b[A-Z][a-z]\w*\.[A-Z][a-z]\w*',
+        '(?<![\w#])C#'
+    )
+    $weak = @(
         '\bcallers?\b',
         '\bmethods?\b',
         '\bclass(es)?\b',
         '\bnamespaces?\b',
         '\bimplementations?\b',
+        '\bimplementers?\b',
         '\bblast radius\b'
     )
 
-    foreach ($p in $patterns) {
+    $hasStrong = $false
+    foreach ($p in $strong) {
+        if ($Prompt -cmatch $p) { $hasStrong = $true; break }
+    }
+    if (-not $hasStrong) { return $false }
+
+    # A path alone is still enough: "Refactor src\Nav\Grid.cs" is structural work with no
+    # structural vocabulary in it. Only a Type.Member or C# mention needs the vocabulary too,
+    # because "Janet.Core" or "C#" turn up in prose about a repo just as often as in work on it.
+    foreach ($p in @('\.cs\b', '\.csproj\b', '\.slnx?\b', '\bsrc[\\/]', '\b[mtpfe]:[A-Z]\w*\.')) {
+        if ($Prompt -cmatch $p) { return $true }
+    }
+    foreach ($p in $weak) {
         if ($Prompt -match $p) { return $true }
     }
     return $false
@@ -401,11 +438,15 @@ A dispatch or a new request from Lori resets the count. JANET_DELEGATION_GUARD=o
     }
 
     # ---------------------------------------------------------------------------
-    # PATH ONE: the delegation prompt gate. Unchanged since 2026-09-05.
+    # PATH ONE: the delegation prompt gate. The one check is unchanged since
+    # 2026-09-05; what counts as C# structural work was narrowed on 2026-09-29.
     # ---------------------------------------------------------------------------
     if ($toolName -ne 'Agent' -and $toolName -ne 'Task') { exit 0 }
 
-    $prompt = [string](Get-Prop (Get-Prop $payload 'tool_input') 'prompt')
+    $toolInput = Get-Prop $payload 'tool_input'
+    if ($script:ExemptAgentTypes -contains [string](Get-Prop $toolInput 'subagent_type')) { exit 0 }
+
+    $prompt = [string](Get-Prop $toolInput 'prompt')
     if (-not $prompt) { exit 0 }
 
     # The one check. Its absence is what caused the failure; the rest of the kickoff
