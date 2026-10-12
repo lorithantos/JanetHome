@@ -80,13 +80,55 @@ static fields were readonly or const and never mutated after setup. Enforcement 
 RazorGraph query for static or shared fields of a mutable collection type, or an
 analyzer.
 
+### 5. No tuples in any signature -- name it with a record
+
+Decided 2026-10-11, after reviewing how ImageSelectorV2 grew: returned tuples are "outside
+my comfort zone ... I think these make the code less clear." A tuple may live inside a
+method body. It never appears in a return type, parameter, property or field, at any
+visibility, and that includes test code. Use a named `record` instead: it costs one line
+and still deconstructs. This settles candidate B, and is stricter than it: private
+members and test helpers count too.
+
+Why it bit: `note.tuples-do-not-cross-boundaries` (System.Text.Json silently serialises
+a tuple as nothing). ImageSelectorV2 grew from 0 tuple returns in 2025 to 18 at
+2026-10-03, and 13 of them are test factories like `private static (ImageService
+service, ICatalogStore store, ...) Create()`. No analyzer exists for this, so
+enforcement is a reflection test (`NoTupleSignatures`), as in CardImport SPEC §11
+rule 48.
+
+### 6. Explicit types, braces everywhere, `this.`, usings in the csproj
+
+Decided 2026-10-11, same review. This settles the `var`/braces line of candidate E,
+in favour of the ImageSelectorV2/RetirementCore side:
+- **Explicit types, never `var`.** "Amusing too because I used to use var everywhere.
+  But now with LLMs it makes changing the types easier than not." The cost `var` saved
+  is gone, and the clarity it cost remains.
+- **Braces on every block**, one-line `if` included. Braceless statements "make the code
+  less clear".
+- **`this.` on every member access**, and **file-scoped namespaces**.
+- **Shared namespaces as `<Using Include="..." />` in the csproj**, not at the top of
+  each file: "a great change in the way I started working (this simplifies CS files)".
+
+Enforced, not advisory: `.editorconfig` sets `csharp_style_var_* = false`,
+`csharp_prefer_braces = true`, `dotnet_style_qualification_* = true` and
+`csharp_style_namespace_declarations = file_scoped`. `Directory.Build.props` sets
+`EnforceCodeStyleInBuild` and `WarningsAsErrors` for IDE0005/0008/0009/0011/0161.
+CardImport (2026-10-11) is the reference. Each gate was shown to fire on a violating
+file and to stay silent on a compliant one. Existing repos adopt it deliberately, not
+by sweep: ImageSelectorV2 had 4 `var`, about 12 braceless statements and 18 tuple
+signatures at HEAD.
+
 ---
 
 ## Part 2 -- Candidates (the owner decides)
 
 ### A. (Decided -- now Part 1, rule 3.)
 
-### B. Results that cross a method boundary are named records, not tuples
+### B. (Decided 2026-10-11 -- now Part 1, rule 5, in a stricter form.)
+
+Original candidate, kept for the record:
+
+#### Results that cross a method boundary are named records, not tuples
 
 The owner: "I have grown to love records because they are small and read only", and
 "I'm okay with some callers not needing things" -- so a caller discarding part of a
@@ -122,7 +164,8 @@ Each is a candidate for one house choice:
 - hand-written fakes, versus NSubstitute;
 - `.slnx`, versus `.sln` (Neelam is the only `.sln`);
 - `var`, braceless one-line `if` and records, versus explicit types, braces everywhere
-  and `this.`;
+  and `this.` -- **decided 2026-10-11 (Part 1, rule 6): explicit types, braces, `this.`.
+  Records stay, as the replacement for tuples (rule 5);**
 - `internal` by default with compiler-checked doc comments (Neelam has 115 public
   members that could be internal, and no doc-comment checking).
 
