@@ -6,7 +6,16 @@ using System.Text.Json.Nodes;
 namespace Janet.Core;
 
 /// <summary>One graph a RazorGraph server holds: its id, what it was built from, and when.</summary>
-public sealed record ServedGraph(string Id, string Source, DateTimeOffset LoadedAt);
+/// <remarks>
+/// BuiltAt is null on a graph saved before the server stamped it. LoadedAt alone is not a build
+/// time: a graph carried over a rotation is loaded minutes after it was built, sometimes after an
+/// edit it never saw.
+/// </remarks>
+public sealed record ServedGraph(string Id, string Source, DateTimeOffset LoadedAt, DateTimeOffset? BuiltAt = null)
+{
+    /// <summary>When the graph last saw the source: its build stamp, else when it was loaded.</summary>
+    public DateTimeOffset Stamp => BuiltAt ?? LoadedAt;
+}
 
 /// <summary>
 /// The smallest MCP client that can ask a RazorGraph HTTP server what it holds and have it
@@ -67,21 +76,23 @@ public sealed class RazorGraphClient
             string? id = graph?["graphId"]?.GetValue<string>();
             string? source = graph?["source"]?.GetValue<string>();
             string? loadedAt = graph?["loadedAt"]?.GetValue<string>();
+            string? builtAt = graph?["builtAt"]?.GetValue<string>();
 
             if (id is null || source is null)
             {
                 continue;
             }
 
-            DateTimeOffset when = DateTimeOffset.TryParse(loadedAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTimeOffset parsed)
-                ? parsed
-                : DateTimeOffset.MinValue;
-
-            served.Add(new ServedGraph(id, source, when));
+            served.Add(new ServedGraph(id, source, ParseStamp(loadedAt) ?? DateTimeOffset.MinValue, ParseStamp(builtAt)));
         }
 
         return served;
     }
+
+    private static DateTimeOffset? ParseStamp(string? value) =>
+        DateTimeOffset.TryParse(value, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTimeOffset parsed)
+            ? parsed
+            : null;
 
     /// <summary>
     /// Rebuilds a graph under the same id, so the server updates it in place. Returns when the

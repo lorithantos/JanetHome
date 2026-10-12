@@ -64,6 +64,55 @@ public class RazorGraphClientTests
         Assert.Equal("janet", graph.Id);
         Assert.EndsWith("JanetHome.slnx", graph.Source);
         Assert.Equal(new DateTimeOffset(2026, 9, 1, 10, 0, 0, TimeSpan.Zero), graph.LoadedAt);
+        Assert.Null(graph.BuiltAt);
+        Assert.Equal(graph.LoadedAt, graph.Stamp);
+    }
+
+    [Fact]
+    public void TheBuildStampIsReadBesideTheLoadTime()
+    {
+        // A carried-over graph: built at 06:00, loaded by the rotation at 08:00.
+        const string carried = """{"returned":1,"graphs":[{"graphId":"janet","source":"C:\\repos\\JanetHome\\JanetHome.slnx","builtAt":"2026-10-12T06:00:00+00:00","loadedAt":"2026-10-12T08:00:00+00:00"}]}""";
+        ScriptedServer server = new((method, _) => method switch
+        {
+            "initialize" => Initialized,
+            "tools/call" => ToolResult(carried),
+            _ => null,
+        });
+
+        ServedGraph graph = Assert.Single(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server).TryListGraphs()!);
+
+        DateTimeOffset built = new(2026, 10, 12, 6, 0, 0, TimeSpan.Zero);
+        Assert.Equal(built, graph.BuiltAt);
+        Assert.Equal(built, graph.Stamp);
+    }
+
+    [Fact]
+    public void AGraphLoadedAfterAnEditItNeverSawIsStale()
+    {
+        // 2026-10-12: the rotation reloaded graphs built two hours earlier. Judged by load time,
+        // an edit between the build and the load read as already seen.
+        ServedGraph carried = new(
+            "janet",
+            @"C:\nowhere\JanetHome.slnx",
+            LoadedAt: new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero),
+            BuiltAt: new DateTimeOffset(2026, 10, 12, 6, 0, 0, TimeSpan.Zero));
+        DateTime edited = new(2026, 10, 12, 7, 0, 0, DateTimeKind.Utc);
+
+        GraphState state = CodeGraph.DescribeServed(carried, edited);
+
+        Assert.Equal("stale", state.Status);
+        Assert.Equal("2026-10-12T06:00:00.0000000Z", state.BuiltAt);
+    }
+
+    [Fact]
+    public void AGraphWithNoBuildStampIsJudgedByItsLoadTime()
+    {
+        ServedGraph unstamped = new("janet", @"C:\nowhere\JanetHome.slnx", new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero));
+
+        GraphState state = CodeGraph.DescribeServed(unstamped, new DateTime(2026, 10, 12, 7, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal("current", state.Status);
     }
 
     [Fact]

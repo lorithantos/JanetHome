@@ -142,9 +142,19 @@ public static class CodeGraph
         ServedGraph? mine = client.TryListGraphs()?
             .Where(g => IsUnder(g.Source, repositoryRoot))
             .OrderByDescending(g => target is not null && PathsEqual(g.Source, target))
-            .ThenByDescending(g => g.LoadedAt)
+            .ThenByDescending(g => g.Stamp)
             .FirstOrDefault();
 
+        return DescribeServed(mine, newest);
+    }
+
+    /// <summary>
+    /// A served graph against the newest source write. Staleness is judged by when the graph was
+    /// BUILT: on 2026-10-12 a rotation reloaded graphs built two hours earlier, and judged by load
+    /// time every edit in between would have read as already seen.
+    /// </summary>
+    internal static GraphState DescribeServed(ServedGraph? mine, DateTime? newest)
+    {
         if (mine is null)
         {
             return new GraphState
@@ -156,14 +166,15 @@ public static class CodeGraph
             };
         }
 
-        bool outrun = newest is not null && newest > mine.LoadedAt.UtcDateTime;
+        DateTime stamp = mine.Stamp.UtcDateTime;
+        bool outrun = newest is not null && newest > stamp;
 
         return new GraphState
         {
             Via = "razorgraph",
             GraphId = mine.Id,
             Path = mine.Source,
-            BuiltAt = mine.LoadedAt.UtcDateTime.ToString("o"),
+            BuiltAt = stamp.ToString("o"),
             NewestSourceAt = newest?.ToString("o"),
             Status = outrun ? "stale" : "current",
             CanRefresh = RazorGraphClient.CanRebuild(mine.Source),
