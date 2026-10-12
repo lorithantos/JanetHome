@@ -1185,11 +1185,11 @@
       "kind": "note",
       "path": "notes\\tuples-do-not-cross-boundaries.md",
       "summary": "Tuples are method-local only: never in a return type, parameter, or member, because ValueTuple exposes FIELDS and System.Text.Json silently serialises them as nothing.",
-      "tags": ["csharp", "style", "serialization", "json", "api-design"],
       "caveats": [
         "ADVISORY, not enforced: there is no C# rule-checker in this repo, only Test-PowerShellRules.ps1 for PowerShell.",
         "The failure is silent -- no error, no warning, just an empty JSON field on a populated object."
       ],
+      "tags": ["csharp", "style", "serialization", "json", "api-design"],
       "links": ["note.dotnet-object-sizing", "script.get-drive-survey", "note.csharp-house-rules"]
     },
 
@@ -1519,13 +1519,18 @@
     {
       "id": "file.lightroom-api-index",
       "kind": "file",
-      "path": "C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua\\lightroom-api-15.3.json",
-      "summary": "The Lightroom Classic SDK API as a queryable JSON index: 909 members across 65 namespaces (SDK 15.3), each with signature, summary, params, return value, and the \"first supported in version\" stamp. Query with script.search-json (-Query scored search, -Where name=photo:setRawMetadata exact lookup); schema via Read-JsonCache -Schema. Built from the LuaDoc HTML the SDK ships by C:\\repos\\ImageSelectorV2\\tools\\Build-LightroomApiIndex.ps1; sibling indexes lightroom-api-8.0.json (815 members) and lightroom-api-3.0.json (677) beside it answer \"when did this API appear\" beyond the since field. Source corpus: the three SDK folders under C:\\Users\\lori_\\Documents\\LR-Lua\\LR-Lua.",
+      "path": "C:\\Users\\lori_\\OneDrive\\Documents\\LR-Lua\\lightroom-api-15.3.json",
+      "summary": "The Lightroom Classic SDK API as a queryable JSON index: 909 members across 65 namespaces (SDK 15.3), each with signature, summary, params, return value, and the \"first supported in version\" stamp. Query with script.search-json (-Query scored search, -Where name=photo:setRawMetadata exact lookup); schema via Read-JsonCache -Schema. Built from the LuaDoc HTML the SDK ships by C:\\repos\\ImageSelectorV2\\tools\\Build-LightroomApiIndex.ps1; sibling indexes lightroom-api-8.0.json (815 members) and lightroom-api-3.0.json (677) beside it answer \"when did this API appear\" beyond the since field. Source corpus: the three 'Lightroom SDK <version>' folders under C:\\Users\\lori_\\OneDrive\\Documents\\LR-Lua. The 15.3 SDK also ships Adobe's Lua 5.1.5 compiler at 'Lightroom SDK 15.3\\Lua Compiler\\win\\luac.exe': 'luac -p' syntax-checks a plug-in file, and 'luac -p -l' piped through GETGLOBAL/SETGLOBAL lists every global a file touches, which catches a misspelt or forward-referenced local.",
       "caveats": [
         "Derived data: rebuild with Build-LightroomApiIndex.ps1 after dropping in a new SDK; nothing detects a stale index.",
         "Param descriptions flatten LuaDoc's nested key lists (setRawMetadata's 30 recognized keys become one prose string) -- the structure is in the HTML if ever needed.",
         "The builder lives in ImageSelectorV2, not JanetHome: it is Lightroom-specific, and the indexes live beside the corpus outside any repo.",
-        "memberCount counts namespace overview rows too (one per module, kind=namespace); functions and methods are memberCount minus moduleCount."
+        "memberCount counts namespace overview rows too (one per module, kind=namespace); functions and methods are memberCount minus moduleCount.",
+        "MOVED 2026-10-01 on LORI-VIDEO: the corpus and indexes live under OneDrive\\Documents\\LR-Lua, not the Documents\\LR-Lua\\LR-Lua the node used to name. 15.3 was re-extracted there from LrC_15.3_202604090947-8f3672ed.release_SDK.zip and all three indexes rebuilt with the counts above. The JSON is an envelope (sdkVersion, source, moduleCount, memberCount, members): query .members and match on name ('LrTasks.execute', 'catalog:getActiveSources'), since ids are 'Namespace/name'.",
+        "Not in the index because not in the API reference: Lightroom's require for plug-in files, and the WIN_ENV / MAC_ENV / _PLUGIN globals. Confirm those from the SDK Guide PDF or a sample plug-in, not from an empty query.",
+        "The OneDrive LR-Lua folder also holds a createflickrset.lrdevplugin copy dated 2024-02-28, older than the repo's TSV + comments MarkImages. It is stale; the plug-in to load is C:\\repos\\ImageSelectorV2\\createflickrset.lrdevplugin.",
+        "ANSWERED from the 15.3 SDK Guide (pdftotext from /mingw64/bin extracts it): require 'X' loads X.lua from the same plug-in once, SAVES ITS RETURN VALUE and hands that back on later calls, so 'local M = require \"X\"' with 'return M' is supported, though Adobe's samples use the global-table style. WIN_ENV and the extra-quotes idiom for LrTasks.execute are Adobe's own: Sample Plugins\\creatorfilter.lrdevplugin wraps the whole command in one more pair of quotes when WIN_ENV == true.",
+        "THE CORPUS IS IN ONEDRIVE. Reading a cloud-only placeholder there makes OneDrive download it and name the reading program in a notification ('grep.exe is downloading files'), which reads as alarming. Since 2026-10-01 LR-Lua is set to 'Always keep on this device' (verified: 0 of 446 files cloud-only), so reads are local; anything new extracted there still uploads. If the prompts return, check the pin before blaming the tool."
       ],
       "tags": ["lightroom", "lua", "api", "retrieval", "json", "third-party"],
       "links": ["script.search-json", "script.read-json-cache", "note.razorgraph-lua-scoping", "note.janet-machine-move"]
