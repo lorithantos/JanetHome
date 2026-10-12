@@ -27,4 +27,9 @@
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- For WriteQueue.BeforeApplyForTests, the one seam that reaches the dead-consumer path. -->
+    <InternalsVisibleTo Include="Janet.Tests" />
+  </ItemGroup>
+
 </Project>

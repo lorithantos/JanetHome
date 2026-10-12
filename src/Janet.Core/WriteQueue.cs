@@ -43,6 +43,14 @@ public interface IBatchedResult<out T>
 /// stronger than plain serialisation and cheaper -- N writes to a 110KB file become one -- and
 /// no caller is told about a state that was never on disk.
 ///
+/// Each file has one BlockingCollection and exactly one consumer, a background thread started
+/// the first time the file is written. Callers add their operation and block on its
+/// completion; the consumer takes everything queued at that moment as one batch, writes it, and
+/// takes whatever arrived meanwhile as the next. Nobody decides who writes, because only one
+/// thread ever does -- there is no election and no who-is-writing flag to get wrong. The one
+/// way left to hang it, an operation submitting a write of its own, is refused by Submit with
+/// a GraphException naming the target, rather than waited on.
+///
 /// A failing operation fails only its own caller. A batch is not a transaction across unrelated
 /// requests: someone else's duplicate id is not a reason to reject your valid update, so the
 /// failed operation's text is discarded and the rest of the batch still commits.
@@ -70,7 +78,8 @@ public static class WriteQueue
     /// <param name="operation">
     /// Applied to the file's current text; returns the new text and the result. Must be pure
     /// with respect to disk -- the queue owns reading and writing, and an operation that read
-    /// the file itself would see the pre-batch state.
+    /// the file itself would see the pre-batch state. It runs on the file's consumer thread, so it
+    /// must not submit to the queue at all, for this file or any other; Submit refuses it.
     /// </param>
     /// <param name="totalOf">
     /// How many things the file holds, for restating results. Called once per batch.
@@ -80,68 +89,180 @@ public static class WriteQueue
     /// error -- the catalog must exist, while the thread-item list is legitimately absent until
     /// something is written to it.
     /// </param>
+    /// <remarks>
+    /// Refused outright on a consumer thread -- any lane's, not just this path's. A Submit from
+    /// inside an operation would wait on a consumer that is busy running the operation, and
+    /// hang: directly when it is the same file, and through a cycle when it is not (a catalog
+    /// operation writing a thread item whose operation writes the catalog). A per-lane check
+    /// would miss the cycle. The check comes before the lane is created or started, so a
+    /// refused call changes nothing.
+    /// </remarks>
     public static T Submit<T>(
         string path,
         Func<string, (string Text, T Result)> operation,
         Func<string, int> totalOf,
         string? whenMissing = null)
-        where T : IBatchedResult<T> =>
-        Lanes.GetOrAdd(Path.GetFullPath(path), full => new Lane(full, totalOf, whenMissing))
-             .Submit(operation);
+        where T : IBatchedResult<T>
+    {
+        if (t_onConsumer)
+        {
+            throw new GraphException(
+                $"Refused a write to {Path.GetFullPath(path)} from inside another queued write. " +
+                "A write-queue operation must transform the text it is handed and must not write " +
+                "files itself: this call would wait on a consumer that is busy running its caller, " +
+                "and hang.");
+        }
+
+        return Lanes.GetOrAdd(Path.GetFullPath(path), full => new Lane(full, totalOf, whenMissing))
+                    .Submit(operation);
+    }
+
+    /// <summary>True on every lane's consumer thread, for that thread's whole life.</summary>
+    /// <remarks>
+    /// Thread-static and never reset: a consumer is a dedicated thread that does nothing else,
+    /// and it is what lets Submit refuse re-entry from any lane rather than only its own.
+    /// </remarks>
+    [ThreadStatic]
+    private static bool t_onConsumer;
+
+    /// <summary>
+    /// Test-only: called on a lane's consumer thread with the lane's path after a batch is taken
+    /// and before it is applied. A throw here is a throw outside Apply, which is the only way a
+    /// test can reach the dead-consumer path. Null, and never set, outside tests.
+    /// </summary>
+    internal static Action<string>? BeforeApplyForTests { get; set; }
 
     /// <summary>One file's queue. One lane per path, so unrelated files never block each other.</summary>
-    private sealed class Lane(string path, Func<string, int> totalOf, string? whenMissing)
+    /// <remarks>
+    /// A blocking collection with exactly one consumer, and that consumer is the only thread that
+    /// ever writes the file. There is no election to win and no flag saying who is draining, so
+    /// there is nothing for two submitters to disagree about. The lane this replaced decided its
+    /// writer with a lock and a flag, and got the flag wrong in a way that still lost nothing:
+    /// every second submitter cleared it, so the next became a second drainer, and the drainers
+    /// then queued on the sidecar lock and wrote small batches one after another.
+    ///
+    /// BlockingCollection rather than a Channel, because its Take is a synchronous wait that
+    /// needs no pool thread to wake. Blocking a dedicated thread on Channel's
+    /// WaitToReadAsync().AsTask() does need one now and then -- a write that completes the wait
+    /// between WaitToReadAsync returning and AsTask attaching has its continuation queued to the
+    /// pool -- and Submit's callers block, often on pool threads, so on a saturated pool the
+    /// consumer never woke (WriteQueuePoolTests). The hand-built fix, an event set after each
+    /// write, worked only because of the order of two lines; BlockingCollection owns that order.
+    /// </remarks>
+    private sealed class Lane
     {
-        private readonly Queue<IWorkItem> _pending = new();
-        private readonly Lock _gate = new();
-        private bool _draining;
+        private readonly string _path;
+        private readonly Func<string, int> _totalOf;
+        private readonly string? _whenMissing;
+
+        // Never disposed: a lane lives as long as the process, and its consumer blocks on this
+        // collection for all of that time. Disposing it would pull it out from under that thread.
+        private readonly BlockingCollection<IWorkItem> _queue = new(new ConcurrentQueue<IWorkItem>());
+
+        // Lazy, and started from Submit rather than the constructor: GetOrAdd may build a lane it
+        // then throws away, and a discarded lane must not leave a thread behind. Only the lane
+        // GetOrAdd returns is ever submitted to.
+        private readonly Lazy<Thread> _consumer;
+
+        public Lane(string path, Func<string, int> totalOf, string? whenMissing)
+        {
+            _path = path;
+            _totalOf = totalOf;
+            _whenMissing = whenMissing;
+            _consumer = new Lazy<Thread>(StartConsumer, LazyThreadSafetyMode.ExecutionAndPublication);
+        }
 
         public T Submit<T>(Func<string, (string Text, T Result)> operation)
             where T : IBatchedResult<T>
         {
+            _ = _consumer.Value;
+
             WorkItem<T> item = new(operation);
-            bool mine;
 
-            lock (_gate)
+            try
             {
-                _pending.Enqueue(item);
-
-                // Whoever finds the lane idle becomes the writer for as long as work keeps
-                // arriving. Everyone else waits for that thread to finish the batch they are
-                // now part of, rather than queueing behind a lock and writing one at a time.
-                mine = !_draining;
-                _draining = mine;
+                _queue.Add(item);
             }
-
-            if (mine)
+            catch (InvalidOperationException ex) when (_queue.IsAddingCompleted)
             {
-                Drain();
+                // Only a consumer that died completes adding; see Consume.
+                throw new GraphException(
+                    $"The write queue for {_path} has stopped after an unexpected error. Nothing was written; restart the process.",
+                    ex);
             }
 
             return item.Wait();
         }
 
-        private void Drain()
+        /// <summary>
+        /// Starts the one thread that reads this lane, for the life of the process.
+        /// </summary>
+        /// <remarks>
+        /// A dedicated thread rather than the pool, because Submit blocks its caller: callers
+        /// blocked on pool threads could starve a pooled consumer of the thread it needs to
+        /// release them. Background, because the CLI is a short-lived process and a foreground
+        /// thread would keep it alive after Main returns.
+        /// </remarks>
+        private Thread StartConsumer()
         {
-            while (true)
+            Thread thread = new(Consume)
             {
-                List<IWorkItem> batch;
+                IsBackground = true,
+                Name = "janet-write-queue " + Path.GetFileName(_path),
+            };
 
-                lock (_gate)
+            thread.Start();
+            return thread;
+        }
+
+        /// <summary>
+        /// Takes everything queued as one batch, writes it, and waits for more.
+        /// </summary>
+        /// <remarks>
+        /// Take blocks for the first item; TryTake then gathers everything else already queued,
+        /// so whatever arrives while a batch is being written is the next batch and writers who
+        /// arrive together share a write. Waiting synchronously is deliberate: this thread has
+        /// nothing else to do, and Take wakes it without borrowing a pool thread.
+        /// </remarks>
+        private void Consume()
+        {
+            t_onConsumer = true;
+
+            List<IWorkItem> batch = [];
+
+            try
+            {
+                while (true)
                 {
-                    if (_pending.Count == 0)
+                    batch = [_queue.Take()];
+
+                    while (_queue.TryTake(out IWorkItem? item))
                     {
-                        // Cleared under the same lock that enqueues, so an item cannot arrive
-                        // between the check and the clear and be left with nobody to write it.
-                        _draining = false;
-                        return;
+                        batch.Add(item);
                     }
 
-                    batch = [.. _pending];
-                    _pending.Clear();
+                    BeforeApplyForTests?.Invoke(_path);
+                    Apply(batch);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Apply answers every item it is handed, so reaching here means the loop itself
+                // broke. Nobody is left to take from the lane, so close it to new work and fail
+                // everything still in it rather than leave its callers blocked forever.
+                // CompleteAdding waits out any Add already in progress, so nothing can land after
+                // the drain below. Failing an item Apply already answered does nothing.
+                _queue.CompleteAdding();
+
+                foreach (IWorkItem item in batch)
+                {
+                    item.Fail(ex);
                 }
 
-                Apply(batch);
+                while (_queue.TryTake(out IWorkItem? item))
+                {
+                    item.Fail(ex);
+                }
             }
         }
 
@@ -149,7 +270,7 @@ public static class WriteQueue
         {
             try
             {
-                using FileLock fileLock = FileLock.Take(path, LockTimeout);
+                using FileLock fileLock = FileLock.Take(_path, LockTimeout);
 
                 string text = Read();
                 string original = text;
@@ -163,10 +284,10 @@ public static class WriteQueue
 
                 if (!string.Equals(text, original, StringComparison.Ordinal))
                 {
-                    AtomicWrite(path, text);
+                    AtomicWrite(_path, text);
                 }
 
-                int total = totalOf(text);
+                int total = _totalOf(text);
                 int written = batch.Count(i => i.Succeeded);
 
                 foreach (IWorkItem item in batch)
@@ -188,12 +309,12 @@ public static class WriteQueue
 
         private string Read()
         {
-            if (File.Exists(path))
+            if (File.Exists(_path))
             {
-                return File.ReadAllText(path);
+                return File.ReadAllText(_path);
             }
 
-            return whenMissing ?? throw new GraphException($"File not found: {path}");
+            return _whenMissing ?? throw new GraphException($"File not found: {_path}");
         }
 
         /// <summary>
