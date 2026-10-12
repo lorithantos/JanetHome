@@ -187,7 +187,7 @@ public static class WriteQueue
             {
                 // Only a consumer that died completes adding; see Consume.
                 throw new GraphException(
-                    $"The write queue for {_path} has stopped after an unexpected error. Nothing was written; restart the process.",
+                    $"The write queue for {_path} has stopped after an unexpected error. Nothing was written; retry, and the write goes to a fresh queue.",
                     ex);
             }
 
@@ -252,6 +252,13 @@ public static class WriteQueue
                 // everything still in it rather than leave its callers blocked forever.
                 // CompleteAdding waits out any Add already in progress, so nothing can land after
                 // the drain below. Failing an item Apply already answered does nothing.
+                //
+                // Unregistered first, so the next write to this file builds a fresh lane rather
+                // than being refused for as long as the process lives -- in the resident server
+                // that would be until someone rotates it. Only a writer that already held this
+                // lane is refused, and a retry reaches the new one. Removed by value, so a lane
+                // that has already replaced this one is never taken out.
+                Lanes.TryRemove(new KeyValuePair<string, Lane>(_path, this));
                 _queue.CompleteAdding();
 
                 foreach (IWorkItem item in batch)

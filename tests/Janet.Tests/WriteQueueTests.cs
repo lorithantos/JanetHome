@@ -151,8 +151,8 @@ public sealed class WriteQueueTests : IDisposable
     }
 
     /// <summary>
-    /// A consumer that dies fails every caller it was holding and refuses new ones, rather than
-    /// leaving anyone blocked.
+    /// A consumer that dies fails every caller it was holding rather than leaving anyone blocked,
+    /// and the next write to that file goes to a fresh queue rather than being refused.
     /// </summary>
     /// <remarks>
     /// Apply answers every item it is handed, so the only way to reach this path is a throw in
@@ -195,9 +195,14 @@ public sealed class WriteQueueTests : IDisposable
             Assert.Equal(submitters, failures.Count);
             Assert.All(failures, ex => Assert.Same(injected, ex));
 
-            GraphException refused = Assert.Throws<GraphException>(() => Append(path, submitters, new Probe()));
-            Assert.Contains("has stopped", refused.Message, StringComparison.Ordinal);
             Assert.False(File.Exists(path), "a consumer that died before applying wrote anyway");
+
+            // The dead lane is gone, so the next write builds a fresh one and lands. The hook is
+            // cleared first: left in place it would kill the new lane too.
+            WriteQueue.BeforeApplyForTests = null;
+            List<Exception> retried = Submitters.Start(1, i => Append(path, submitters + i, new Probe())).Join(bound);
+            Assert.Empty(retried);
+            Assert.True(File.Exists(path), "a write after the consumer died was refused or lost");
         }
         finally
         {
