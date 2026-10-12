@@ -44,21 +44,20 @@ today is [YYYY-MM-DD]. Scratchpad for temp files: [path]. Absolute paths everywh
 ## RazorGraph -- FIRST for any question about C# structure
 Load the tools: ToolSearch("select:mcp__razorgraph__list_graphs,mcp__razorgraph__graph_summary,
 mcp__razorgraph__find_nodes,mcp__razorgraph__get_node,mcp__razorgraph__find_path,
-mcp__razorgraph__research[,mcp__razorgraph__covering_tests,mcp__razorgraph__exception_escapes,
+mcp__razorgraph__grep,mcp__razorgraph__research[,mcp__razorgraph__covering_tests,mcp__razorgraph__exception_escapes,
 mcp__razorgraph__method_body_graph,mcp__razorgraph__render_tree -- as the task needs]")
 Get a graph: call list_graphs; use graphId "[janet]" (built from [C:\...\X.slnx]). If it is
 not listed: load_graph path=[saved .json] if one exists, else build_solution
 path=[C:\...\X.slnx] graphId=[name] (slow: a full Roslyn compile). Pass graphId on every
 call. Check builtAt (not loadedAt) against the edits you make -- rebuild after changing
 C#; a rebuild costs seconds and ~700 characters, a stale answer costs the task.
-Graph first, grep second. Grep, Glob and Read are for (a) spot-checking a claim the graph
-made and (b) text the graph does not index -- prose, JSON, .ps1, config. They are never
-the first move on callers, implementers, blast radius or test reach. If ToolSearch
-returns no razorgraph tools, say so in your report before falling back to text.
-A hook DENIES a text search over C# until this session has made a razorgraph call. Do
-NOT answer a denial by listing directories or reading whole files: that is strictly more
-expensive than the grep that was refused. Go back to the graph, then Read only the span
-a node names (docsStart ?? lineStart through lineEnd).
+Text search goes through mcp__razorgraph__grep (folder = an absolute path; pass
+ignoreCase=false for a case-sensitive search): one call returns the graph's name and
+literal hits and the disk's text hits, with no line reported twice. A Grep inside a repo
+comes back answered by razorgraph in place of Grep -- read the results, do not rerun it.
+If ToolSearch returns no razorgraph tools, say so in your report before falling back to
+text. Read only the span a hit or node names (docsStart ?? lineStart through lineEnd),
+never whole files.
 get_node is narrow by default: outgoing rows, incoming counts by type. Read
 availableFields and incoming.byType FIRST, then expand exactly one side with
 edges/edgeType. Never call it with edges="all".
@@ -122,8 +121,8 @@ it be decided; do not fold it into an unrelated edit.
 
 - Names the graphId (and the .slnx to build if absent)?
 - The ToolSearch line lists exact `mcp__razorgraph__` tool names?
-- Says grep is second, and what grep IS for?
-- Says what to do on a guard denial -- back to the graph, not Read or Glob?
+- Says text search goes through `mcp__razorgraph__grep`, and that a Grep answered by the
+  guard is the result, not a refusal to work around?
 - Says which encoding rule THIS repo has, or says nothing?
 - Sets `--area` for thread items?
 - Gives the scratchpad path and the date?

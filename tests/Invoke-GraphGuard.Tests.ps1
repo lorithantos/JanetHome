@@ -1,66 +1,144 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0' }
 <#
 .SYNOPSIS
-    Pester tests for scripts\Invoke-GraphGuard.ps1 -- what it refuses, what it lets
-    through, and the false positives that were found by being bitten.
+    Pester tests for scripts\Invoke-GraphGuard.ps1 -- what it answers, what it refuses,
+    what it lets through, and the false positives that were found by being bitten.
 
 .DESCRIPTION
-    The guard denies a text search over C# source until the session has asked the
-    RazorGraph code graph. It had no tests until 2026-09-06, and on that day it fired
-    three times on commands that were not code searches at all: a `git status`, a
-    `git diff` piped into Select-String, and a byte-level encoding check. Each denial
-    named a graph query that could not have answered the question, because the graph
-    models one built state of the source and indexes neither history nor bytes.
+    Since 2026-10-11 the guard ANSWERS a Grep inside a git working tree through
+    razorgraph's grep and hands the results back inside the denial, and refuses a shell
+    text search over C# with that call ready to paste. Before that it denied both until
+    the session had made any razorgraph call, and agents cleared it with one throwaway
+    call and grepped anyway.
 
-    So these tests exist to hold the BOUNDARY rather than the behaviour. The deny cases
-    are the ones the guard was written for and are pinned so a future exemption cannot
-    quietly widen into them; the pass cases are the ones it got wrong.
+    The shell half had no tests until 2026-09-06, and on that day it fired three times
+    on commands that were not code searches at all: a `git status`, a `git diff` piped
+    into Select-String, and a byte-level encoding check. Those cases hold the BOUNDARY,
+    and are kept as they were.
 
-    Each test drives the script with -InputJson and its own transcript under TestDrive.
-    Pipe input does not bind to a [string] parameter, which is why the script documents
-    -InputJson for exactly this.
+    Each test drives the script with -InputJson. Pipe input does not bind to a [string]
+    parameter, which is why the script documents -InputJson for exactly this. The MCP
+    call and the server start are injected (-McpCall, -EnsureServer), so no test needs
+    a live razorgraph server, and every call is recorded so a test can assert what was
+    ASKED as well as what came back.
 
-    A deny is a JSON envelope carrying permissionDecision 'deny'; a pass is SILENCE and
-    exit 0. Asserting on emptiness rather than on an exit code is deliberate: the script
-    fails open in every error path, so exit 0 alone would pass even when the guard has
-    crashed, and a test that cannot tell working from broken is worse than none.
+    A deny is a JSON envelope carrying permissionDecision 'deny'; a pass is SILENCE or
+    an additionalContext note and exit 0. Asserting on the envelope rather than on an
+    exit code is deliberate: the script fails open in every error path, so exit 0 alone
+    would pass even when the guard has crashed.
 #>
 
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent
     $script:guard = Join-Path $script:repoRoot 'scripts\Invoke-GraphGuard.ps1'
 
-    # A transcript the guard reads as "the graph has not been asked recently". Its shape
-    # is the harness's: one JSON object per line, tool calls inside an assistant message.
+    # The transcript is no longer read. These remain so the tests can show that a graph
+    # call in it no longer buys clearance.
     $script:coldTranscript = Join-Path $TestDrive 'cold.jsonl'
     '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}' |
         Set-Content -LiteralPath $script:coldTranscript -Encoding utf8
-
-    # The same, with a graph call in it. Any mcp__razorgraph__ name clears the guard.
     $script:warmTranscript = Join-Path $TestDrive 'warm.jsonl'
     '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__razorgraph__find_nodes"}]}}' |
         Set-Content -LiteralPath $script:warmTranscript -Encoding utf8
 
-    # A project directory holding a solution, since a repo with no .slnx has no graph to
-    # ask and the guard fails open there. A stub file is enough -- the guard only needs
-    # the name, to derive a graphId for the denial text.
+    # A git working tree holding a solution: the shell trigger needs the solution, the
+    # Grep path needs the working tree. TestDrive sits under %TEMP%, outside any repo.
     $script:projectDir = Join-Path $TestDrive 'repo'
-    New-Item -ItemType Directory -Path $script:projectDir | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $script:projectDir 'src') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $script:projectDir 'Stub.slnx') -Value '<Solution />' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $script:projectDir 'src\Foo.cs') -Value 'class WavePlan { }' -Encoding utf8
+    & git -C $script:projectDir init -q
 
-    function Invoke-Guard {
+    # A folder outside any git working tree.
+    $script:plainDir = Join-Path $TestDrive 'plain'
+    New-Item -ItemType Directory -Path $script:plainDir | Out-Null
+
+    # A repo for the hook's own scan: a case pair in a .cs, the same word in a .ps1, and
+    # a binary that would match if it were read.
+    $script:scanRepo = Join-Path $TestDrive 'scan'
+    New-Item -ItemType Directory -Path $script:scanRepo | Out-Null
+    Set-Content -LiteralPath (Join-Path $script:scanRepo 'a.cs') -Value @('// header', 'var p = new WavePlan();', 'var q = waveplan;') -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $script:scanRepo 'b.ps1') -Value '$x = "WavePlan"' -Encoding utf8
+    [System.IO.File]::WriteAllBytes((Join-Path $script:scanRepo 'c.dat'),
+        [byte[]](@(0x57, 0x61, 0x76, 0x65, 0x50, 0x6C, 0x61, 0x6E, 0x00, 0x0A)))
+    & git -C $script:scanRepo init -q
+
+    function New-GrepEnvelope {
         <#
-            Runs the guard on one command and answers 'deny' or 'pass'.
-            CLAUDE_PROJECT_DIR is set per call rather than in BeforeAll: the real hook
-            environment may already carry one, and a test that inherits it would resolve
-            a different solution and stop testing what it says it tests.
+            A razorgraph grep answer wrapped the way Invoke-McpTool.ps1 returns it.
+            Hits are hashtables of the real shape; totals default to the hit counts.
+        #>
+        [CmdletBinding()]
+        param(
+            [object[]]$GraphHits = @(),
+            [object[]]$DiskHits = @(),
+            [int]$GraphTotal = -1,
+            [int]$DiskTotal = -1,
+            [switch]$NoGraph
+        )
+        if ($GraphTotal -lt 0) { $GraphTotal = $GraphHits.Count }
+        if ($DiskTotal -lt 0) { $DiskTotal = $DiskHits.Count }
+
+        $graph = if ($NoGraph) { @{ reason = 'no loaded graph covers folder'; hits = @() } }
+        else {
+            @{
+                graphId = 'stub'; builtAt = '2026-10-11T08:00:00Z'; reason = 'covers folder'
+                returned = $GraphHits.Count; totalMatches = $GraphTotal; offset = 0
+                truncated = ($GraphTotal -gt $GraphHits.Count); nextOffset = $GraphHits.Count
+                hits = $GraphHits
+            }
+        }
+        $disk = @{
+            returned = $DiskHits.Count; totalMatches = $DiskTotal; offset = 0
+            truncated = ($DiskTotal -gt $DiskHits.Count); nextOffset = $DiskHits.Count
+            filesScanned = 7; filesSkipped = 0; alreadyInGraph = 1; hits = $DiskHits
+        }
+        return (@{ ok = $true; tool = 'grep'; result = @{ graph = $graph; disk = $disk } } | ConvertTo-Json -Depth 10 -Compress)
+    }
+
+    $script:sampleAnswer = New-GrepEnvelope `
+        -GraphHits @(@{ nodeId = 'type:Nav.WavePlan'; nodeType = 'Class'; name = 'WavePlan'; matchedOn = 'name'; path = 'src\Foo.cs'; line = 12 }) `
+        -DiskHits @(
+            @{ path = 'src\Foo.cs'; line = 30; text = 'return new WavePlan();' },
+            @{ path = 'src\Bar.cs'; line = 40; text = 'var plan = new WavePlan();' },
+            @{ path = 'src\Bar.cs'; line = 41; text = 'plan = WavePlan.Empty;' })
+
+    # Replies are dequeued per call: a string is the envelope, a scriptblock is run (so
+    # it can throw). An empty queue answers with the sample.
+    $global:GraphGuardMcp = [PSCustomObject]@{
+        Calls   = New-Object System.Collections.Generic.List[hashtable]
+        Replies = New-Object System.Collections.Generic.Queue[object]
+        Default = $script:sampleAnswer
+    }
+    $global:GraphGuardEnsure = [PSCustomObject]@{ Calls = 0; Reply = '{"ok":false,"state":"no-server-binary","error":"no binary"}' }
+
+    $script:fakeMcp = {
+        param([hashtable]$Arguments)
+        $global:GraphGuardMcp.Calls.Add($Arguments)
+        if ($global:GraphGuardMcp.Replies.Count -eq 0) { return $global:GraphGuardMcp.Default }
+        $reply = $global:GraphGuardMcp.Replies.Dequeue()
+        if ($reply -is [scriptblock]) { return (& $reply) }
+        return $reply
+    }
+    $script:fakeEnsure = {
+        $global:GraphGuardEnsure.Calls++
+        return $global:GraphGuardEnsure.Reply
+    }
+
+    function Invoke-GuardRaw {
+        <#
+            Runs the guard once and returns its parsed hookSpecificOutput, or $null for
+            silence. CLAUDE_PROJECT_DIR is set per call: the real hook environment may
+            already carry one, and a test that inherited it would stop testing what it
+            says it tests.
         #>
         [CmdletBinding()]
         param(
             [string]$Command,
             [hashtable]$GrepInput,
             [string]$ToolName = 'PowerShell',
-            [string]$Transcript = $script:coldTranscript
+            [string]$Transcript = $script:coldTranscript,
+            [string]$Cwd
         )
 
         $toolInput = if ($GrepInput) { $GrepInput } else { @{ command = $Command } }
@@ -68,59 +146,73 @@ BeforeAll {
             tool_name       = $ToolName
             tool_input      = $toolInput
             transcript_path = $Transcript
-        } | ConvertTo-Json -Compress -Depth 6
+        }
+        if ($Cwd) { $payload['cwd'] = $Cwd }
+        $json = $payload | ConvertTo-Json -Compress -Depth 6
 
         $previous = $env:CLAUDE_PROJECT_DIR
         $env:CLAUDE_PROJECT_DIR = $script:projectDir
         try {
-            $out = & $script:guard -InputJson $payload 2>&1 | Out-String
+            $out = & $script:guard -InputJson $json -McpCall $script:fakeMcp -EnsureServer $script:fakeEnsure 2>&1 | Out-String
         }
         finally {
             $env:CLAUDE_PROJECT_DIR = $previous
         }
 
-        if ($out -match '"permissionDecision"\s*:\s*"deny"') { return 'deny' }
+        if ([string]::IsNullOrWhiteSpace($out)) { return $null }
+        return ($out | ConvertFrom-Json).hookSpecificOutput
+    }
+
+    function Invoke-Guard {
+        # Answers 'deny' or 'pass'.
+        [CmdletBinding()]
+        param([string]$Command, [hashtable]$GrepInput, [string]$ToolName = 'PowerShell',
+            [string]$Transcript = $script:coldTranscript, [string]$Cwd)
+
+        $output = Invoke-GuardRaw @PSBoundParameters
+        if ($null -ne $output -and $output.PSObject.Properties.Name -contains 'permissionDecision' -and
+            $output.permissionDecision -eq 'deny') { return 'deny' }
         return 'pass'
     }
 
     function Get-GuardReason {
         <#
-            The denial's REASON text, decoded. Invoke-Guard answers deny or pass and
-            throws the reason away, which is how the reason drifted: on 2026-09-14 it
-            was naming a graphId that no graph carried and a solution belonging to a
-            different repository, and every test was green throughout. The remediation
-            is the whole product of this hook, so it needs pinning like any other output.
+            The denial's REASON text, decoded. Invoke-Guard throws the reason away, which
+            is how the reason drifted on 2026-09-14 with every test green. The answer is
+            the whole product of this hook, so it needs pinning like any other output.
         #>
         [CmdletBinding()]
-        param(
-            [string]$Command,
-            [hashtable]$GrepInput,
-            [string]$ToolName = 'PowerShell',
-            [string]$Transcript = $script:coldTranscript
-        )
+        param([string]$Command, [hashtable]$GrepInput, [string]$ToolName = 'PowerShell',
+            [string]$Transcript = $script:coldTranscript, [string]$Cwd)
 
-        $toolInput = if ($GrepInput) { $GrepInput } else { @{ command = $Command } }
-        $payload = @{
-            tool_name       = $ToolName
-            tool_input      = $toolInput
-            transcript_path = $Transcript
-        } | ConvertTo-Json -Compress -Depth 6
+        $output = Invoke-GuardRaw @PSBoundParameters
+        if ($null -eq $output -or $output.PSObject.Properties.Name -notcontains 'permissionDecisionReason') { return $null }
+        return $output.permissionDecisionReason
+    }
 
-        $previous = $env:CLAUDE_PROJECT_DIR
-        $env:CLAUDE_PROJECT_DIR = $script:projectDir
-        try {
-            $out = & $script:guard -InputJson $payload 2>&1 | Out-String
-        }
-        finally {
-            $env:CLAUDE_PROJECT_DIR = $previous
-        }
-
-        if (-not ($out -match '"permissionDecision"\s*:\s*"deny"')) { return $null }
-        return ($out | ConvertFrom-Json).hookSpecificOutput.permissionDecisionReason
+    function Assert-FailedOpen {
+        # A pass that says why: additionalContext, and NO permissionDecision at all --
+        # 'allow' would also skip the permission prompt.
+        param($Output, [string]$Mentions)
+        $Output | Should -Not -BeNullOrEmpty
+        $Output.PSObject.Properties.Name | Should -Not -Contain 'permissionDecision'
+        $Output.additionalContext | Should -Match $Mentions
+        ($Output.additionalContext -split "`n").Count | Should -Be 1
     }
 }
 
 Describe 'Invoke-GraphGuard' {
+
+    BeforeEach {
+        $global:GraphGuardMcp.Calls.Clear()
+        $global:GraphGuardMcp.Replies.Clear()
+        $global:GraphGuardEnsure.Calls = 0
+        $global:GraphGuardEnsure.Reply = '{"ok":false,"state":"no-server-binary","error":"no binary"}'
+    }
+
+    AfterAll {
+        Remove-Variable -Name GraphGuardMcp, GraphGuardEnsure -Scope Global -ErrorAction SilentlyContinue
+    }
 
     Context 'git is not a code search' {
         # All three of these were denied on 2026-09-06. The graph models one built state
@@ -171,21 +263,39 @@ Describe 'Invoke-GraphGuard' {
         }
 
         It 'refuses the Grep tool narrowed to a C# glob' {
+            # Now refused by ANSWERING: the denial carries razorgraph's results.
             Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; glob = '*.cs' } |
                 Should -Be 'deny'
         }
 
-        It 'lets a search for another kind of file through' {
+        It 'answers a search for another kind of file too' {
+            # Was a pass until 2026-10-11, when the Grep trigger stopped being about C#:
+            # any Grep inside a repo is answered, whatever it searches.
             Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; glob = '*.ps1' } |
-                Should -Be 'pass'
+                Should -Be 'deny'
+            $global:GraphGuardMcp.Calls[0]['glob'] | Should -Be '*.ps1'
         }
     }
 
-    Context 'clearance and the escape hatch' {
+    Context 'clearance is gone, the escape hatch stays' {
 
-        It 'passes once a razorgraph call is in the recent transcript' {
+        It 'refuses a shell search even with a razorgraph call in the recent transcript' {
+            # Was a pass: one razorgraph call bought 12 tool calls of grep, and agents
+            # bought it with a throwaway call.
             Invoke-Guard -Command 'rg "WavePlan" src/' -Transcript $script:warmTranscript |
-                Should -Be 'pass'
+                Should -Be 'deny'
+        }
+
+        It 'answers a Grep even with a razorgraph call in the recent transcript' {
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' } -Transcript $script:warmTranscript |
+                Should -Be 'deny'
+        }
+
+        It 'does not need a transcript at all' {
+            # Was 'fails open when the transcript does not exist'. Nothing reads it now,
+            # so its absence is no longer a reason to let a search through.
+            Invoke-Guard -Command 'rg "WavePlan" src/' -Transcript (Join-Path $TestDrive 'absent.jsonl') |
+                Should -Be 'deny'
         }
 
         It 'passes everything when JANET_GRAPH_GUARD is off' {
@@ -193,16 +303,12 @@ Describe 'Invoke-GraphGuard' {
             $env:JANET_GRAPH_GUARD = 'off'
             try {
                 Invoke-Guard -Command 'rg "WavePlan" src/' | Should -Be 'pass'
+                Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' } | Should -Be 'pass'
+                $global:GraphGuardMcp.Calls.Count | Should -Be 0
             }
             finally {
                 $env:JANET_GRAPH_GUARD = $previous
             }
-        }
-
-        It 'fails open when the transcript does not exist' {
-            # A guard that cannot read the session must not wedge it.
-            Invoke-Guard -Command 'rg "WavePlan" src/' -Transcript (Join-Path $TestDrive 'absent.jsonl') |
-                Should -Be 'pass'
         }
     }
 
@@ -213,9 +319,7 @@ Describe 'Invoke-GraphGuard' {
             # non-ASCII byte -- the graph indexes neither bytes nor line endings, so this
             # denial is wrong in the same way the git ones were. It is left standing
             # because the shell trigger ignores the search PATTERN entirely, and reading
-            # a pattern out of arbitrary shell text is the kind of heuristic that rots;
-            # the Grep tool's own trigger already does better by testing whether the
-            # pattern is identifier-shaped.
+            # a pattern out of arbitrary shell text is the kind of heuristic that rots.
             #
             # If you fix it, this test SHOULD fail. Change it to 'pass' then, rather than
             # deleting it -- the case is worth keeping either way.
@@ -224,77 +328,258 @@ Describe 'Invoke-GraphGuard' {
         }
     }
 
-    Context 'the remediation names things that exist' {
-        # Both failures here were found by the guard firing on the author, on
-        # 2026-09-14, and both were invisible to every test above: a denial is a denial
-        # whatever it then advises, so these assert the ADVICE.
+    Context 'a Grep inside a repo is answered by razorgraph' {
 
-        BeforeAll {
-            # A second repository with its own solution, to search from a session whose
-            # project is the first one.
-            $script:otherRepo = Join-Path $TestDrive 'other'
-            New-Item -ItemType Directory -Path (Join-Path $script:otherRepo 'src') -Force | Out-Null
-            Set-Content -LiteralPath (Join-Path $script:otherRepo 'Other.slnx') `
-                -Value '<Solution />' -Encoding utf8
+        It 'denies with the graph and disk hits rendered' {
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; output_mode = 'content' }
+
+            ($reason -split "`n")[0] | Should -Match '^Answered by mcp__razorgraph__grep in place of Grep'
+            $reason | Should -Match ([regex]::Escape('Graph: stub, built 2026-10-11T08:00:00Z'))
+            $reason | Should -Match ([regex]::Escape('src\Foo.cs:12  Class WavePlan  (type:Nav.WavePlan)'))
+            $reason | Should -Match ([regex]::Escape('src\Bar.cs:40: var plan = new WavePlan();'))
+            $reason | Should -Match '1 already reported by the graph'
+            # Nothing was truncated, so there is nothing to continue.
+            $reason | Should -Not -Match 'More: '
         }
 
-        It 'does not invent a graphId from the solution file name' {
-            # It used to say: use graphId "stub". Nothing files graphs under that name
-            # except convention, so a session holding the graph under any other id was
-            # told to build a duplicate -- a full Roslyn compile to reach where it was.
-            $reason = Get-GuardReason -Command 'rg "WavePlan" src/'
+        It 'passes ignoreCase=false unless -i, and true with it' {
+            # Grep is case-sensitive by default and razorgraph is not, so the hook must
+            # say which every time.
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' } | Out-Null
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; '-i' = $true } | Out-Null
 
-            $reason | Should -Not -BeNullOrEmpty
-            $reason | Should -Not -Match 'graphId\s+"?stub"?'
-            $reason | Should -Match 'list_graphs'
+            $global:GraphGuardMcp.Calls.Count | Should -Be 2
+            $global:GraphGuardMcp.Calls[0]['ignoreCase'] | Should -BeExactly $false
+            $global:GraphGuardMcp.Calls[1]['ignoreCase'] | Should -BeExactly $true
         }
 
-        It 'sends the reader to list_graphs for the id rather than to a guess' {
-            $reason = Get-GuardReason -Command 'rg "WavePlan" src/'
+        It 'turns a file path into its folder plus a glob of its name' {
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{
+                pattern = 'WavePlan'; path = (Join-Path $script:projectDir 'src\Foo.cs')
+            } | Should -Be 'deny'
 
-            # The placeholder survives into both example queries, so neither can be
-            # pasted with a wrong id already filled in.
-            $reason | Should -Match 'find_nodes graphId=<graphId>'
-            $reason | Should -Match 'get_node graphId=<graphId>'
+            $global:GraphGuardMcp.Calls[0]['folder'] | Should -Be (Join-Path $script:projectDir 'src')
+            $global:GraphGuardMcp.Calls[0]['glob'] | Should -Be 'Foo.cs'
         }
 
-        It 'names the solution above the tree a Grep actually searches' {
-            # The worse half: a search over another repo was told to query THIS repo's
-            # graph -- not unhelpful, but a different codebase answering.
-            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{
-                pattern = 'WavePlan'
-                path    = (Join-Path $script:otherRepo 'src')
-            }
+        It 'searches the folder a Grep names, and the payload cwd when it names none' {
+            # Replaces the 2026-09-14 solution-resolution pins: the tree searched is the
+            # tree named, never the session's project.
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; path = $script:scanRepo } | Out-Null
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' } -Cwd $script:scanRepo | Out-Null
 
-            $reason | Should -Not -BeNullOrEmpty
-            $reason | Should -Match ([regex]::Escape('Other.slnx'))
-            $reason | Should -Not -Match ([regex]::Escape('Stub.slnx'))
+            $global:GraphGuardMcp.Calls[0]['folder'] | Should -Be $script:scanRepo
+            $global:GraphGuardMcp.Calls[1]['folder'] | Should -Be $script:scanRepo
         }
 
-        It 'falls back to the project solution when a Grep names no path' {
-            # The control for the test above: without a path there is no tree to read,
-            # and the project's own solution is the right answer rather than a guess.
+        It 'maps a known type to a glob' {
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; type = 'cs' } | Should -Be 'deny'
+            $global:GraphGuardMcp.Calls[0]['glob'] | Should -Be '*.cs'
+        }
+
+        It 'lets an unknown type through without asking' {
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; type = 'cobol' } | Should -Be 'pass'
+            $global:GraphGuardMcp.Calls.Count | Should -Be 0
+        }
+
+        It 'lets a glob razorgraph cannot match through: <glob>' -ForEach @(
+            @{ glob = '**/*.cs' }, @{ glob = 'src/*.cs' }, @{ glob = '*.{cs,ps1}' }
+        ) {
+            # razorgraph's glob matches the file NAME only.
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; glob = $glob } | Should -Be 'pass'
+            $global:GraphGuardMcp.Calls.Count | Should -Be 0
+        }
+
+        It 'lets <name> through, which razorgraph cannot do' -ForEach @(
+            @{ name = 'multiline'; extra = @{ multiline = $true } },
+            @{ name = '-C'; extra = @{ '-C' = 2 } },
+            @{ name = '-A'; extra = @{ '-A' = 1 } },
+            @{ name = 'context'; extra = @{ context = 3 } }
+        ) {
+            $grepInput = @{ pattern = 'WavePlan'; output_mode = 'content' } + $extra
+            Invoke-Guard -ToolName 'Grep' -GrepInput $grepInput | Should -Be 'pass'
+            $global:GraphGuardMcp.Calls.Count | Should -Be 0
+        }
+
+        It 'passes a path outside any git working tree untouched' {
+            Invoke-GuardRaw -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; path = $script:plainDir } |
+                Should -BeNullOrEmpty
+            $global:GraphGuardMcp.Calls.Count | Should -Be 0
+        }
+    }
+
+    Context 'output modes and the size cap' {
+
+        It 'gives distinct paths for files_with_matches, the Grep default' {
             $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' }
 
-            $reason | Should -Match ([regex]::Escape('Stub.slnx'))
+            $global:GraphGuardMcp.Calls[0]['limit'] | Should -Be 1000
+            $lines = @($reason -split "`n" | Where-Object { $_ -match '^  ' } | ForEach-Object { $_.Trim() })
+            $lines | Should -Be @('src\Bar.cs', 'src\Foo.cs')
+            $reason | Should -Not -Match 'PARTIAL'
         }
 
-        It 'admits it cannot tell which tree a shell command walks' {
-            # Shell paths are not parsed, deliberately, so the project's solution is a
-            # guess. Saying so is the difference between a useful default and a wrong
-            # assertion -- and it is what would have caught the author sooner.
-            $reason = Get-GuardReason -Command 'rg "WavePlan" src/'
+        It 'gives per-file line counts for count, across both sections' {
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; output_mode = 'count' }
 
-            $reason | Should -Match "SESSION'S project"
+            # Foo.cs: graph line 12 plus disk line 30. Bar.cs: disk lines 40 and 41.
+            $reason | Should -Match ([regex]::Escape('  src\Bar.cs:2'))
+            $reason | Should -Match ([regex]::Escape('  src\Foo.cs:2'))
         }
 
-        It 'does not add that caveat when the Grep path settled the question' {
+        It 'says a file list is partial when a section was truncated' {
+            $global:GraphGuardMcp.Replies.Enqueue((New-GrepEnvelope -NoGraph `
+                -DiskHits @(@{ path = 'a.cs'; line = 1; text = 'WavePlan' }) -DiskTotal 1500))
+
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' }
+
+            $reason | Should -Match 'PARTIAL: only the first 1000 matches per section'
+            $reason | Should -Match '"diskOffset":1\}'
+        }
+
+        It 'trims to the cap, says how many, and continues from the last line shown' {
+            $many = 1..400 | ForEach-Object { @{ path = "src\File$_.cs"; line = $_; text = ('x' * 100) + ' WavePlan' } }
+            $global:GraphGuardMcp.Replies.Enqueue((New-GrepEnvelope -NoGraph -DiskHits $many))
+
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; output_mode = 'content'; head_limit = 400 }
+
+            $reason.Length | Should -BeLessOrEqual 12000
+            $reason | Should -Match '(\d+) hit\(s\) trimmed to fit the 12000-character cap'
+            $trimmedCount = [int]([regex]::Match($reason, '(\d+) hit\(s\) trimmed').Groups[1].Value)
+            $shown = 400 - $trimmedCount
+            @($reason -split "`n" | Where-Object { $_ -match '^  src\\File' }).Count | Should -Be $shown
+            $reason | Should -Match ('"diskOffset":' + $shown + '\}')
+        }
+    }
+
+    Context 'when razorgraph cannot answer' {
+
+        It 'fails open on <name>, without starting the server' -ForEach @(
+            @{ name = 'isError'; reply = '{"ok":false,"tool":"grep","result":"An error occurred invoking ''grep'': folder is odd"}'; mentions = 'folder is odd' },
+            @{ name = 'an invalid regex'; reply = '{"ok":false,"tool":"grep","result":"An error occurred invoking ''grep'': pattern is not a valid .NET regular expression"}'; mentions = 'not a valid .NET regular expression' },
+            @{ name = 'a protocol error'; reply = '{"ok":false,"tool":"grep","error":"Unknown tool: grep","code":-32602}'; mentions = 'Unknown tool' },
+            @{ name = 'an exception in the call'; reply = { throw 'boom in the call' }; mentions = 'boom in the call' }
+        ) {
+            $global:GraphGuardMcp.Replies.Enqueue($reply)
+
+            $output = Invoke-GuardRaw -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' }
+
+            Assert-FailedOpen -Output $output -Mentions $mentions
+            $global:GraphGuardEnsure.Calls | Should -Be 0
+            $output.additionalContext | Should -Not -Match 'own scan'
+        }
+
+        It 'starts the server when unreachable and renders the retry from razorgraph' {
+            $global:GraphGuardMcp.Replies.Enqueue('{"ok":false,"tool":"grep","error":"cannot reach the MCP server: No connection could be made"}')
+            $global:GraphGuardEnsure.Reply = '{"ok":true,"state":"started","error":null}'
+
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; output_mode = 'content' }
+
+            $global:GraphGuardEnsure.Calls | Should -Be 1
+            $global:GraphGuardMcp.Calls.Count | Should -Be 2
+            ($reason -split "`n")[0] | Should -Match '^Answered by mcp__razorgraph__grep'
+            $reason | Should -Match ([regex]::Escape('src\Foo.cs:12  Class WavePlan'))
+            $reason | Should -Not -Match 'own scan'
+        }
+
+        It 'treats a timeout as unreachable too' {
+            $global:GraphGuardMcp.Replies.Enqueue({ throw 'The request was canceled due to the configured HttpClient.Timeout of 10 seconds elapsing.' })
+            $global:GraphGuardEnsure.Reply = '{"ok":true,"state":"already-running","error":null}'
+
+            Invoke-Guard -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan' } | Should -Be 'deny'
+            $global:GraphGuardEnsure.Calls | Should -Be 1
+        }
+
+        It 'scans locally when the server is down and will not start, and says so' {
+            $global:GraphGuardMcp.Replies.Enqueue('{"ok":false,"tool":"grep","error":"cannot reach the MCP server: refused"}')
+            $global:GraphGuardEnsure.Reply = '{"ok":false,"state":"start-failed","note":"nothing listening","error":"binary crashed on start"}'
+
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; path = $script:scanRepo; output_mode = 'content' }
+
+            $global:GraphGuardMcp.Calls.Count | Should -Be 1
+            ($reason -split "`n")[0] | Should -Match '^razorgraph was down and could not be started \(binary crashed on start\)'
+            $reason | Should -Match "this hook's own scan"
+            $reason | Should -Not -Match 'Graph:'
+            $reason | Should -Match ([regex]::Escape('a.cs:2: var p = new WavePlan();'))
+        }
+
+        It 'scans locally when the server starts but the retry still cannot connect' {
+            $global:GraphGuardMcp.Replies.Enqueue('{"ok":false,"tool":"grep","error":"cannot reach the MCP server: refused"}')
+            $global:GraphGuardMcp.Replies.Enqueue('{"ok":false,"tool":"grep","error":"cannot reach the MCP server: refused again"}')
+            $global:GraphGuardEnsure.Reply = '{"ok":true,"state":"started","error":null}'
+
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; path = $script:scanRepo; output_mode = 'content' }
+
+            $global:GraphGuardMcp.Calls.Count | Should -Be 2
+            $reason | Should -Match 'retry still could not connect: cannot reach the MCP server: refused again'
+            $reason | Should -Match ([regex]::Escape('a.cs:2: var p = new WavePlan();'))
+        }
+    }
+
+    Context "the hook's own scan" {
+
+        BeforeEach {
+            $global:GraphGuardMcp.Replies.Enqueue('{"ok":false,"tool":"grep","error":"cannot reach the MCP server: refused"}')
+        }
+
+        It 'honours the glob and the case rule' {
             $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{
-                pattern = 'WavePlan'
-                path    = (Join-Path $script:otherRepo 'src')
+                pattern = 'WavePlan'; path = $script:scanRepo; glob = '*.cs'; output_mode = 'content'
             }
 
-            $reason | Should -Not -Match "SESSION'S project"
+            $reason | Should -Match ([regex]::Escape('a.cs:2: var p = new WavePlan();'))
+            $reason | Should -Not -Match ([regex]::Escape('a.cs:3:'))
+            $reason | Should -Not -Match 'b\.ps1'
+        }
+
+        It 'matches both cases with -i' {
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{
+                pattern = 'WavePlan'; path = $script:scanRepo; glob = '*.cs'; output_mode = 'content'; '-i' = $true
+            }
+
+            $reason | Should -Match ([regex]::Escape('a.cs:3: var q = waveplan;'))
+        }
+
+        It 'skips a binary and counts it' {
+            $reason = Get-GuardReason -ToolName 'Grep' -GrepInput @{ pattern = 'WavePlan'; path = $script:scanRepo }
+
+            $lines = @($reason -split "`n" | Where-Object { $_ -match '^  ' } | ForEach-Object { $_.Trim() })
+            $lines | Should -Be @('a.cs', 'b.ps1')
+            $reason | Should -Match '1 skipped \(binary or over 2 MB\)'
+        }
+
+        It 'fails open on an invalid regex instead of scanning' {
+            $output = Invoke-GuardRaw -ToolName 'Grep' -GrepInput @{ pattern = '(unclosed'; path = $script:scanRepo }
+
+            Assert-FailedOpen -Output $output -Mentions "own scan failed"
+        }
+    }
+
+    Context 'a shell search names the razorgraph call to paste' {
+
+        It 'reads a plain command into a paste-ready call' {
+            $reason = Get-GuardReason -Command 'rg "WavePlan" src/'
+
+            $folder = (Join-Path $script:projectDir 'src') -replace '\\', '\\'
+            $reason | Should -Match ([regex]::Escape('ToolSearch("select:mcp__razorgraph__grep")'))
+            $reason | Should -Match ([regex]::Escape('mcp__razorgraph__grep {"pattern":"WavePlan","folder":"' + $folder + '","ignoreCase":false}'))
+            $reason | Should -Not -Match 'find_nodes'
+        }
+
+        It 'reads Select-String as case-insensitive and a file path as folder plus glob' {
+            $reason = Get-GuardReason -Command 'Select-String -Path src\Foo.cs -Pattern Bar'
+
+            $folder = (Join-Path $script:projectDir 'src') -replace '\\', '\\'
+            $reason | Should -Match ([regex]::Escape('{"pattern":"Bar","folder":"' + $folder + '","glob":"Foo.cs","ignoreCase":true}'))
+        }
+
+        It 'shows placeholders rather than guessing when the command is not plain' {
+            # The shell is not parsed beyond one plain search, so a pipeline gets the
+            # template -- never a folder the hook merely assumed.
+            $reason = Get-GuardReason -Command 'Get-ChildItem src -Filter *.cs | Select-String -Pattern WavePlan'
+
+            $reason | Should -Match ([regex]::Escape('{"pattern":"<.NET regex>","folder":"<absolute folder>","ignoreCase":"<true|false>"}'))
+            $reason | Should -Match 'fill in pattern, folder and ignoreCase'
         }
     }
 }
