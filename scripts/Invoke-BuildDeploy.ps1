@@ -279,8 +279,16 @@ try {
                 }
             }
             catch {
-                $status = $_.Exception.Response.StatusCode.value__
-                if ($warming -contains $status) {
+                # A probe that fails before any HTTP response (timeout, connection
+                # refused while the site restarts) carries no Response, and reading
+                # it bare throws under StrictMode and ends the loop. No response
+                # yet is warming, not broken.
+                $failed = Get-Prop $_.Exception 'Response'
+                $status = if ($null -ne $failed) { [int]$failed.StatusCode } else { $null }
+                if ($null -eq $status) {
+                    Write-Host "  Attempt ${attempt}/${attempts}: no response yet ($($_.Exception.Message))..." -ForegroundColor Yellow
+                }
+                elseif ($warming -contains $status) {
                     Write-Host "  Attempt ${attempt}/${attempts}: warming up ($status)..." -ForegroundColor Yellow
                 }
                 else {
