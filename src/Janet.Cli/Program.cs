@@ -65,6 +65,27 @@ static int Run(Args args)
             Console.Out);
     }
 
+    // The MCP bearer token. Logic in Janet.Core (McpTokenVerb) so a test can reach it on a
+    // throwaway registry key; only this front end hands it the real store.
+    if (command is "mcp-token" or "mcp-headers")
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine($"{command}: the MCP token store is Windows-only (DPAPI under HKCU).");
+            return 1;
+        }
+
+        return command == "mcp-headers"
+            ? McpTokenVerb.Headers(Janet.Mcp.Security.McpTokenStore.Default, Console.Out, Console.Error)
+            : McpTokenVerb.Token(
+                args.Flag("--ensure"),
+                args.Flag("--print"),
+                args.Flag("--rotate"),
+                Janet.Mcp.Security.McpTokenStore.Default,
+                Console.Out,
+                Console.Error);
+    }
+
     if (command != "research")
     {
         Console.Error.WriteLine($"Unknown command '{args.Positional[0]}'.");
@@ -772,6 +793,17 @@ static int Usage()
                               [--text] [--pretty]
                               (aliases: arm, management, storage, graph, keyvault, sql,
                                servicebus, cosmos; anything else must be a full scope)
+
+        janet mcp-token       (--ensure | --print | --rotate)
+                              (--ensure creates the token if absent, --rotate replaces it;
+                               both print a one-line JSON status WITHOUT the token. --print
+                               writes the bare token to stdout, and exits 1 if there is none)
+        janet mcp-headers     (prints {"Authorization":"Bearer <token>"} -- the headersHelper
+                               output Claude Code expects -- or exits 1 if there is no token)
+
+        The MCP token is 32 random bytes kept as a DPAPI blob (CurrentUser) in
+        HKCU\Software\Janet\McpToken. Only janet reads it: janet-mcp and razorgraph-mcp expect it
+        as a bearer token on every request but /health.
 
         az token borrows the Azure CLI's sign-in -- there is no separate credential, so it works
         exactly when `az login` does. It reports scope, tenant and expiry by DEFAULT and withholds

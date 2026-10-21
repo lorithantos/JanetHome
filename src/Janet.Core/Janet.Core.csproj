@@ -25,6 +25,20 @@
       reports zero types, which is true and reads as a broken lookup.
     -->
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
+
+    <!--
+      The MCP bearer token's store (McpTokenStore), for the mcp-token and mcp-headers verbs and
+      for ServerLink's Authorization header. Here rather than in Janet.Cli because the verbs
+      live here, where Janet.Tests can reach them.
+
+      The cost, stated because it bends the rule above: the package carries a FrameworkReference
+      to Microsoft.AspNetCore.App (its guard and bearer check are middleware), and a framework
+      reference flows to every consumer. So since 0.7.0 this project, and the janet CLI with it,
+      needs the ASP.NET Core shared runtime, which any machine running janet-mcp already has.
+      The alternative was a second token reader here, which is the drift the shared package
+      exists to end.
+    -->
+    <PackageReference Include="Janet.Mcp.Security" Version="0.7.0" />
   </ItemGroup>
 
   <ItemGroup>

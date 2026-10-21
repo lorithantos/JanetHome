@@ -401,7 +401,15 @@ if ($ProcessName) {
         RedirectStandardOutput = Join-Path $logDir "$ProcessName.out.log"
         RedirectStandardError  = Join-Path $logDir "$ProcessName.err.log"
     }
-    if ($ServerArgument.Count -gt 0) { $launch.ArgumentList = $ServerArgument }
+    # Start-Process joins -ArgumentList with spaces and quotes nothing, so an argument holding a
+    # space -- razorgraph's --auth-token-command 'janet mcp-token --print' -- would arrive as
+    # three (measured 2026-10-21). Quote those, with Windows command-line escaping for quotes and
+    # trailing backslashes; Ensure-McpServer.ps1 does the same.
+    if ($ServerArgument.Count -gt 0) {
+        $launch.ArgumentList = @($ServerArgument | ForEach-Object {
+                if ($_ -match '[\s"]') { '"' + (($_ -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' } else { $_ }
+            })
+    }
 
     $started = Start-Process @launch
 

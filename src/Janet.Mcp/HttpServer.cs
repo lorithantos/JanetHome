@@ -1,4 +1,5 @@
 using Janet.Core;
+using Janet.Mcp.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,13 +7,16 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Janet.Mcp;
 
 /// <summary>
-/// Builds the HTTP transport's application: services, the loopback guard, and every endpoint.
+/// Builds the HTTP transport's application: services, the loopback guard and bearer check, and
+/// every endpoint.
 /// </summary>
 /// <remarks>
 /// Lifted out of Program.cs on 2026-10-21 so a test can host exactly what production hosts. The
-/// guard's ordering is the thing worth pinning -- it must run before /health, /az/token and the
-/// MCP endpoint answer anything -- and a test that assembled its own pipeline would pin only
-/// its own ordering. Program.cs still owns probing, binding and the race handling.
+/// security's ordering is the thing worth pinning -- it must run before /health, /az/token and
+/// the MCP endpoint answer anything -- and a test that assembled its own pipeline would pin only
+/// its own ordering. Program.cs still owns probing, binding and the race handling, and it owns
+/// the <see cref="BearerAuthenticator"/>: it creates it with the real token provider and
+/// disposes it when the server stops. Tests pass one over a provider of their own.
 /// </remarks>
 internal static class HttpServer
 {
@@ -20,9 +24,26 @@ internal static class HttpServer
     /// The application for <paramref name="context"/>'s graph, listening on 127.0.0.1 at
     /// <paramref name="port"/> once started. Port 0 lets the OS choose, which is what tests use.
     /// </summary>
-    internal static WebApplication Build(GraphContext context, int port)
+    /// <exception cref="StartupRefusedException">
+    /// <paramref name="bearer"/> is in Require mode and its provider returned no token: a server
+    /// that would answer every request 401 is refused at startup instead.
+    /// </exception>
+    internal static WebApplication Build(GraphContext context, int port, BearerAuthenticator bearer)
     {
+        ArgumentNullException.ThrowIfNull(bearer);
         string graphPath = context.GraphPath;
+
+        // Before anything is built: Require with no token is a server nobody can use, and it
+        // would look healthy -- /health is exempt -- while refusing everything else.
+        BearerAuthSnapshot auth = bearer.Snapshot();
+        if (bearer.Mode == BearerMode.Require && !auth.TokenConfigured)
+        {
+            throw new StartupRefusedException(
+                "janet-mcp: --auth require needs the MCP bearer token, and there is none" +
+                (auth.ProviderError is null ? string.Empty : $" ({auth.ProviderError})") + ". " +
+                "Run `janet mcp-token --ensure` to create it, then start the server again. " +
+                "--auth report or --auth off starts without one.");
+        }
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(context);
@@ -43,16 +64,21 @@ internal static class HttpServer
         WebApplication app = builder.Build();
 
         // FIRST, before anything is mapped: a request with a forged Host or Origin, or a POST that
-        // is not JSON, is answered by the guard and reaches no endpoint. See LoopbackGuard.
-        app.UseLoopbackGuard();
+        // is not JSON, is answered by the guard and reaches no endpoint; then, unless --auth is
+        // off, the bearer check (401 under require, counted under report). /health is exempt from
+        // the bearer check, never from the guard. Both live in the Janet.Mcp.Security package.
+        app.UseMcpSecurity(bearer);
 
         app.MapMcp();
 
-        // Lets another instance tell "a janet-mcp for my graph" from "someone else's port".
+        // Lets another instance tell "a janet-mcp for my graph" from "someone else's port", and
+        // carries the bearer check's state: mode, whether a token is configured, the outcome
+        // counters and any provider error. The snapshot holds no token, expected or received.
         app.MapGet("/health", () => new HealthReport(
             Health.Name,
             graphPath,
-            typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0"));
+            typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0",
+            bearer.Snapshot()));
 
         // The CLI's way in. Not a second implementation: it calls the same AzToken.Acquire and the
         // same AzTokenJson as the az_token tool, so the two front ends cannot drift about what an
@@ -94,3 +120,6 @@ internal static class HttpServer
         return app;
     }
 }
+
+/// <summary>The server cannot usefully start as configured; the message says what to do.</summary>
+internal sealed class StartupRefusedException(string message) : Exception(message);

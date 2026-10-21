@@ -57,6 +57,10 @@ if (-not (Test-Path $Path)) {
 
 . (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
 
+# Get-McpAuthHeader's answer, filled on the first MCP sample. $janet is assigned further down,
+# before any sampler runs.
+$mcpAuth = $null
+
 function Invoke-JanetMcpSample {
     <#
     .SYNOPSIS
@@ -74,10 +78,22 @@ function Invoke-JanetMcpSample {
         [Parameter(Mandatory)][hashtable]$Arguments
     )
 
+    # The bearer header, fetched once per run from the same janet the CLI samplers use, and
+    # reused for every MCP sample. Empty when there is no token: a server in report or off
+    # mode answers without one.
+    if ($null -eq $script:mcpAuth) { $script:mcpAuth = Get-McpAuthHeader -Janet $script:janet }
+
     $mcp = Join-Path $Root 'scripts\Invoke-McpTool.ps1'
-    $text = @(& $mcp -Tool $Tool -Arguments $Arguments -Uri 'http://127.0.0.1:7717/' -Raw 2>&1) -join "`n"
+    $text = @(& $mcp -Tool $Tool -Arguments $Arguments -Uri 'http://127.0.0.1:7717/' -Raw -AuthHeader $script:mcpAuth.Header 2>&1) -join "`n"
 
     if ($LASTEXITCODE -ne 0) {
+        # A 401 is still a skip -- this machine's token, not the format, is what is wrong -- but
+        # it says so, rather than reading as a server that did not answer.
+        $failed = $null
+        try { $failed = $text | ConvertFrom-Json -ErrorAction Stop } catch { $failed = $null }
+        if ($null -ne $failed -and $failed.PSObject.Properties.Name -contains 'status' -and $failed.status -eq 401) {
+            return [pscustomobject]@{ samples = @(); json = $null; skipped = "janet-mcp on 7717 refused $Tool for want of a valid bearer token: $($failed.error)" }
+        }
         return [pscustomobject]@{ samples = @(); json = $null; skipped = "janet-mcp on 7717 did not answer $Tool ($text)" }
     }
 

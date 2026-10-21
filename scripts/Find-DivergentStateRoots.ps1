@@ -77,11 +77,26 @@ $ErrorActionPreference = 'Stop'
 $mcp = Join-Path $PSScriptRoot 'Invoke-McpTool.ps1'
 if (-not (Test-Path $mcp)) { throw "Invoke-McpTool.ps1 not found beside this script at $PSScriptRoot." }
 
+. (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
+
+# The bearer header, fetched ONCE: this script makes a call per chunk, and each fetch is a
+# janet process. Empty when there is no token, which a server in report or off mode accepts.
+$authHeader = (Get-McpAuthHeader).Header
+
 function Invoke-Tool {
     param([string]$Name, [hashtable]$ToolArguments)
 
-    $raw = & $mcp -Tool $Name -Arguments $ToolArguments -Uri $Uri
-    if ($LASTEXITCODE -ne 0) { throw "$Name failed: $raw" }
+    $raw = & $mcp -Tool $Name -Arguments $ToolArguments -Uri $Uri -AuthHeader $authHeader
+    if ($LASTEXITCODE -ne 0) {
+        # A 401 is a missing or stale token, not a broken tool: throw Invoke-McpTool's own
+        # wording, which names the fix, instead of the whole envelope.
+        $failed = $null
+        try { $failed = ($raw -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch { $failed = $null }
+        if ($null -ne $failed -and $failed.PSObject.Properties.Name -contains 'status' -and $failed.status -eq 401) {
+            throw "$Name refused: $($failed.error)"
+        }
+        throw "$Name failed: $raw"
+    }
     return ($raw | ConvertFrom-Json).result
 }
 

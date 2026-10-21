@@ -101,7 +101,15 @@ else {
         }
 
         if ($false -eq (Get-Prop $call 'ok')) {
-            $problems.Add("The call to thread_report failed: $(Get-Prop $call 'error')")
+            # Invoke-McpTool fetched the bearer header from `janet mcp-headers` and sent it.
+            # A 401 is reported in its own words -- refused for want of a valid token, and
+            # the fix -- rather than under "failed", which reads as a broken server.
+            if ((Get-Prop $call 'status') -eq 401) {
+                $problems.Add("thread_report was refused: $(Get-Prop $call 'error')")
+            }
+            else {
+                $problems.Add("The call to thread_report failed: $(Get-Prop $call 'error')")
+            }
         }
         else {
             $payload = Get-Prop $call 'result'

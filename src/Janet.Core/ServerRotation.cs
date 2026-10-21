@@ -94,6 +94,11 @@ public static class ServerRotation
     ///
     /// RazorGraphTool's checkout defaults to C:\repos\RazorGraphTool, the same machine-specific
     /// default Ensure-RazorGraphServer.ps1 carries; JANET_RAZORGRAPH_REPO overrides it.
+    ///
+    /// Both servers get --auth from startup-manifest.json's mcpAuth (<see cref="McpAuth"/>), the
+    /// one setting Ensure-McpServer.ps1 and ServerLink read too, and razorgraph additionally
+    /// gets --auth-token-command <see cref="McpAuth.TokenCommand"/>. The argument lists here and
+    /// in the Ensure scripts are the same lists in the same order.
     /// </remarks>
     public static RotationTarget Target(string server, string janetBase)
     {
@@ -113,7 +118,7 @@ public static class ServerRotation
                     Path.Combine(janetBase, "src", "Janet.Mcp", "Janet.Mcp.csproj"),
                     Path.Combine(janetBase, ".janet-bin"),
                     "janet-mcp",
-                    ["--http", "--base", janetBase, .. port is null ? Array.Empty<string>() : ["--port", port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)]],
+                    ["--http", "--base", janetBase, .. port is null ? Array.Empty<string>() : ["--port", port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)], .. McpAuth.AuthArguments(janetBase)],
                     [Path.Combine(janetBase, "src", "Janet.Cli", "Janet.Cli.csproj")],
                     port);
             }
@@ -126,13 +131,14 @@ public static class ServerRotation
                 int? port = McpConfig.TryReadPort(janetBase, "razorgraph", out int declared, out _) ? declared : null;
 
                 // No --base: razorgraph-mcp is told which solution to graph per call, and an
-                // argument it does not know makes it exit at startup.
+                // argument it does not know makes it exit at startup. It reads the bearer token by
+                // running janet (--auth-token-command), never the registry: only janet reads it.
                 return new RotationTarget(
                     "razorgraph",
                     Path.Combine(repo, "src", "RazorGraph.Mcp", "RazorGraph.Mcp.csproj"),
                     Path.Combine(repo, ".mcp-bin"),
                     "RazorGraph.Mcp",
-                    ["--http", .. port is null ? Array.Empty<string>() : ["--port", port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)]],
+                    ["--http", .. port is null ? Array.Empty<string>() : ["--port", port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)], "--auth-token-command", McpAuth.TokenCommand, .. McpAuth.AuthArguments(janetBase)],
                     [],
                     port);
             }

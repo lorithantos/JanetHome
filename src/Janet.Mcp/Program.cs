@@ -1,5 +1,6 @@
 using Janet.Core;
 using Janet.Mcp;
+using Janet.Mcp.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -22,6 +23,7 @@ string? graph = null;
 bool http = false;
 bool printUrl = false;
 int port = 0;
+BearerMode authMode = BearerMode.Require;
 
 for (int i = 0; i < args.Length; i++)
 {
@@ -32,9 +34,17 @@ for (int i = 0; i < args.Length; i++)
         case "--port" when i + 1 < args.Length: port = int.Parse(args[++i]); break;
         case "--http": http = true; break;
         case "--print-url": printUrl = true; break;
+        case "--auth" when i + 1 < args.Length:
+            if (!McpAuth.TryParseMode(args[++i], out authMode))
+            {
+                Console.Error.WriteLine($"--auth takes {string.Join(", ", McpAuth.Modes)}, not '{args[i]}'.");
+                return 2;
+            }
+
+            break;
         case "--help":
             Console.Error.WriteLine("""
-                janet-mcp [--base DIR] [--graph PATH] [--http [--port N]] [--print-url]
+                janet-mcp [--base DIR] [--graph PATH] [--http [--port N] [--auth MODE]] [--print-url]
 
                   --base       JanetBase directory. Falls back to $env:JanetBase / $JANET_BASE.
                   --graph      Graph file name or absolute path. Defaults to research.json.
@@ -44,6 +54,13 @@ for (int i = 0; i < args.Length; i++)
                                given JanetBase always gets the same port and two never
                                collide. Starting a second server for the same graph is a
                                no-op, not an error: sessions share one HTTP server.
+                  --auth       require (default), report or off. The bearer token every HTTP
+                               request but /health must carry, read from
+                               HKCU\Software\Janet\McpToken (see `janet mcp-token`).
+                               require answers anything else 401, and refuses to START
+                               when there is no token; report lets everything through
+                               and counts outcomes on /health; off checks nothing. The
+                               loopback guard runs in every mode. Ignored on stdio.
                   --print-url  Print the URL this graph resolves to and exit. Use it to write
                                client config without having to start anything.
                 """);
@@ -138,9 +155,23 @@ if (http)
             break; // Nothing answered as a janet-mcp. The bind below decides.
     }
 
-    // Services, the loopback guard (Host, Origin, JSON-only POST) and every endpoint live in
-    // HttpServer, so a test can host exactly this application. See LoopbackGuard.
-    WebApplication app = HttpServer.Build(context, port);
+    // The bearer check asks its provider once now and again (throttled) when a token does not
+    // match, so a rotated token is picked up without a restart. Owned here and disposed when
+    // this block ends -- after shutdown, or on any early return below.
+    using BearerAuthenticator bearer = new(authMode, ReadToken);
+
+    // Services, the loopback guard (Host, Origin, JSON-only POST), the bearer check and every
+    // endpoint live in HttpServer, so a test can host exactly this application.
+    WebApplication app;
+    try
+    {
+        app = HttpServer.Build(context, port, bearer);
+    }
+    catch (StartupRefusedException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 4;
+    }
 
     try
     {
@@ -168,9 +199,23 @@ if (http)
     // AddressInUseException, which is the tool asserting something it had not established.
     // Loopback only: this transport is a local development loop, not a network service.
     Console.Error.WriteLine(
-        $"janet-mcp listening on http://127.0.0.1:{port}/ over graph {graphPath} [port from {portSource}]");
+        $"janet-mcp listening on http://127.0.0.1:{port}/ over graph {graphPath} [port from {portSource}] " +
+        $"[auth {authMode.ToString().ToLowerInvariant()}]");
     await app.WaitForShutdownAsync();
     return 0;
+}
+
+// The real token, from HKCU\Software\Janet under DPAPI. Only janet-mcp's own process reads it this
+// way; razorgraph-mcp runs `janet mcp-token --print`. An unreadable value throws, which the bearer
+// check keeps as its provider error for /health rather than letting it take the server down.
+static string? ReadToken()
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        throw new PlatformNotSupportedException("The MCP token store is Windows-only (DPAPI under HKCU).");
+    }
+
+    return McpTokenStore.Default.Read();
 }
 
 HostApplicationBuilder host = Host.CreateApplicationBuilder();

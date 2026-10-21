@@ -85,7 +85,7 @@ janet-mcp --http --port 7717 --base D:/Repos/JanetHome
 ```
 
 ```json
-{ "mcpServers": { "janet": { "type": "http", "url": "http://127.0.0.1:7717/" } } }
+{ "mcpServers": { "janet": { "type": "http", "url": "http://127.0.0.1:7717/", "headersHelper": "janet mcp-headers" } } }
 ```
 
 The HTTP transport is the one to develop against: the server is a separate process
@@ -96,6 +96,13 @@ and no client reconnects to.
 Over HTTP every endpoint, `/health` and `/az/token` included, refuses a Host other than
 `127.0.0.1`, `localhost` or `[::1]` (400), an `Origin` that is not one of those (403;
 no `Origin` is fine), and a POST that is not `application/json` (415).
+Both servers also expect a per-machine bearer token on every request but `/health`. It is
+32 random bytes kept as a DPAPI blob (current user) under `HKCU\Software\Janet`, so a copied
+hive or another account gets bytes it cannot decrypt, and only `janet` reads it:
+`janet mcp-token --ensure` creates it, `--rotate` replaces it, razorgraph-mcp reads it with
+`janet mcp-token --print`, and Claude Code gets the header from `janet mcp-headers`, the
+`headersHelper` above. How strictly the servers hold to it (`require`, `report` or `off`) is
+the `mcpAuth` key in `startup-manifest.json`.
 
 The tools need the **.NET 10 SDK**; the scripts target **PowerShell 7**. Some carry
 known limitations; retrieval always prints a node's `caveats`, so ask the catalog

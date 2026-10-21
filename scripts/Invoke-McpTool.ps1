@@ -28,6 +28,13 @@
     twice: once out of the JSON-RPC envelope, once out of the content block. Pass
     -Raw to stop before the second unwrap when a tool returns prose.
 
+    BEARER TOKEN. Every request carries the Authorization header `janet mcp-headers`
+    prints, fetched once per run. No token (or a janet without the verb) means no
+    header, which a server in --auth report or off mode accepts. A server in --auth
+    require answers 401, and that is reported as what it is -- refused for want of a
+    valid token, with the server's own text and the fix -- with status 401 in the
+    envelope, never as "cannot reach the server".
+
 .PARAMETER Tool
     Tool name, e.g. graph_summary.
 
@@ -47,6 +54,11 @@
 
 .PARAMETER TimeoutSec
     Per-request timeout. Default 120, because build_solution compiles a solution.
+
+.PARAMETER AuthHeader
+    The header to send, as Get-McpAuthHeader returns it in .Header. A caller making
+    many calls fetches it once and passes it to each; an empty hashtable sends none.
+    Omitted, this script asks `janet mcp-headers` itself.
 
 .PARAMETER Text
     Formatted output for a terminal. The default is JSON.
@@ -68,6 +80,7 @@ param(
     [string]$Uri = 'http://127.0.0.1:7718/',
     [switch]$Raw,
     [int]$TimeoutSec = 120,
+    [hashtable]$AuthHeader,
     [switch]$Text,
     [switch]$Pretty
 )
@@ -75,11 +88,27 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
+
 $protocolVersion = '2025-06-18'
 $headers = @{
     'Content-Type' = 'application/json'
     'Accept'       = 'application/json, text/event-stream'
 }
+
+# Once per run. $authReason is $null when a header is being sent, and otherwise says why
+# not; it goes into a 401 message, and it never carries the token.
+$authReason = $null
+if (-not $PSBoundParameters.ContainsKey('AuthHeader')) {
+    $auth = Get-McpAuthHeader
+    $AuthHeader = $auth.Header
+    $authReason = $auth.Reason
+}
+elseif ($null -eq $AuthHeader -or -not $AuthHeader.ContainsKey('Authorization')) {
+    $AuthHeader = @{}
+    $authReason = 'the caller passed no Authorization header'
+}
+foreach ($key in $AuthHeader.Keys) { $headers[$key] = $AuthHeader[$key] }
 
 # An SSE body carries one JSON document per "data:" line. Servers may also answer
 # a plain application/json body, so both shapes are accepted rather than assuming
@@ -107,8 +136,17 @@ function Invoke-Rpc {
         [switch]$Notification
     )
 
-    $response = Invoke-WebRequest -Uri $Uri -Method Post -Headers $RequestHeaders `
-        -Body ($Payload | ConvertTo-Json -Depth 12) -TimeoutSec $TimeoutSec
+    try {
+        $response = Invoke-WebRequest -Uri $Uri -Method Post -Headers $RequestHeaders `
+            -Body ($Payload | ConvertTo-Json -Depth 12) -TimeoutSec $TimeoutSec
+    }
+    catch {
+        # Past the handshake a 401 means the token changed under this run; say so plainly
+        # rather than letting a bare HttpResponseException stand for it.
+        $refusal = Get-McpAuthRefusal -ErrorRecord $_ -Uri $Uri -AuthReason $authReason
+        if ($refusal) { throw $refusal }
+        throw
+    }
     if ($Notification) { return $null }
     return Read-RpcBody -Body $response.Content
 }
@@ -126,12 +164,27 @@ try {
         } | ConvertTo-Json -Depth 8)
 }
 catch {
-    $envelope = [ordered]@{
-        ok    = $false
-        uri   = $Uri
-        tool  = if ($ListTools) { 'tools/list' } else { $Tool }
-        error = "cannot reach the MCP server: $($_.Exception.Message)"
-        hint  = 'Start it with Ensure-McpServer.ps1 (7717) or Ensure-RazorGraphServer.ps1 (7718).'
+    $refusal = Get-McpAuthRefusal -ErrorRecord $_ -Uri $Uri -AuthReason $authReason
+    $envelope = if ($refusal) {
+        # Reached, and refused: the opposite of "cannot reach", and fixed by a token rather
+        # than by starting anything. status lets a caller tell the two apart without parsing.
+        [ordered]@{
+            ok     = $false
+            uri    = $Uri
+            tool   = if ($ListTools) { 'tools/list' } else { $Tool }
+            status = 401
+            error  = $refusal
+            hint   = 'Run `janet mcp-token --ensure`, then check `janet mcp-headers` prints the header. A server started with --auth report or off needs none.'
+        }
+    }
+    else {
+        [ordered]@{
+            ok    = $false
+            uri   = $Uri
+            tool  = if ($ListTools) { 'tools/list' } else { $Tool }
+            error = "cannot reach the MCP server: $($_.Exception.Message)"
+            hint  = 'Start it with Ensure-McpServer.ps1 (7717) or Ensure-RazorGraphServer.ps1 (7718).'
+        }
     }
     if ($Text) { Write-Host $envelope.error -ForegroundColor Red; Write-Host "  $($envelope.hint)" -ForegroundColor DarkGray }
     else { [PSCustomObject]$envelope | ConvertTo-Json -Depth 4 }

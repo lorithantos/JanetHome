@@ -15,6 +15,9 @@ public enum ServedBy
 /// <summary>What the link did, and why, when it could not use a server.</summary>
 public sealed record LinkOutcome(ServedBy ServedBy, string? Body, string Detail);
 
+/// <summary>Reads the MCP bearer token: the token, or null with why in <paramref name="error"/>.</summary>
+public delegate string? TokenReader(out string? error);
+
 /// <summary>
 /// Lets the CLI borrow a running janet-mcp instead of doing the work itself.
 /// </summary>
@@ -32,6 +35,13 @@ public sealed record LinkOutcome(ServedBy ServedBy, string? Body, string Detail)
 /// class ends in "use the server if it is genuinely there, otherwise do the work locally", and
 /// no path ends in a failure caused by the server's absence. A cache that can take the tool
 /// down is worse than no cache.
+///
+/// ONE EXCEPTION, since the bearer token (2026-10-21): a 401. The server is present and is
+/// refusing THIS client, which is a broken configuration rather than an absent cache -- and a
+/// local fallback would succeed and hide it. So a 401 throws a GraphException naming what to do,
+/// and only a 404, a dead socket, a wrong graph or the like falls back. Requests carry
+/// <c>Authorization: Bearer</c> whenever HKCU\Software\Janet holds a token, read through
+/// <see cref="McpAuth.TryReadToken"/>.
 ///
 /// The identity of a server is THE GRAPH IT SERVES, not the port it happens to be on. Two
 /// JanetBases mean two servers, and dialling the wrong one would answer confidently with
@@ -71,12 +81,22 @@ public static class ServerLink
     /// <param name="graphPath">Identifies WHICH server. A server for another graph is not used.</param>
     /// <param name="relativeUrl">Path and query, e.g. <c>az/token?scope=arm</c>.</param>
     /// <param name="allowStart">Start a server when none is serving this graph.</param>
+    /// <param name="readToken">
+    /// Where the bearer token comes from; <see cref="McpAuth.TryReadToken"/> (HKCU\Software\Janet)
+    /// when null. Tests pass their own. With no token the request goes without an Authorization
+    /// header, which a server under --auth report or off still answers.
+    /// </param>
     /// <returns>
     /// The response body with <see cref="ServedBy.Server"/>, or <see cref="ServedBy.Process"/>
     /// and a reason. NEVER throws for an absent, broken, or foreign server: the caller's
     /// fallback is the supported path, not an error path.
     /// </returns>
-    public static LinkOutcome TryFetch(string graphPath, string relativeUrl, bool allowStart)
+    /// <exception cref="GraphException">
+    /// The server answered 401: it is there, it serves this graph, and it refused the token. That
+    /// is NOT a reason to fall back -- the local work would succeed and hide a client that can no
+    /// longer reach its server -- so it is the one failure this throws, naming what to do.
+    /// </exception>
+    public static LinkOutcome TryFetch(string graphPath, string relativeUrl, bool allowStart, TokenReader? readToken = null)
     {
         int port;
         try
@@ -110,7 +130,7 @@ public static class ServerLink
             }
         }
 
-        string? body = Get(port, relativeUrl);
+        string? body = Get(port, relativeUrl, readToken ?? McpAuth.TryReadToken);
 
         return body is null
 
@@ -121,14 +141,41 @@ public static class ServerLink
             : new LinkOutcome(ServedBy.Server, body, $"served by janet-mcp on port {port}");
     }
 
-    private static string? Get(int port, string relativeUrl)
+    private static string? Get(int port, string relativeUrl, TokenReader readToken)
     {
         using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(60) };
 
+        // Read per call: a CLI process makes one request, and a rotated token is then always the
+        // current one. No token is not an error here -- a server under report or off answers
+        // without one, and one under require says so with a 401, handled below.
+        string? token = readToken(out string? tokenError);
+
         try
         {
-            HttpResponseMessage response = client.GetAsync($"http://127.0.0.1:{port}/{relativeUrl}")
-                .GetAwaiter().GetResult();
+            using HttpRequestMessage request = new(HttpMethod.Get, $"http://127.0.0.1:{port}/{relativeUrl}");
+            if (token is not null)
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            HttpResponseMessage response = client.Send(request);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                // LOUD, and deliberately not the fallback a 404 or a dead socket gets: a server
+                // that is up and refusing this client is a broken configuration, and doing the
+                // work locally would succeed and hide it until something with no local path
+                // (Claude Code itself) failed instead.
+                string refusal = response.Content.ReadAsStringAsync().GetAwaiter().GetResult().Trim();
+                string path = relativeUrl.Split('?')[0];
+                throw new GraphException(
+                    $"janet-mcp on port {port} refused /{path} with 401 Unauthorized" +
+                    (refusal.Length == 0 ? "." : $": {refusal}") + " " +
+                    (token is null
+                        ? $"No Authorization header was sent ({tokenError ?? "no token"}). Run `janet mcp-token --ensure` to create the token; the server reads it within 30 seconds."
+                        : "The token from HKCU\\Software\\Janet\\McpToken was sent and refused: the server holds a different one, or has none. Check GET /health's 'auth', and restart the server if the token was rotated while it could not read it.") +
+                    " The CLI does not fall back to local work on a 401; pass --local to do the work in this process.");
+            }
 
             // A 4xx here is the SERVER's considered refusal -- an unknown scope alias, say -- and
             // it is the same refusal this process would have produced. Passing the body back lets
@@ -174,6 +221,14 @@ public static class ServerLink
             start.ArgumentList.Add("--http");
             start.ArgumentList.Add("--base");
             start.ArgumentList.Add(basePath);
+
+            // The same auth mode every other launcher passes, from startup-manifest.json's
+            // mcpAuth. Without it the server would take its own default (require), and on a
+            // machine with no token it would refuse to start.
+            foreach (string argument in McpAuth.AuthArguments(basePath))
+            {
+                start.ArgumentList.Add(argument);
+            }
 
             using Process? process = Process.Start(start);
 

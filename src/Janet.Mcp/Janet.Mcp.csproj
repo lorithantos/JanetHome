@@ -28,6 +28,12 @@
     -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
     <!--
+      The loopback guard and the bearer check (UseMcpSecurity), shared with razorgraph-mcp.
+      Janet.Core references it too, for the token store; named here as well because this
+      project calls the middleware directly.
+    -->
+    <PackageReference Include="Janet.Mcp.Security" Version="0.7.0" />
+    <!--
       No Microsoft.Extensions.Hosting package reference: the ASP.NET Core shared framework
       already carries it, and NU1510 correctly calls the duplicate unnecessary.
     -->

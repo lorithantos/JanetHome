@@ -64,10 +64,36 @@ public sealed class ServerRotationTests : IDisposable
         RotationTarget target = ServerRotation.Target("RazorGraph", _base);
 
         Assert.Equal("RazorGraph.Mcp", target.ProcessName);
-        Assert.Equal(["--http", "--port", "7718"], target.ServerArguments);
+
+        // The token by running janet, never the registry: only janet reads it. No --auth here,
+        // because this checkout has no startup-manifest.json to declare one.
+        Assert.Equal(["--http", "--port", "7718", "--auth-token-command", "janet mcp-token --print"], target.ServerArguments);
         Assert.EndsWith(Path.Combine("src", "RazorGraph.Mcp", "RazorGraph.Mcp.csproj"), target.Project);
         Assert.EndsWith(".mcp-bin", target.Root);
         Assert.Empty(target.ToolProjects);
+    }
+
+    [Fact]
+    public void BothServersGetTheAuthModeTheManifestDeclares()
+    {
+        File.WriteAllText(Path.Combine(_base, "startup-manifest.json"), """{ "version": 1, "mcpAuth": "Report" }""");
+
+        Assert.Equal(
+            ["--http", "--base", _base, "--port", "7717", "--auth", "report"],
+            ServerRotation.Target("janet", _base).ServerArguments);
+        Assert.Equal(
+            ["--http", "--port", "7718", "--auth-token-command", "janet mcp-token --print", "--auth", "report"],
+            ServerRotation.Target("razorgraph", _base).ServerArguments);
+    }
+
+    [Fact]
+    public void AnAuthModeThatIsNotOneOfTheThreeIsRefusedNamingThem()
+    {
+        File.WriteAllText(Path.Combine(_base, "startup-manifest.json"), """{ "mcpAuth": "sometimes" }""");
+
+        GraphException refused = Assert.Throws<GraphException>(() => ServerRotation.Target("janet", _base));
+
+        Assert.Contains("require, report, off", refused.Message);
     }
 
     [Fact]

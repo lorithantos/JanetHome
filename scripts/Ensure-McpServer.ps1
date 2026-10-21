@@ -22,6 +22,14 @@
     Never throws. A startup script that can take the session down is worse than the
     problem it solves (house rule 6), so every failure is captured into the JSON result.
 
+    THE BEARER TOKEN (2026-10-21). Every launch gets --auth from startup-manifest.json's
+    'mcpAuth', the one setting ServerRotation.cs and ServerLink.cs read too. Before starting
+    a server this runs `janet mcp-token --ensure`, which creates the per-machine token when
+    there is none -- that is how a fresh machine gets one -- and records its status (never
+    the token) under 'token'. The tools/list probe sends the header `janet mcp-headers`
+    prints, fetched once per run, or none when there is no token; a 401 is reported as
+    state 'unauthorized', not as 'not-answering'. /health is never probed with a header.
+
 .PARAMETER Port
     TCP port the server listens on. Must match the url in .mcp.json.
 
@@ -42,8 +50,9 @@
     repo's server -- RazorGraphTool\.mcp-bin\current, for instance.
 
 .PARAMETER ServerArgument
-    Arguments for the started process. Defaults to janet's --http/--port/--base set. Pass
-    it explicitly for a server that does not take --base: razorgraph-mcp does not.
+    Arguments for the started process. Defaults to janet's --http/--base/--port set. Pass
+    it explicitly for a server that does not take --base: razorgraph-mcp does not. Either
+    way '--auth <mcpAuth>' is appended unless the list already carries --auth.
 
 .PARAMETER SourceDir
     Source tree whose [McpServerTool( attributes are counted for the served-versus-declared
@@ -72,7 +81,7 @@
         -Base C:\repos\RazorGraphTool `
         -BinDir C:\repos\RazorGraphTool\.mcp-bin\current `
         -SourceDir C:\repos\RazorGraphTool\src\RazorGraph.Mcp `
-        -ServerArgument '--http', '--port', '7718'
+        -ServerArgument '--http', '--port', '7718', '--auth-token-command', 'janet mcp-token --print'
 #>
 [CmdletBinding()]
 param(
@@ -94,6 +103,10 @@ Set-StrictMode -Version Latest
 # invoked by startup with the repo root as cwd sometimes and not others.
 $repoRoot = Split-Path $PSScriptRoot -Parent
 
+# Get-McpAuthHeader: the bearer header from `janet mcp-headers`, shared with the other MCP
+# clients so they agree about what "no token" means.
+. (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
+
 function Get-ListenerPid {
     # $null when nothing holds the port. Get-NetTCPConnection is Windows-only and throws
     # rather than returning empty when there is no match, so both are caught here.
@@ -106,17 +119,66 @@ function Get-ListenerPid {
     catch { return $null }
 }
 
+function Get-AuthMode {
+    # The ONE auth setting: startup-manifest.json's top-level 'mcpAuth' (require, report or
+    # off), which ServerRotation.cs and ServerLink.cs read too, so every launcher passes the
+    # same --auth. $null when the manifest or the key is absent: no --auth is passed and the
+    # server applies its own default. An unknown value throws, and the caller reports it.
+    $manifestPath = Join-Path $repoRoot 'startup-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { return $null }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.PSObject.Properties.Name -notcontains 'mcpAuth') { return $null }
+    $mode = "$($manifest.mcpAuth)".Trim().ToLowerInvariant()
+    if ($mode -notin @('require', 'report', 'off')) {
+        throw "$manifestPath sets mcpAuth to '$($manifest.mcpAuth)'; it must be require, report or off."
+    }
+    return $mode
+}
+
+function Invoke-JanetCli {
+    # Runs the janet CLI and returns stdout, the exit code and the first stderr line. Never
+    # throws: a missing janet, or one older than the verb, is a result to report, not a crash.
+    # Used for `mcp-token --ensure`, whose stdout is a status line without the token; never
+    # point it at a verb that prints the token, since its stdout goes into the result.
+    param([string[]]$Arguments)
+
+    $outcome = [ordered]@{ ExitCode = $null; Stdout = ''; Stderr = '' }
+    $janet = Get-Command janet -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -eq $janet) {
+        $outcome.Stderr = 'janet is not on PATH'
+        return [PSCustomObject]$outcome
+    }
+
+    $errFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $outcome.Stdout = (& $janet.Source @Arguments 2> $errFile) -join "`n"
+        $outcome.ExitCode = $LASTEXITCODE
+        $outcome.Stderr = (Get-Content -LiteralPath $errFile -ErrorAction SilentlyContinue |
+                Where-Object { $_ } | Select-Object -First 1)
+    }
+    catch {
+        $outcome.Stderr = $_.Exception.Message
+    }
+    finally {
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
+    return [PSCustomObject]$outcome
+}
+
 function Get-ServedToolName {
     # Returns a comma-wrapped array of tool names, empty when the server did not answer.
     # Comma-wrapped because 'return @()' emits nothing (house rule 1) -- assign the result,
-    # never wrap the call in @(...).
-    param([int]$TcpPort, [int]$Budget)
+    # never wrap the call in @(...). A 401 is recorded in $script:probeRefusal so the caller
+    # can say the server REFUSED rather than that it did not answer.
+    param([int]$TcpPort, [int]$Budget, [hashtable]$AuthHeader)
 
     $uri = "http://127.0.0.1:$TcpPort/"
     $headers = @{
         'Content-Type' = 'application/json'
         'Accept'       = 'application/json, text/event-stream'
     }
+    if ($AuthHeader) { foreach ($key in $AuthHeader.Keys) { $headers[$key] = $AuthHeader[$key] } }
     try {
         $initBody = @{
             jsonrpc = '2.0'
@@ -164,6 +226,13 @@ function Get-ServedToolName {
 
         return , @($parsed.result.tools | ForEach-Object { $_.name })
     }
+    catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+        if ([int]$_.Exception.Response.StatusCode -eq 401) {
+            $body = "$($_.ErrorDetails.Message)".Trim()
+            $script:probeRefusal = if ($body) { $body } else { '401 Unauthorized' }
+        }
+        return , @()
+    }
     catch { return , @() }
 }
 
@@ -194,9 +263,13 @@ $result = [ordered]@{
     toolsServed   = $null
     toolsDeclared = $null
     stale         = $false
+    auth          = $null
+    token         = $null
     note          = ''
     error         = $null
 }
+
+$script:probeRefusal = $null
 
 try {
     if (-not $Base) { $Base = $repoRoot }
@@ -205,8 +278,16 @@ try {
     if (-not $BinDir) { $BinDir = Join-Path $repoRoot '.janet-bin\current' }
     if (-not $SourceDir) { $SourceDir = Join-Path $repoRoot 'src\Janet.Mcp' }
     # Defaulted here rather than in the param block because it reads $Port and $Base, which
-    # are not settled until this point.
-    if (-not $ServerArgument) { $ServerArgument = @('--http', '--port', "$Port", '--base', "$Base") }
+    # are not settled until this point. Same order as ServerRotation.cs's janet target.
+    if (-not $ServerArgument) { $ServerArgument = @('--http', '--base', "$Base", '--port', "$Port") }
+
+    # --auth from the one setting, appended unless the caller already chose. Both servers get
+    # it this way: Ensure-RazorGraphServer.ps1 forwards here.
+    $authMode = Get-AuthMode
+    $result.auth = $authMode
+    if ($null -ne $authMode -and $ServerArgument -notcontains '--auth') {
+        $ServerArgument = @($ServerArgument) + @('--auth', $authMode)
+    }
 
     if (-not $ServerPath) {
         # The junction Update-McpServer.ps1 repoints; a stable path that resolves to the
@@ -233,6 +314,22 @@ try {
                            "-ServerArgument '$($ServerArgument -join "','")'"
         }
         else {
+            # The token must exist before a server that requires it starts, and this is how it
+            # comes to exist on a fresh machine: --ensure creates it when absent and leaves an
+            # existing one alone. Its status line carries no token. A failure is reported, not
+            # fatal -- a server under --auth report or off starts without one, and one under
+            # require refuses to start and says so in its err.log.
+            $ensured = Invoke-JanetCli -Arguments @('mcp-token', '--ensure')
+            $result.token = if ($ensured.ExitCode -eq 0) {
+                try { $ensured.Stdout | ConvertFrom-Json -ErrorAction Stop } catch { $ensured.Stdout }
+            }
+            else {
+                [ordered]@{
+                    ok    = $false
+                    error = "janet mcp-token --ensure failed (exit $($ensured.ExitCode)): $($ensured.Stderr)"
+                }
+            }
+
             $logDir = Join-Path ([System.IO.Path]::GetTempPath()) 'Janet'
             # -Force is safe for a directory; it is -ItemType File -Force that truncates
             # (house rule 4).
@@ -240,8 +337,16 @@ try {
                 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
             }
 
+            # Start-Process joins -ArgumentList with spaces and quotes nothing, so an argument
+            # holding a space -- razorgraph's --auth-token-command 'janet mcp-token --print' --
+            # would arrive as three (measured 2026-10-21). Quote those, with Windows
+            # command-line escaping; Update-McpServer.ps1 does the same.
+            $argumentLine = @($ServerArgument | ForEach-Object {
+                    if ($_ -match '[\s"]') { '"' + (($_ -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' } else { $_ }
+                })
+
             $started = Start-Process -FilePath $ServerPath `
-                -ArgumentList $ServerArgument `
+                -ArgumentList $argumentLine `
                 -WindowStyle Hidden -PassThru `
                 -RedirectStandardOutput (Join-Path $logDir "$Name.out.log") `
                 -RedirectStandardError (Join-Path $logDir "$Name.err.log")
@@ -277,12 +382,32 @@ try {
     $result.pid = $listenerPid
 
     if ($null -ne $listenerPid) {
-        $servedNames = Get-ServedToolName -TcpPort $Port -Budget $TimeoutSeconds
+        # The header from `janet mcp-headers`, once for this run, through the helper the other
+        # MCP clients share. None is not an error: the probe goes without, and a server that
+        # requires one answers 401, reported below.
+        $auth = Get-McpAuthHeader
+        $authHeader = $auth.Header
+        $servedNames = Get-ServedToolName -TcpPort $Port -Budget $TimeoutSeconds -AuthHeader $authHeader
         $declared = Get-DeclaredToolCount -SourceDir $SourceDir
 
         $result.toolsDeclared = $declared
 
-        if ($servedNames.Count -eq 0) {
+        if ($servedNames.Count -eq 0 -and $null -ne $script:probeRefusal) {
+            # Up and answering, but refusing this client: a different failure from not
+            # answering, with a different fix.
+            $result.ok = $false
+            $result.state = 'unauthorized'
+            $result.toolsServed = 0
+            $result.note = "Port $Port (pid $listenerPid) refused tools/list with 401: $($script:probeRefusal) " +
+                           $(if ($authHeader.Count -eq 0) {
+                               "No Authorization header was sent ($($auth.Reason)). " +
+                               'Run `janet mcp-token --ensure` to create the token.'
+                             } else {
+                               'The header from `janet mcp-headers` was sent and refused: the server holds a ' +
+                               'different token or none. Check its /health ''auth''.'
+                             })
+        }
+        elseif ($servedNames.Count -eq 0) {
             # Listening but not answering MCP is its own failure, and a worse one than being
             # down: the client connects and finds nothing.
             $result.ok = $false

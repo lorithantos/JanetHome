@@ -5,6 +5,9 @@
   "order": "sequential",
   "onMissing": "fail",
 
+  "$comment.mcpAuth": "The ONE setting for how both local MCP servers treat the bearer token: require (anything but the right token is 401, and janet-mcp refuses to start without one), report (everything goes through; outcomes are counted on /health) or off (no check; the loopback guard still runs). Every launcher reads this key and passes it as --auth: Ensure-McpServer.ps1 (and Ensure-RazorGraphServer.ps1 through it), ServerRotation.cs's targets, and ServerLink.cs when the CLI starts a janet-mcp. Staged cutover, 2026-10-21: report first, require once Claude Code is confirmed sending the header from its headersHelper (janet mcp-headers) -- read the counters in GET /health's 'auth' to confirm. To flip: change this value, then rotate both servers so they restart with it. Decision record: thread item 65.",
+  "mcpAuth": "report",
+
   "$comment.read": "Kept to what the session cannot retrieve, because the read list is billed on EVERY start while the graph is billed only when asked. PROVENANCE.md left on 2026-08-08: its contract is already the boundary rule below, its detail is file.provenance, and its own manifest reason said 'read before adding anything' -- conditional by its own description, which is the definition of retrievable. README is the bootstrap: it must survive alone, because it is what tells the session the graph exists.",
 
   "read": [

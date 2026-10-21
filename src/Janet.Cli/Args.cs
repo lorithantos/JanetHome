@@ -47,6 +47,10 @@ public sealed class Args
         // server that is already there, and both of these exist for callers who need to know
         // that this process did the work -- a test, or a hook that must not spawn anything.
         "--local", "--no-launch", "--why",
+
+        // The MCP bearer token. Each is a switch: missing from this set, `--print` would
+        // demand a value and `--ensure --print` would read as --ensure=--print.
+        "--ensure", "--print", "--rotate",
     };
 
     public static Args Parse(IReadOnlyList<string> argv)

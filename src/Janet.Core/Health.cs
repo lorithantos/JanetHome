@@ -1,13 +1,19 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Janet.Mcp.Security;
 
 namespace Janet.Core;
 
 /// <summary>What a janet-mcp reports about itself at /health.</summary>
+/// <param name="Auth">
+/// The bearer check's snapshot: mode, whether a token is configured, outcome counters and any
+/// provider error -- never a token. Null from a server older than the check.
+/// </param>
 public sealed record HealthReport(
     [property: JsonPropertyName("server")] string Server,
     [property: JsonPropertyName("graph")] string Graph,
-    [property: JsonPropertyName("version")] string Version);
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("auth")] BearerAuthSnapshot? Auth = null);
 
 /// <summary>
 /// Decides whether starting an HTTP server on a port is necessary, redundant, or a conflict.

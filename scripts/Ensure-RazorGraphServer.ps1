@@ -48,12 +48,15 @@ $ensure = Join-Path $PSScriptRoot 'Ensure-McpServer.ps1'
 
 # razorgraph-mcp takes no --base: it is told which solution to graph per call, not per
 # process. Passing janet's default argument set would make the server exit on startup.
+# Ensure-McpServer.ps1 appends '--auth <mcpAuth>' from startup-manifest.json, the one
+# setting; the token itself razorgraph reads by running janet, never the registry. The
+# result is the same list, in the same order, as ServerRotation.cs's razorgraph target.
 & $ensure `
     -Name 'RazorGraph.Mcp' `
     -Port $Port `
     -Base $Repo `
     -BinDir (Join-Path $Repo '.mcp-bin\current') `
     -SourceDir (Join-Path $Repo 'src\RazorGraph.Mcp') `
-    -ServerArgument '--http', '--port', "$Port" `
+    -ServerArgument '--http', '--port', "$Port", '--auth-token-command', 'janet mcp-token --print' `
     -NoStart:$NoStart `
     -Pretty:$Pretty
