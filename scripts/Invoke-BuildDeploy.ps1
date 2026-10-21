@@ -11,6 +11,7 @@
     The orchestrator owns the transferable structure:
       - validate everything before executing anything (all problems at once)
       - resolve tools defensively (PATH first, well-known fallbacks second)
+      - refuse a working tree with uncommitted changes, unless -AllowDirty
       - compute a build-identity stamp from git before building
       - run build -> package -> push with an exit-code gate after each
       - apply the stamp only after a successful push, so a failed deploy
@@ -48,7 +49,19 @@
 .PARAMETER Validate
     Resolve the manifest, the tools, and the build identity, report, and stop
     before executing any stage.  Lints the contract the way -SkipRun lints the
-    startup manifest.
+    startup manifest.  A dirty working tree is one of the problems it reports.
+
+.PARAMETER AllowDirty
+    Deploy from a working tree that is not clean -- for emergencies only.  By
+    default the orchestrator, and -Validate, REFUSE when 'git status --porcelain'
+    lists anything: a modified, staged or deleted tracked file, or an untracked
+    file that .gitignore does not cover.  Untracked files count because an
+    SDK-style project compiles every source file under it, tracked or not, so an
+    untracked file ships code no commit records -- and a rename, the 2026-10-17
+    ImageSelectorV2 case, is exactly a tracked deletion plus an untracked file.
+    The orchestrator's own deploy.zip and .deploy-package are never counted.
+    With -AllowDirty the deploy goes ahead, the stamp still reads '+dirty', and a
+    warning names every dirty path.
 
 .EXAMPLE
     & "$env:JanetBase\scripts\Invoke-BuildDeploy.ps1" -ManifestPath D:\Repos\MyApp\deploy-manifest.json
@@ -60,7 +73,8 @@
 param(
     [Parameter(Mandatory)]
     [string]$ManifestPath,
-    [switch]$Validate
+    [switch]$Validate,
+    [switch]$AllowDirty
 )
 
 Set-StrictMode -Version Latest
@@ -89,6 +103,19 @@ function Resolve-Tool {
         }
     }
     return $null
+}
+
+function Get-DirtyPath {
+    # The porcelain lines for everything not committed, across the whole repo
+    # (':/'), minus the orchestrator's own artefacts. $null when the manifest is
+    # not in a git work tree, which is a different answer from "clean".
+    param([string]$Git, [string]$Root)
+    try {
+        $lines = @(& $Git -C $Root status --porcelain -- ':/' ':(exclude)deploy.zip' ':(exclude).deploy-package' 2>$null)
+    }
+    catch { return $null }
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return , @($lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
 # ---- Load manifest ---------------------------------------------------------
@@ -148,14 +175,44 @@ if ($null -ne $verify -and $null -eq $verifyUrl) { $problems += "verify: missing
 
 # Tool resolution is part of validation: a missing tool should fail here, not
 # four minutes into a build.
-$gitExe = $null
-if ((Get-Prop $identity 'source') -eq 'git') {
-    $gitExe = Resolve-Tool -Name 'git' -Fallbacks @(
-        "$env:ProgramFiles\Git\cmd\git.exe",
-        "$env:ProgramFiles\Microsoft Visual Studio\*\*\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe"
-    )
-    if ($null -eq $gitExe) {
-        Write-Warning "identity.source is 'git' but git was not found; deploying without a build stamp"
+# git is resolved whatever identity.source says: the clean-tree check below
+# needs it even when the stamp does not.
+$gitExe = Resolve-Tool -Name 'git' -Fallbacks @(
+    "$env:ProgramFiles\Git\cmd\git.exe",
+    "$env:ProgramFiles\Microsoft Visual Studio\*\*\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe"
+)
+$stampFromGit = (Get-Prop $identity 'source') -eq 'git'
+if ($null -eq $gitExe -and $stampFromGit) {
+    Write-Warning "identity.source is 'git' but git was not found; deploying without a build stamp"
+}
+
+# Commit before deploying, staging included. Until 2026-10-17 a dirty tree was
+# only labelled '+dirty' and deployed anyway, and ImageSelectorV2 went to
+# production from an uncommitted rename: code in service that no commit
+# records, under the same build number as the clean build in staging. The rule
+# lives here rather than in anyone's memory. -AllowDirty is the emergency door.
+$dirtyPaths = @()
+$treeChecked = $false
+if ($null -eq $gitExe) {
+    Write-Warning 'git was not found, so the working tree cannot be checked for uncommitted changes'
+}
+else {
+    $found = Get-DirtyPath -Git $gitExe -Root $repoRoot
+    if ($null -eq $found) {
+        Write-Warning "$repoRoot is not in a git work tree, so it cannot be checked for uncommitted changes"
+    }
+    else {
+        $dirtyPaths = @($found)
+        $treeChecked = $true
+    }
+}
+if ($dirtyPaths.Count -gt 0) {
+    $listed = ($dirtyPaths | ForEach-Object { "      $_" }) -join [Environment]::NewLine
+    if ($AllowDirty) {
+        Write-Warning "-AllowDirty: deploying a working tree with $($dirtyPaths.Count) uncommitted path(s); the stamp will read +dirty:$([Environment]::NewLine)$listed"
+    }
+    else {
+        $problems += "the working tree is not clean -- commit first, or pass -AllowDirty in an emergency. $($dirtyPaths.Count) uncommitted path(s):$([Environment]::NewLine)$listed"
     }
 }
 
@@ -176,14 +233,14 @@ if ($problems.Count -gt 0) {
 # ---- Build identity --------------------------------------------------------
 
 $buildInfo = $null
-if ($null -ne $gitExe) {
+if ($null -ne $gitExe -and $stampFromGit) {
     Push-Location $repoRoot
     try {
         $commit = (& $gitExe rev-parse --short=12 HEAD).Trim()
         $branch = (& $gitExe branch --show-current).Trim()
         $count  = (& $gitExe rev-list --count HEAD).Trim()
-        $dirtyOutput = @(& $gitExe status --porcelain)
-        $dirty = if ($dirtyOutput.Count -gt 0) { '+dirty' } else { '' }
+        # Reached dirty only through -AllowDirty; the validation pass refused otherwise.
+        $dirty = if ($dirtyPaths.Count -gt 0) { '+dirty' } else { '' }
         $utcNow = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
         $buildInfo = "Build $count (local) | Commit $commit$dirty | Branch $branch | $utcNow"
     }
@@ -196,6 +253,7 @@ if ($Validate) {
     Write-Host "  push:    $pushType -> $(Get-Prop $push 'app') $(if ($null -ne $slot) { "(slot $slot)" } else { '(production slot)' })"
     Write-Host "  git:     $(if ($null -ne $gitExe) { $gitExe } else { '(not found - no stamp)' })"
     Write-Host "  az:      $(if ($null -ne $azExe) { $azExe } else { '(not required)' })"
+    Write-Host "  tree:    $(if ($dirtyPaths.Count -gt 0) { "$($dirtyPaths.Count) uncommitted path(s) -- allowed by -AllowDirty" } elseif ($treeChecked) { 'clean' } else { '(not checked)' })"
     Write-Host "  stamp:   $(if ($null -ne $buildInfo) { $buildInfo } else { '(none)' })"
     Write-Host "  verify:  $(if ($null -ne $verifyUrl) { $verifyUrl } else { '(none)' })"
     return

@@ -101,3 +101,117 @@ Describe 'Invoke-BuildDeploy verify probe' {
         $result.Healthy | Should -BeTrue
     }
 }
+
+<#
+    The clean-tree gate. These run the whole script as a child process against a
+    throwaway git repository under %TEMP%, and NOTHING IN THEM CAN DEPLOY: an
+    az.cmd stub that only exits 1 sits first on PATH, the manifest names an app
+    and group that do not exist, and the build and package stages are
+    'cmd /c exit 7', so a run that got past validation would fail at Build
+    before any push. Every case but one uses -Validate; the one that does not is
+    the proof that the deploy path refuses too, and it asserts no stage started.
+#>
+Describe 'Invoke-BuildDeploy clean-tree gate' {
+    BeforeAll {
+        $script:deployScript = Join-Path $script:repoRoot 'scripts\Invoke-BuildDeploy.ps1'
+        $script:gateRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("build-deploy-gate-" + [guid]::NewGuid().ToString('N'))
+        $bin = Join-Path $script:gateRoot 'bin'
+        New-Item -ItemType Directory -Path $bin -Force | Out-Null
+        Set-Content -Path (Join-Path $bin 'az.cmd') -Value "@echo az stub: never a real deploy 1>&2`r`n@exit /b 1" -Encoding ascii
+        $script:savedPath = $env:PATH
+        $env:PATH = "$bin;$env:PATH"
+
+        # Under the pre-commit gate these run inside a git hook, which exports
+        # GIT_INDEX_FILE (and may export GIT_DIR) for the commit in progress. A
+        # fixture 'git add' would write into THAT index -- JanetHome's -- so every
+        # GIT_* variable is lifted for the duration and put back afterwards.
+        $script:savedGit = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'GIT_*' } |
+                ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } })
+        foreach ($variable in $script:savedGit) { Remove-Item "Env:$($variable.Name)" }
+
+        function New-DeployRepo {
+            # A committed repo holding a manifest and one tracked file.
+            param([string]$Name)
+            $repo = Join-Path $script:gateRoot $Name
+            New-Item -ItemType Directory -Path $repo -Force | Out-Null
+            git -C $repo init -q
+            git -C $repo config user.email 'fixture@example.invalid'
+            git -C $repo config user.name 'Fixture'
+            git -C $repo config commit.gpgsign false
+            [pscustomobject]@{
+                name     = 'GateFixture'
+                identity = [pscustomobject]@{ source = 'git' }
+                stages   = [pscustomobject]@{
+                    build   = [pscustomobject]@{ run = 'cmd /c exit 7' }
+                    package = [pscustomobject]@{ run = 'cmd /c exit 7' }
+                    push    = [pscustomobject]@{ type = 'azureWebAppZip'; app = 'never-a-real-app'; resourceGroup = 'never-a-real-group' }
+                }
+            } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $repo 'deploy-manifest.json') -Encoding UTF8
+            Set-Content -Path (Join-Path $repo 'tracked.txt') -Value 'committed' -Encoding UTF8
+            git -C $repo add -- deploy-manifest.json tracked.txt
+            git -C $repo commit -q -m 'fixture'
+            return $repo
+        }
+
+        function Invoke-Deploy {
+            param([string]$Repo, [string[]]$Extra = @())
+            $manifest = Join-Path $Repo 'deploy-manifest.json'
+            $output = pwsh -NoProfile -File $script:deployScript -ManifestPath $manifest @Extra *>&1 | Out-String
+            [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
+        }
+    }
+
+    AfterAll {
+        $env:PATH = $script:savedPath
+        foreach ($variable in $script:savedGit) { Set-Item "Env:$($variable.Name)" $variable.Value }
+        Remove-Item -Recurse -Force $script:gateRoot -ErrorAction SilentlyContinue
+    }
+
+    It 'accepts a clean tree, ignoring its own deploy.zip, and stamps it without +dirty' {
+        $repo = New-DeployRepo 'clean'
+        Set-Content -Path (Join-Path $repo 'deploy.zip') -Value 'left by an earlier run' -Encoding UTF8
+        $result = Invoke-Deploy $repo @('-Validate')
+        $result.ExitCode | Should -Be 0 -Because $result.Output
+        $result.Output | Should -Match 'Manifest OK'
+        $result.Output | Should -Match ([regex]::Escape((Join-Path $script:gateRoot 'bin\az.cmd'))) -Because 'the az stub, never the real CLI, must be what resolved'
+        $result.Output | Should -Match 'tree:\s+clean'
+        $result.Output | Should -Match 'Commit [0-9a-f]{12} \|'
+    }
+
+    It 'refuses a modified tracked file under -Validate, naming it' {
+        $repo = New-DeployRepo 'modified'
+        Add-Content -Path (Join-Path $repo 'tracked.txt') -Value 'uncommitted'
+        $result = Invoke-Deploy $repo @('-Validate')
+        $result.ExitCode | Should -Not -Be 0
+        $result.Output | Should -Match 'working tree is not clean'
+        $result.Output | Should -Match 'M tracked\.txt'
+        $result.Output | Should -Not -Match 'Manifest OK'
+    }
+
+    It 'refuses a dirty tree on the deploy path before any stage starts' {
+        $repo = New-DeployRepo 'deploy-path'
+        Add-Content -Path (Join-Path $repo 'tracked.txt') -Value 'uncommitted'
+        $result = Invoke-Deploy $repo
+        $result.ExitCode | Should -Not -Be 0
+        $result.Output | Should -Match 'working tree is not clean'
+        $result.Output | Should -Not -Match '=== Build ==='
+    }
+
+    It 'counts an untracked file that .gitignore does not cover' {
+        $repo = New-DeployRepo 'untracked'
+        Set-Content -Path (Join-Path $repo 'NewController.cs') -Value 'class NewController {}' -Encoding UTF8
+        $result = Invoke-Deploy $repo @('-Validate')
+        $result.ExitCode | Should -Not -Be 0
+        $result.Output | Should -Match '\?\? NewController\.cs'
+    }
+
+    It 'goes ahead under -AllowDirty, stamping +dirty and naming the dirty files' {
+        $repo = New-DeployRepo 'allow-dirty'
+        Add-Content -Path (Join-Path $repo 'tracked.txt') -Value 'uncommitted'
+        $result = Invoke-Deploy $repo @('-Validate', '-AllowDirty')
+        $result.ExitCode | Should -Be 0 -Because $result.Output
+        $result.Output | Should -Match '-AllowDirty: deploying a working tree with 1 uncommitted path'
+        $result.Output | Should -Match 'M tracked\.txt'
+        $result.Output | Should -Match 'Commit [0-9a-f]{12}\+dirty'
+    }
+}
