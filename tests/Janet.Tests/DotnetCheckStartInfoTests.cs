@@ -12,7 +12,13 @@ namespace Janet.Tests;
 /// so a Platform the server merely INHERITED became the platform every build was asked for, and
 /// no argument list anywhere named it -- which is why reading the code found nothing and why the
 /// assertion has to be on the environment rather than on the arguments.
+/// <para>
+/// Setting Platform on this process is how the test inherits one, so it runs in
+/// ProcessEnvironmentCollection: any dotnet child another class starts in that window would
+/// inherit it too.
+/// </para>
 /// </remarks>
+[Collection(ProcessEnvironmentCollection.Name)]
 public class DotnetCheckStartInfoTests
 {
     [Fact]

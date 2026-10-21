@@ -275,9 +275,10 @@ public class ConcurrencyTests : IDisposable
 /// The tests that set <see cref="WriteQueue.LockTimeout"/>, run with nothing else alongside.
 /// </summary>
 /// <remarks>
-/// A shared collection is not enough here, unlike ResultBudgetCollection: the readers of the
-/// timeout are every class that writes the catalog or the thread list, so the setter has to be
-/// kept away from all of them rather than queued behind a known few.
+/// A shared collection is not enough here: the readers of the timeout are every class that
+/// writes the catalog or the thread list, so the setter has to be kept away from all of them
+/// rather than queued behind a known few. ProcessEnvironmentCollection does the same for the
+/// environment variables.
 /// </remarks>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public class WriteLockTimeoutCollection

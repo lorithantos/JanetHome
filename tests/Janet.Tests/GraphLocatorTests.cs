@@ -11,7 +11,12 @@ namespace Janet.Tests;
 /// diffing the live graph against a recorded seed hash; a stray write to the live file through
 /// the new code path corrupts that arithmetic silently, and the swap then integrates the wrong
 /// set. One forgotten --graph flag is all it would take.
+/// <para>
+/// In ProcessEnvironmentCollection because <see cref="RefusesWithoutABase"/> clears JanetBase
+/// and JANET_BASE on this process.
+/// </para>
 /// </remarks>
+[Collection(ProcessEnvironmentCollection.Name)]
 public class GraphLocatorTests : IDisposable
 {
     private readonly string _root = Path.Combine(
@@ -55,7 +60,10 @@ public class GraphLocatorTests : IDisposable
     [Fact]
     public void RefusesWithoutABase()
     {
-        string? saved = Environment.GetEnvironmentVariable("JanetBase");
+        // Both saved and both restored: on Windows they are one variable, but on Linux they are
+        // two, and restoring only the first leaked a cleared JANET_BASE to every later test.
+        string? savedJanetBase = Environment.GetEnvironmentVariable("JanetBase");
+        string? savedJanetBaseUpper = Environment.GetEnvironmentVariable("JANET_BASE");
         try
         {
             Environment.SetEnvironmentVariable("JanetBase", null);
@@ -64,7 +72,8 @@ public class GraphLocatorTests : IDisposable
         }
         finally
         {
-            Environment.SetEnvironmentVariable("JanetBase", saved);
+            Environment.SetEnvironmentVariable("JANET_BASE", savedJanetBaseUpper);
+            Environment.SetEnvironmentVariable("JanetBase", savedJanetBase);
         }
     }
 

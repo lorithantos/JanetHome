@@ -18,7 +18,7 @@ namespace Janet.Tests;
 /// with no name. Reflection over the real assembly rather than a hand-kept list, because a
 /// hand-kept list is a second copy of the surface and drifts the same way.
 /// </remarks>
-[Collection(ResultBudgetCollection.Name)]
+[Collection(ProcessEnvironmentCollection.Name)]
 public class ToolSurfaceTests : IDisposable
 {
     private readonly string? _saved = Environment.GetEnvironmentVariable(ResultBudget.EnvironmentVariable);

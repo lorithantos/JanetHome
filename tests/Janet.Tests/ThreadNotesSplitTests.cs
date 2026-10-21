@@ -15,13 +15,13 @@ namespace Janet.Tests;
 /// against its own archive directory: the archives follow the store, not the repo, so a test
 /// that passes its own path can never write beside the live list.
 ///
-/// In the "thread store" collection because several of these set JANET_NOTES_BUDGET or
+/// In ProcessEnvironmentCollection because several of these set JANET_NOTES_BUDGET or
 /// JANET_NOTES_AUTOSPLIT on the process, and one sets WriteQueue.LockTimeout, all of which are
-/// global. xUnit runs classes in parallel unless they share a collection, and a write in
-/// another class racing one of those windows would fail for a reason its own file never
-/// mentions.
+/// global. A write in another class racing one of those windows would fail for a reason its own
+/// file never mentions, and that collection runs with nothing alongside, which covers the
+/// LockTimeout reader as well as the environment ones.
 /// </remarks>
-[Collection("thread store")]
+[Collection(ProcessEnvironmentCollection.Name)]
 public class ThreadNotesSplitTests : IDisposable
 {
     private readonly List<string> _directories = [];

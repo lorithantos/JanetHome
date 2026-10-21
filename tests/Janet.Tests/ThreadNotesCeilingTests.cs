@@ -15,13 +15,13 @@ namespace Janet.Tests;
 /// The result budget refuses the read that is too large; this refuses the write that would
 /// make the next read too large, which is the cheaper place to say no.
 ///
-/// In the "thread store" collection, and the reason the other three thread test classes are
-/// too: <see cref="TheOverrideGovernsTheWrite"/> sets JANET_NOTES_BUDGET on the process for the
-/// length of one test, and xUnit runs classes in parallel unless they share a collection. A
-/// write in another class racing that window would be refused for a reason its own file never
-/// mentions.
+/// In ProcessEnvironmentCollection: <see cref="TheOverrideGovernsTheWrite"/> sets
+/// JANET_NOTES_BUDGET on the process for the length of one test, and a write in another class
+/// racing that window would be refused for a reason its own file never mentions. This class was
+/// the reason the other thread test classes joined the "thread store" collection; a shared
+/// collection only queued them behind each other, where this one runs with nothing alongside.
 /// </remarks>
-[Collection("thread store")]
+[Collection(ProcessEnvironmentCollection.Name)]
 public class ThreadNotesCeilingTests : IDisposable
 {
     private readonly List<string> _directories = [];

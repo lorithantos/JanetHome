@@ -8,11 +8,10 @@ namespace Janet.Tests;
 /// </summary>
 /// <remarks>
 /// Refusal, never truncation, is the property under test: every assertion on the message is
-/// there because a caller told only "too large" has nowhere to go. Shares a collection with the
-/// Surfaced tests because both read the environment override, and xunit runs collections in
-/// parallel with each other.
+/// there because a caller told only "too large" has nowhere to go. In the process-environment
+/// collection because these set the environment override, which every MCP result reads.
 /// </remarks>
-[Collection(ResultBudgetCollection.Name)]
+[Collection(ProcessEnvironmentCollection.Name)]
 public class ResultBudgetTests : IDisposable
 {
     private readonly string? _saved = Environment.GetEnvironmentVariable(ResultBudget.EnvironmentVariable);
@@ -93,13 +92,4 @@ public class ResultBudgetTests : IDisposable
         Environment.SetEnvironmentVariable(ResultBudget.EnvironmentVariable, raw);
         Assert.Equal(ResultBudget.Default, ResultBudget.Current);
     }
-}
-
-/// <summary>
-/// Serialises the tests that read or set <see cref="ResultBudget.EnvironmentVariable"/>.
-/// </summary>
-[CollectionDefinition(Name)]
-public class ResultBudgetCollection
-{
-    public const string Name = "ResultBudget environment";
 }

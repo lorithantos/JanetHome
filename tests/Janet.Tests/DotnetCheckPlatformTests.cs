@@ -19,8 +19,13 @@ namespace Janet.Tests;
 /// and the test passes for the wrong reason, proving only that MSBuild accepts a platform the
 /// solution declares.
 /// </para>
+/// <para>
+/// In ProcessEnvironmentCollection because it sets Platform on this process for the length of
+/// the build.
+/// </para>
 /// </remarks>
 [Trait("Category", "Live")]
+[Collection(ProcessEnvironmentCollection.Name)]
 public class DotnetCheckPlatformTests
 {
     [Fact]
