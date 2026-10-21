@@ -35,14 +35,14 @@
     How recently the catalog must have been consulted. Default 60.
 
 .PARAMETER InputJson
-    Hook payload, for testing. Normally arrives on stdin.
+    Hook payload, for testing. Normally omitted -- the real invocation gets it on stdin.
+    Pipe input does not bind to a [string] parameter, so tests must pass -InputJson.
 
 .OUTPUTS
     A PreToolUse deny decision, or nothing when the call is fine.
 
 .EXAMPLE
-    '{"tool_name":"Write","tool_input":{"file_path":"D:\\Repos\\JanetHome\\scripts\\Get-Thing.ps1"}}' |
-        & "$env:JanetBase\scripts\Invoke-ResearchGuard.ps1"
+    & "$env:JanetBase\scripts\Invoke-ResearchGuard.ps1" -InputJson '{"tool_name":"Write","tool_input":{"file_path":"C:\\repos\\lorithantos\\JanetHome\\scripts\\Get-Thing.ps1"}}'
 
 .NOTES
     Wired via .claude\settings.json as a PreToolUse hook on Write.
@@ -86,6 +86,36 @@ function Get-SearchTerms {
     return ($kept -join ' ')
 }
 
+# Run the query the session should have run, so the denial arrives with the
+# answer attached rather than with homework. A function rather than inline so the
+# script body stays under the pre-commit nesting gate.
+function Get-ClosestNode {
+    param([string]$Terms)
+
+    $found = ''
+    try {
+        $research = Join-Path $PSScriptRoot 'Get-Research.ps1'
+        if (Test-Path $research) {
+            $result = & $research -Query $Terms -First 5 -NoTrace | ConvertFrom-Json
+            if ($result.nodes -and @($result.nodes).Count -gt 0) {
+                $lines = foreach ($n in $result.nodes) {
+                    $summary = [string]$n.summary
+                    if ($summary.Length -gt 220) { $summary = $summary.Substring(0, 220) + '...' }
+                    "  [$($n.id)] $summary"
+                }
+                $found = "Closest existing nodes for '$Terms':`n" + ($lines -join "`n")
+            }
+            else {
+                $found = "The catalog has nothing matching '$Terms'."
+            }
+        }
+    }
+    catch {
+        $found = "(The guard could not query the catalog: $($_.Exception.Message))"
+    }
+    return $found
+}
+
 try {
     $raw = if ($InputJson) { $InputJson } else { [Console]::In.ReadToEnd() }
     if (-not $raw) { exit 0 }
@@ -117,30 +147,7 @@ try {
     }
 
     $terms = Get-SearchTerms (Split-Path -Leaf $filePath)
-
-    # Run the query the session should have run, so the denial arrives with the
-    # answer attached rather than with homework.
-    $found = ''
-    try {
-        $research = Join-Path $PSScriptRoot 'Get-Research.ps1'
-        if (Test-Path $research) {
-            $result = & $research -Query $terms -First 5 -NoTrace | ConvertFrom-Json
-            if ($result.nodes -and @($result.nodes).Count -gt 0) {
-                $lines = foreach ($n in $result.nodes) {
-                    $summary = [string]$n.summary
-                    if ($summary.Length -gt 220) { $summary = $summary.Substring(0, 220) + '...' }
-                    "  [$($n.id)] $summary"
-                }
-                $found = "Closest existing nodes for '$terms':`n" + ($lines -join "`n")
-            }
-            else {
-                $found = "The catalog has nothing matching '$terms'."
-            }
-        }
-    }
-    catch {
-        $found = "(The guard could not query the catalog: $($_.Exception.Message))"
-    }
+    $found = Get-ClosestNode $terms
 
     $reason = @"
 Research first: the catalog has not been consulted this session, and this Write creates a NEW script.
