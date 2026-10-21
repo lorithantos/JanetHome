@@ -196,20 +196,61 @@ function Select-PayloadFields {
     return ,$out
 }
 
+function Get-HookCommand {
+    # Every 'command' string under 'hooks' in one settings file -- event, then
+    # matcher group, then hook -- and nothing for a missing, unreadable or
+    # malformed file. Parsed, not grepped: a script named in a comment key, a
+    # permission or an env value is not a hook. One try around the whole walk:
+    # an empty object ({}) makes Get-Prop's member enumeration throw under
+    # StrictMode, and a malformed file declares nothing, the same as a missing one.
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+    try {
+        $settings = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+        $hooks = Get-Prop $settings 'hooks'
+        if ($hooks -isnot [System.Management.Automation.PSCustomObject]) { return }
+        $groups = @($hooks.PSObject.Properties | ForEach-Object { $_.Value })
+        $entries = @($groups | ForEach-Object { Get-Prop $_ 'hooks' @() })
+        $entries | ForEach-Object { [string](Get-Prop $_ 'command' '') }
+    }
+    catch { return }
+}
+
+function Test-HookDeclared {
+    # True when any of the settings files declares a hook whose command names the
+    # script leaf.  By leaf name, because the commands resolve the script at run
+    # time (Join-Path <dir> 'scripts\X.ps1') rather than naming a fixed path.
+    param([string[]]$SettingsPath, [string]$Leaf)
+    foreach ($path in $SettingsPath) {
+        foreach ($command in @(Get-HookCommand $path)) {
+            if ($command.IndexOf($Leaf, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        }
+    }
+    return $false
+}
+
 function Test-RuleEnforced {
-    # A rule's 'enforcedBy' names the hook script backing it.  Two wirings can arm
-    # it, mirroring where the harness actually loads hooks from:
+    # A rule's 'enforcedBy' names the hook script backing it.  ENFORCED is true
+    # only when a settings file the harness loads DECLARES a hook running that
+    # script AND the script it would run exists.  Two wirings can arm it,
+    # mirroring where the harness actually loads hooks from:
     #
-    #   1. Project-level: .claude\settings.json in the project dir resolves the
-    #      script as Join-Path <project dir> <enforcedBy>.  Only live when the
-    #      session's project dir is this repo.
+    #   1. Project-level: .claude\settings.json (or settings.local.json) in the
+    #      project dir, whose commands resolve the script as
+    #      Join-Path <project dir> <enforcedBy>.  Live whenever the project dir
+    #      carries the script -- this repo, or a clone of it.
     #   2. User-level: ~\.claude\settings.json (wired 2026-08-01) runs the script by
-    #      absolute path from this repo whenever the project dir is NOT this repo.
-    #      Tested the same way the wiring works: the settings file names the script
-    #      and the absolute script exists.  The name match is textual, so a hook
-    #      commented out by renaming would still read as wired -- accepted; the
-    #      check is against the config the harness actually loads, and settings
-    #      files have no comment syntax to hide behind.
+    #      absolute path from this repo, and skips when the project dir IS this
+    #      repo so the two levels never double-fire.  So it counts only when the
+    #      project dir is somewhere else.
+    #
+    # Until 2026-10-21 arm 1 was only Test-Path on the script: in every ordinary
+    # JanetHome session the brief said ENFORCED because the .ps1 was on disk, and
+    # deleting the hooks block from .claude\settings.json changed nothing it
+    # printed.  Both arms now read the declaration the same way.  The match on a
+    # command is by script leaf name, so a hook whose command still names the
+    # script but no longer runs it would read as wired -- accepted; settings files
+    # have no comment syntax to hide one behind.
     #
     # Without this check a rule reads ENFORCED while nothing enforces it, which the
     # manifest's own $comment.rules calls worse than an honest suggestion.
@@ -217,12 +258,21 @@ function Test-RuleEnforced {
     if ($Rule -is [string]) { return $true }
     $backing = Get-Prop $Rule 'enforcedBy'
     if (-not $backing) { return $true }
-    if (Test-Path (Join-Path $ProjectDir $backing) -PathType Leaf) { return $true }
-    $userSettings = Join-Path $env:USERPROFILE '.claude\settings.json'
-    if (-not (Test-Path $userSettings -PathType Leaf)) { return $false }
-    if (-not (Test-Path (Join-Path $repoRoot $backing) -PathType Leaf)) { return $false }
     $leaf = Split-Path $backing -Leaf
-    return ((Get-Content $userSettings -Raw -Encoding UTF8) -like "*$leaf*")
+
+    $projectClaude = Join-Path $ProjectDir '.claude'
+    if ((Test-Path (Join-Path $ProjectDir $backing) -PathType Leaf) -and
+        (Test-HookDeclared -SettingsPath @((Join-Path $projectClaude 'settings.json'), (Join-Path $projectClaude 'settings.local.json')) -Leaf $leaf)) {
+        return $true
+    }
+
+    $isThisRepo = [string]::Equals(
+        [System.IO.Path]::GetFullPath($ProjectDir).TrimEnd('\'),
+        [System.IO.Path]::GetFullPath($repoRoot).TrimEnd('\'),
+        [StringComparison]::OrdinalIgnoreCase)
+    if ($isThisRepo) { return $false }
+    if (-not (Test-Path (Join-Path $repoRoot $backing) -PathType Leaf)) { return $false }
+    return (Test-HookDeclared -SettingsPath @(Join-Path $env:USERPROFILE '.claude\settings.json') -Leaf $leaf)
 }
 
 function Get-RuleText {
@@ -423,9 +473,10 @@ foreach ($rule in $rules) {
 $enforcementNotes = @()
 if ($unwired.Count -gt 0) {
     $enforcementNotes += "enforcement: $($unwired.Count) rule(s) labelled ENFORCED are not wired " +
-                         "for project dir '$ProjectDir' (missing: $($unwired -join ', ')). " +
-                         "They are emitted as ADVISORY. Launch with '$repoRoot' as the project " +
-                         "dir to arm them."
+                         "for project dir '$ProjectDir' (missing: $($unwired -join ', ')): no " +
+                         "settings file the harness loads there declares a hook running them. " +
+                         "They are emitted as ADVISORY. Declare the hooks in the project's " +
+                         ".claude\settings.json, or launch with '$repoRoot' as the project dir."
 }
 
 if ($problems.Count -gt 0) {

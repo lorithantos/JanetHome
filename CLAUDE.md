@@ -24,7 +24,8 @@ output instead.
 
 ## The hooks are wired at two levels
 
-The edit guard and the lint hook load from whichever settings the harness reads:
+The hook-backed guards (edit, lint, research, delegation, graph) load from whichever
+settings the harness reads:
 
 - **Project-level** (`.claude\settings.json` in this repo) -- resolves the scripts
   through `$env:CLAUDE_PROJECT_DIR`, so it is live only when this repo *is* the
@@ -34,11 +35,19 @@ The edit guard and the lint hook load from whichever settings the harness reads:
   sessions launched from other directories on this machine keep both guards. It
   skips when the project dir is this repo, so the two levels never double-fire.
 
-If neither is wired -- another machine, or the user settings pruned -- startup still
-runs; it does not depend on where you launched it from. What it will not do is lie:
-each hook-backed rule is relabelled `ADVISORY (claims ENFORCED; hook not wired
-here)`, and an `enforcement:` entry appears under the brief's `enforcement` field
-naming the project dir it checked and the scripts it could not find.
+Startup checks the declaration, not the file. A rule reads ENFORCED only when a
+settings file the harness loads for the project dir declares a hook whose command
+runs its script, and that script exists: the project's `.claude\settings.json` or
+`settings.local.json`, or the user-level file when the project dir is not this repo.
+Until 2026-10-21 the project-level check only looked for the script on disk, so
+deleting the hooks block here changed nothing the brief printed.
+
+If neither is wired -- another machine, the user settings pruned, or the project's
+hooks block removed -- startup still runs; it does not depend on where you launched
+it from. What it will not do is lie: each hook-backed rule is relabelled
+`ADVISORY (claims ENFORCED; hook not wired here)`, and an `enforcement:` entry
+appears under the brief's `enforcement` field naming the project dir it checked and
+the scripts no settings file there declares a hook for.
 (`enforcement`, not `problems`: consumers such as Start-Janet.ps1 treat `problems`
 as fatal, and an unwired hook must not be.) Treat that as a live warning: the rules
 still hold, only the mechanism that would catch you breaking them is missing, so

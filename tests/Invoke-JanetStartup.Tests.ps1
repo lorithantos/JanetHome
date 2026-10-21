@@ -347,3 +347,139 @@ Describe 'a run entry that fails without throwing' {
         ($brief.captured.probe | ConvertFrom-Json).area | Should -Be 'RazorGraphTool'
     }
 }
+
+<#
+    ENFORCED means a settings file DECLARES the hook, not that the script is on disk.
+    Until 2026-10-21 the project-level arm was Test-Path on the script alone, so in
+    every ordinary JanetHome session the brief said ENFORCED whether or not
+    .claude\settings.json declared anything -- reproduced in a scratch project dir
+    with the scripts present and no hooks block: all five hook-backed rules read
+    ENFORCED and 'enforcement' was empty.
+
+    Every case runs with $env:USERPROFILE pointed at a TestDrive directory, so the
+    machine's real ~\.claude\settings.json can neither rescue nor sink a rule, and
+    no real settings file is read for the user arm or written by anything here.
+#>
+Describe 'hook-backed rules' {
+    BeforeAll {
+        $script:guardRule = [ordered]@{ text = 'ENFORCED: fixture rule backed by a hook.'; enforcedBy = 'scripts\FixtureGuard.ps1' }
+
+        function New-RuleManifest {
+            # One probe run entry, so the manifest is the ordinary shape, plus the rules.
+            [CmdletBinding()]
+            param([Parameter(Mandatory)][System.Collections.IDictionary[]]$Rule)
+            $probe = New-Probe
+            $manifest = Join-Path $TestDrive ("manifest-" + [guid]::NewGuid().ToString('N') + '.json')
+            $json = [ordered]@{ version = 1; onMissing = 'fail'; run = @(@{ cmd = $probe; captureAs = 'probe' }); rules = @($Rule) } |
+                ConvertTo-Json -Depth 6
+            [System.IO.File]::WriteAllText($manifest, $json, (New-Object System.Text.UTF8Encoding $false))
+            return $manifest
+        }
+
+        function New-SettingsJson {
+            # A settings file whose PreToolUse hook command names $Script, resolved the way
+            # the real project-level commands resolve theirs.
+            [CmdletBinding()]
+            param([Parameter(Mandatory)][string]$Script)
+            $command = "`$d = `$env:CLAUDE_PROJECT_DIR; `$s = Join-Path `$d 'scripts\$Script'; if (Test-Path `$s) { & `$s }"
+            return ([ordered]@{
+                    hooks = [ordered]@{
+                        PreToolUse = @([ordered]@{ matcher = 'Write|Edit'; hooks = @([ordered]@{ type = 'command'; command = $command }) })
+                    }
+                } | ConvertTo-Json -Depth 8)
+        }
+
+        function New-HookProject {
+            # A project dir carrying the backing script, and optionally a settings file
+            # under .claude with the given text.
+            [CmdletBinding()]
+            param([Parameter(Mandatory)][string]$Name, [string]$SettingsText, [string]$SettingsFile = 'settings.json')
+            $dir = New-ProjectDir $Name
+            New-Item -ItemType Directory -Path (Join-Path $dir 'scripts'), (Join-Path $dir '.claude') -Force | Out-Null
+            Set-Content -Path (Join-Path $dir 'scripts\FixtureGuard.ps1') -Value '# fixture hook' -Encoding UTF8
+            if ($SettingsText) { Set-Content -Path (Join-Path $dir ".claude\$SettingsFile") -Value $SettingsText -Encoding UTF8 }
+            return $dir
+        }
+
+        function Invoke-WithUserProfile {
+            # Runs startup with USERPROFILE pointed at a fixture, holding the given user
+            # settings text if any, and restores it however the run ends.
+            [CmdletBinding()]
+            param([Parameter(Mandatory)][string]$ManifestPath, [Parameter(Mandatory)][string]$ProjectDir, [string]$UserSettingsText)
+            $profileDir = Join-Path $TestDrive ("profile-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path (Join-Path $profileDir '.claude') -Force | Out-Null
+            if ($UserSettingsText) { Set-Content -Path (Join-Path $profileDir '.claude\settings.json') -Value $UserSettingsText -Encoding UTF8 }
+            $prior = $env:USERPROFILE
+            $env:USERPROFILE = $profileDir
+            try { return Invoke-Startup $ManifestPath -SkipRun -ProjectDir $ProjectDir 3>$null }
+            finally { $env:USERPROFILE = $prior }
+        }
+    }
+
+    It 'keeps ENFORCED when the project settings declare a hook running the script' {
+        $project = New-HookProject 'Declared' -SettingsText (New-SettingsJson 'FixtureGuard.ps1')
+        $brief = Invoke-WithUserProfile (New-RuleManifest $script:guardRule) $project
+
+        $brief.rules | Should -Be @('ENFORCED: fixture rule backed by a hook.')
+        $brief.enforcement | Should -BeNullOrEmpty
+        $brief.problems | Should -BeNullOrEmpty
+    }
+
+    It 'relabels ADVISORY and reports it when the script is on disk but no hook is declared' {
+        # The case from the thread item: scripts in place, hooks block gone.
+        $project = New-HookProject 'Undeclared' -SettingsText '{ "permissions": { "allow": [] } }'
+        $brief = Invoke-WithUserProfile (New-RuleManifest $script:guardRule) $project
+
+        $brief.rules | Should -Be @('ADVISORY (claims ENFORCED; hook not wired here): fixture rule backed by a hook.')
+        @($brief.enforcement).Count | Should -Be 1
+        $brief.enforcement[0] | Should -BeLike '*not wired*scripts\FixtureGuard.ps1*'
+        $brief.problems | Should -BeNullOrEmpty -Because 'an unwired hook is reported, never fatal'
+    }
+
+    It 'does not count the script named outside the hooks section' {
+        $project = New-HookProject 'Mentioned' -SettingsText '{ ".comment": ["FixtureGuard.ps1 used to be wired here"], "hooks": {} }'
+        $brief = Invoke-WithUserProfile (New-RuleManifest $script:guardRule) $project
+
+        $brief.rules[0] | Should -BeLike 'ADVISORY (claims ENFORCED*'
+        @($brief.enforcement).Count | Should -Be 1
+    }
+
+    It 'counts a hook declared in the project settings.local.json' {
+        $project = New-HookProject 'LocalDeclared' -SettingsText (New-SettingsJson 'FixtureGuard.ps1') -SettingsFile 'settings.local.json'
+        $brief = Invoke-WithUserProfile (New-RuleManifest $script:guardRule) $project
+
+        $brief.rules | Should -Be @('ENFORCED: fixture rule backed by a hook.')
+        $brief.enforcement | Should -BeNullOrEmpty
+    }
+
+    It 'arms a rule from user-level settings when the project dir is another repo' {
+        # Arm 2: the user hook runs this repo's script by absolute path, so the backing
+        # script must be a real one in this repo; the project dir carries nothing.
+        $rule = [ordered]@{ text = 'ENFORCED: fixture rule on a real script.'; enforcedBy = 'scripts\Invoke-EditGuard.ps1' }
+        $elsewhere = New-ProjectDir 'OtherRepo'
+        $brief = Invoke-WithUserProfile (New-RuleManifest $rule) $elsewhere -UserSettingsText (New-SettingsJson 'Invoke-EditGuard.ps1')
+
+        $brief.rules | Should -Be @('ENFORCED: fixture rule on a real script.')
+        $brief.enforcement | Should -BeNullOrEmpty
+    }
+
+    It 'relabels a rule the user-level settings do not declare, for another repo' {
+        $rule = [ordered]@{ text = 'ENFORCED: fixture rule on a real script.'; enforcedBy = 'scripts\Invoke-EditGuard.ps1' }
+        $elsewhere = New-ProjectDir 'OtherRepoUnwired'
+        $brief = Invoke-WithUserProfile (New-RuleManifest $rule) $elsewhere -UserSettingsText '{ "hooks": {} }'
+
+        $brief.rules[0] | Should -BeLike 'ADVISORY (claims ENFORCED*'
+        @($brief.enforcement).Count | Should -Be 1
+    }
+
+    It 'does not let user-level settings arm a rule when the project dir is this repo' {
+        # The user hooks skip this repo so the two levels never double-fire. The backing
+        # script exists here but is no hook, so this repo's real .claude\settings.json --
+        # read, never written -- declares nothing that runs it.
+        $rule = [ordered]@{ text = 'ENFORCED: fixture rule on a script that is no hook.'; enforcedBy = 'scripts\Invoke-JanetStartup.ps1' }
+        $brief = Invoke-WithUserProfile (New-RuleManifest $rule) $script:repoRoot -UserSettingsText (New-SettingsJson 'Invoke-JanetStartup.ps1')
+
+        $brief.rules[0] | Should -BeLike 'ADVISORY (claims ENFORCED*'
+        @($brief.enforcement).Count | Should -Be 1
+    }
+}
