@@ -17,6 +17,13 @@
     further out. It bites a NEW user hardest: a fresh clone to a different drive trips
     every one of these at once, and none of them announce it.
 
+    Hook commands are read too (since 2026-10-21). Every hook here is written
+    'if (Test-Path $s) { & $s }', so one pointing at a deleted script runs nothing and
+    says nothing. The script a command runs is read by scripts\lib\HookCommand.ps1, the
+    parser startup also uses for ENFORCED, and counted like any other path: missing
+    under 'broken', unresolvable (a project-form hook in the user-level file, a base
+    variable the command does not assign) under 'unchecked'.
+
     Findings must NOT be routed into the brief's 'problems' field. Start-Janet.ps1 gates
     launch on problems, and this check fires legitimately when run from a foreign project
     dir -- which is exactly the 2026-08-01 regression where enforcement notes went there
@@ -60,6 +67,10 @@ Set-StrictMode -Version Latest
 
 # House rule 6: resolve from this script's own location, never a hardcoded layout.
 $repoRoot = Split-Path $PSScriptRoot -Parent
+
+# Get-HookEntry and Get-HookScript: the same parser startup uses to decide whether a
+# rule is ENFORCED, so the two never disagree about what a hook runs.
+. (Join-Path $PSScriptRoot 'lib\HookCommand.ps1')
 
 function Get-Prop {
     # Optional-property read that cannot throw under StrictMode (house rule 2). The
@@ -165,6 +176,79 @@ function Find-Replacement {
     return $best
 }
 
+function Test-PermissionPath {
+    # settings.json permission rules embedding a path. Findings go into the lists passed
+    # in; returns how many paths were checked. A function rather than inline so the
+    # script body stays under the pre-commit nesting gate.
+    param($Json, [string]$File, $Broken, $Unchecked)
+
+    $count = 0
+    $permissions = Get-Prop $Json 'permissions'
+    if ($null -eq $permissions) { return $count }
+
+    foreach ($listName in @('allow', 'deny', 'ask')) {
+        foreach ($rule in @(Get-Prop $permissions $listName @())) {
+            $target = Read-RuleTarget ([string]$rule)
+            if ($null -eq $target) { continue }
+
+            if ($target.reason) {
+                $Unchecked.Add([pscustomobject]@{
+                        file   = $File
+                        rule   = [string]$rule
+                        reason = $target.reason
+                    })
+                continue
+            }
+
+            $count++
+            if (Test-Path -LiteralPath $target.path) { continue }
+
+            $Broken.Add([pscustomobject]@{
+                    file      = $File
+                    rule      = [string]$rule
+                    path      = $target.path
+                    suggested = Find-Replacement $target.path
+                })
+        }
+    }
+    return $count
+}
+
+function Test-HookPath {
+    # The script each hook command in one settings file runs. Every hook here is written
+    # 'if (Test-Path $s) { & $s }', so a missing script is skipped without a word and the
+    # guard it carried is simply gone. Read through scripts\lib\HookCommand.ps1, the
+    # parser startup uses for ENFORCED. $HookProject is the project a project-form
+    # command resolves against; '' leaves such a script unchecked rather than guessed.
+    # Findings go into the lists passed in; returns how many paths were checked.
+    param([string]$File, [string]$HookProject, $Broken, $Unchecked)
+
+    $count = 0
+    foreach ($hook in @(Get-HookEntry $File)) {
+        foreach ($found in @(Get-HookScript -Command $hook.command -ProjectDir $HookProject)) {
+            if ($found.reason) {
+                $Unchecked.Add([pscustomobject]@{
+                        file   = $File
+                        rule   = $hook.location
+                        reason = $found.reason
+                    })
+                continue
+            }
+
+            $count++
+            if (Test-Path -LiteralPath $found.path -PathType Leaf) { continue }
+
+            $Broken.Add([pscustomobject]@{
+                    file      = $File
+                    rule      = $hook.location
+                    path      = $found.path
+                    suggested = Find-Replacement $found.path
+                })
+        }
+    }
+    return $count
+}
+
 $result = [ordered]@{
     ok           = $false
     filesScanned = @()
@@ -256,37 +340,19 @@ try {
         }
 
         # --- settings.json: permission rules embedding a path -------------------------
-        $permissions = Get-Prop $json 'permissions'
-        if ($null -ne $permissions) {
-            foreach ($listName in @('allow', 'deny', 'ask')) {
-                $rules = Get-Prop $permissions $listName
-                if ($null -eq $rules) { continue }
+        $checked += Test-PermissionPath -Json $json -File $full -Broken $broken -Unchecked $unchecked
 
-                foreach ($rule in @($rules)) {
-                    $target = Read-RuleTarget ([string]$rule)
-                    if ($null -eq $target) { continue }
-
-                    if ($target.reason) {
-                        $unchecked.Add([pscustomobject]@{
-                                file   = $full
-                                rule   = [string]$rule
-                                reason = $target.reason
-                            })
-                        continue
-                    }
-
-                    $checked++
-                    if (Test-Path -LiteralPath $target.path) { continue }
-
-                    $broken.Add([pscustomobject]@{
-                            file      = $full
-                            rule      = [string]$rule
-                            path      = $target.path
-                            suggested = Find-Replacement $target.path
-                        })
-                }
-            }
+        # --- settings.json: the script each hook command runs ---------------------------
+        # A project-form command resolves against the project that owns this .claude dir;
+        # the user-level file has no such project -- it runs in whichever one the session
+        # opens -- so a project-form script there is unchecked rather than guessed.
+        $userSettings = [System.IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.claude\settings.json'))
+        $hookProject = ''
+        if ((-not [string]::Equals($full, $userSettings, [StringComparison]::OrdinalIgnoreCase)) -and
+            ((Split-Path $configDir -Leaf) -eq '.claude')) {
+            $hookProject = Split-Path $configDir -Parent
         }
+        $checked += Test-HookPath -File $full -HookProject $hookProject -Broken $broken -Unchecked $unchecked
     }
 
     $result.filesScanned = $scanned.ToArray()
@@ -299,13 +365,14 @@ try {
         'No client config found to check.'
     }
     elseif ($broken.Count -eq 0) {
-        "$checked absolute path(s) across $($scanned.Count) file(s) all resolve."
+        "$checked path(s) across $($scanned.Count) file(s) all resolve."
     }
     else {
         "$($broken.Count) of $checked path(s) no longer resolve. These fail silently: " +
-        'a stale MCP command reports only a connection error, and a stale permission ' +
-        'rule grants nothing. Nothing is rewritten here -- editing a permission list ' +
-        'is a privilege change and stays a deliberate act.'
+        'a stale MCP command reports only a connection error, a stale permission ' +
+        'rule grants nothing, and a hook whose script is gone is skipped. Nothing is ' +
+        'rewritten here -- editing a permission list or a hook is a privilege change ' +
+        'and stays a deliberate act.'
     }
 }
 catch {

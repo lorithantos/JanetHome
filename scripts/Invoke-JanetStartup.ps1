@@ -196,34 +196,23 @@ function Select-PayloadFields {
     return ,$out
 }
 
-function Get-HookCommand {
-    # Every 'command' string under 'hooks' in one settings file -- event, then
-    # matcher group, then hook -- and nothing for a missing, unreadable or
-    # malformed file. Parsed, not grepped: a script named in a comment key, a
-    # permission or an env value is not a hook. One try around the whole walk:
-    # an empty object ({}) makes Get-Prop's member enumeration throw under
-    # StrictMode, and a malformed file declares nothing, the same as a missing one.
-    param([string]$Path)
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
-    try {
-        $settings = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
-        $hooks = Get-Prop $settings 'hooks'
-        if ($hooks -isnot [System.Management.Automation.PSCustomObject]) { return }
-        $groups = @($hooks.PSObject.Properties | ForEach-Object { $_.Value })
-        $entries = @($groups | ForEach-Object { Get-Prop $_ 'hooks' @() })
-        $entries | ForEach-Object { [string](Get-Prop $_ 'command' '') }
-    }
-    catch { return }
-}
+# Get-HookEntry and Get-HookScript: the one parser for what a hook runs, shared
+# with Test-ConfigPaths.ps1 so the brief's ENFORCED and the configPaths check
+# cannot disagree about it.
+. (Join-Path $PSScriptRoot 'lib\HookCommand.ps1')
 
 function Test-HookDeclared {
-    # True when any of the settings files declares a hook whose command names the
-    # script leaf.  By leaf name, because the commands resolve the script at run
-    # time (Join-Path <dir> 'scripts\X.ps1') rather than naming a fixed path.
+    # True when any of the settings files declares a hook that runs a script with
+    # this leaf name.  By leaf, because the commands resolve the script at run
+    # time (Join-Path <dir> 'scripts\X.ps1') rather than naming a fixed path; the
+    # script itself is whatever Get-HookScript reads out of the command, not a
+    # substring match on the command text.
     param([string[]]$SettingsPath, [string]$Leaf)
     foreach ($path in $SettingsPath) {
-        foreach ($command in @(Get-HookCommand $path)) {
-            if ($command.IndexOf($Leaf, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        foreach ($hook in @(Get-HookEntry $path)) {
+            foreach ($found in @(Get-HookScript -Command $hook.command)) {
+                if ($found.script -and [string]::Equals((Split-Path $found.script -Leaf), $Leaf, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+            }
         }
     }
     return $false
@@ -247,10 +236,10 @@ function Test-RuleEnforced {
     # Until 2026-10-21 arm 1 was only Test-Path on the script: in every ordinary
     # JanetHome session the brief said ENFORCED because the .ps1 was on disk, and
     # deleting the hooks block from .claude\settings.json changed nothing it
-    # printed.  Both arms now read the declaration the same way.  The match on a
-    # command is by script leaf name, so a hook whose command still names the
-    # script but no longer runs it would read as wired -- accepted; settings files
-    # have no comment syntax to hide one behind.
+    # printed.  Both arms now read the declaration the same way.  The match is by
+    # the leaf of the script the shared hook parser reads out of a command, so a
+    # command that still builds the script's path but no longer runs it would read
+    # as wired -- accepted; settings files have no comment syntax to hide one behind.
     #
     # Without this check a rule reads ENFORCED while nothing enforces it, which the
     # manifest's own $comment.rules calls worse than an honest suggestion.
