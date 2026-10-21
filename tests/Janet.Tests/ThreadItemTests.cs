@@ -324,6 +324,35 @@ public class ThreadItemTests : IDisposable
         Assert.Single(shown.Items, i => i.IsActive);
     }
 
+    /// <summary>
+    /// Every field of one call lands, including the ones sent beside status=active.
+    /// </summary>
+    /// <remarks>
+    /// Seen 2026-09-05 from a gamehub session: appendNotes, notes, next and status=active in one
+    /// call answered changed ["notes","next","status"], and a read-back showed only the status.
+    /// Activating parked the area's cursor and then re-read the stored item over the pending one.
+    /// Another item in the same area holds focus here, because that is the path that parks.
+    /// </remarks>
+    [Fact]
+    public void ActivatingInTheSameCallKeepsEveryOtherField()
+    {
+        string path = Empty();
+        ThreadItems.Add(path, "holds focus", area: "JanetHome", active: true);
+        ThreadItems.Add(path, "amended", notes: "first", next: "old next", area: "JanetHome");
+
+        ThreadUpdateResult result = ThreadItems.Update(
+            path, new ThreadSelector { Topic = "amended" },
+            notes: "second", next: "new next", status: ThreadItems.Active, appendNotes: true);
+
+        ThreadShownItem amended = Assert.Single(ThreadItems.Show(path, topic: "amended", full: true).Items);
+
+        Assert.Equal("first\n\nsecond", amended.Notes);
+        Assert.Equal("new next", amended.Next);
+        Assert.True(amended.IsActive);
+        Assert.False(ThreadItems.Show(path, all: true).Items.Single(i => i.Topic == "holds focus").IsActive);
+        Assert.Equal(["notes", "next", "status"], result.Changed);
+    }
+
     [Fact]
     public void ChangedFieldsAreReportedInOrder()
     {

@@ -757,7 +757,6 @@ public static class ThreadItems
 
             int target = Find(items, selector);
             ThreadItem item = items[target];
-            List<string> changed = [];
 
             // The RESULT of an append is what is measured, not the fragment: the ceiling is on
             // what the item holds, and an append is how an item gets there a paragraph at a
@@ -789,56 +788,93 @@ public static class ThreadItems
             EnsureWritable(
                 item.Topic, notesAfter: resultingNotes, notesWritten: notes, next, area, refused);
 
-            if (resultingNotes is not null)
-            {
-                item = item with { Notes = resultingNotes };
-                changed.Add("notes");
-            }
+            // Concatenated, not merged: unlike catalog tags, a repeated ref is the caller's to
+            // decide about. Deduplicating here would quietly drop one they meant twice.
+            IReadOnlyList<string>? resultingRefs = refs is null
+                ? null
+                : appendRefs ? [.. item.Refs, .. refs] : refs;
 
-            if (next is not null)
-            {
-                item = item with { Next = next };
-                changed.Add("next");
-            }
+            // Empty clears, as everywhere else here: an item filed by mistake has to be
+            // returnable to (unfiled), and there is no other way to say that.
+            string? resultingArea = area?.Trim();
+            bool activating = string.Equals(status, Active, StringComparison.OrdinalIgnoreCase);
 
-            if (refs is not null)
+            item = item with
             {
-                // Concatenated, not merged: unlike catalog tags, a repeated ref is the caller's
-                // to decide about. Deduplicating here would quietly drop one they meant twice.
-                item = item with { Refs = appendRefs ? [.. item.Refs, .. refs] : refs };
-                changed.Add("refs");
-            }
+                Notes = resultingNotes ?? item.Notes,
+                Next = next ?? item.Next,
+                Refs = resultingRefs ?? item.Refs,
+                Area = resultingArea ?? item.Area,
+                Status = string.IsNullOrEmpty(status) ? item.Status : status,
+            };
 
-            if (area is not null)
+            if (activating)
             {
-                // Empty clears, as everywhere else here: an item filed by mistake has to be
-                // returnable to (unfiled), and there is no other way to say that.
-                item = item with { Area = area.Trim() };
-                changed.Add("area");
-            }
-
-            if (!string.IsNullOrEmpty(status))
-            {
-                if (string.Equals(status, Active, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Scoped to the STORED area rather than a pending one: the re-read below
-                    // is what the item ends up as, so parking any other area's cursor would
-                    // park a group this item is not going to join.
-                    ParkActive(items, AreaOf(items[target]));
-                    item = items[target];
-                }
-
-                item = item with { Status = status };
-                changed.Add("status");
+                // Scoped to the area the item ENDS in, pending area change included, because
+                // that is the group whose cursor it takes. And the pending item is never
+                // re-read from the list afterwards: until 2026-10-21 it was, which threw away
+                // every other field of a call that also set status=active while 'changed'
+                // went on listing them.
+                ParkActive(items, AreaOf(item));
             }
 
             items[target] = item;
 
-            return new ThreadUpdateResult(item.Topic, changed, Live(items).Count)
+            return new ThreadUpdateResult(
+                item.Topic,
+                Written(items[target], resultingNotes, next, resultingRefs, resultingArea, status),
+                Live(items).Count)
             {
                 Split = archived,
             };
         });
+    }
+
+    /// <summary>
+    /// The fields an update reports as changed, read off the item as it was STORED.
+    /// </summary>
+    /// <remarks>
+    /// A field is listed when the call asked for it and the stored item now holds what was
+    /// asked. Read from the list after the assignment rather than appended as each request
+    /// field is applied, because a list built from the request is a claim about intent: on
+    /// 2026-09-05 a call carrying notes, next and status=active answered
+    /// ["notes","next","status"] while only the status was written. Built this way, a write
+    /// that drops a field also drops it from the answer, so the envelope cannot vouch for a
+    /// field the file does not hold.
+    /// </remarks>
+    private static List<string> Written(
+        ThreadItem stored, string? notes, string? next, IReadOnlyList<string>? refs,
+        string? area, string? status)
+    {
+        List<string> changed = [];
+
+        if (notes is not null && string.Equals(stored.Notes, notes, StringComparison.Ordinal))
+        {
+            changed.Add("notes");
+        }
+
+        if (next is not null && string.Equals(stored.Next, next, StringComparison.Ordinal))
+        {
+            changed.Add("next");
+        }
+
+        if (refs is not null && stored.Refs.SequenceEqual(refs, StringComparer.Ordinal))
+        {
+            changed.Add("refs");
+        }
+
+        if (area is not null && string.Equals(stored.Area, area, StringComparison.Ordinal))
+        {
+            changed.Add("area");
+        }
+
+        if (!string.IsNullOrEmpty(status)
+            && string.Equals(stored.Status, status, StringComparison.OrdinalIgnoreCase))
+        {
+            changed.Add("status");
+        }
+
+        return changed;
     }
 
     /// <summary>
