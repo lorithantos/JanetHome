@@ -242,8 +242,10 @@ if ($findings.Count -eq 0) {
 
         # THE CHECK THAT MAKES THE REST WORTH ANYTHING. A mutation that leaves the
         # file identical runs the suite against unchanged code, and its green
-        # result is indistinguishable from a suite that caught nothing.
-        if ($mutated -eq $original) {
+        # result is indistinguishable from a suite that caught nothing. -ceq, not
+        # -eq: a case-only mutation changes the bytes, and -eq refused it as a
+        # no-op until 2026-10-21 (tests\Test-MutationCatches.Tests.ps1).
+        if ($mutated -ceq $original) {
             $findings += [pscustomobject]@{
                 mutation = $name
                 kind     = 'no-op'
