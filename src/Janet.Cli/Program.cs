@@ -121,9 +121,11 @@ static int Thread(Args args)
     string? path = args.Value("--path");
     bool pretty = args.Flag("--pretty");
 
-    // Retired 2026-08-14. Args ignores options nobody reads, so dropping --index silently
+    // Retired 2026-08-14. Args ignored options nobody read then, so dropping --index silently
     // would have turned 'complete --index 3' into 'complete whatever is active' -- the same
-    // wrong-item write the removal exists to prevent, minus the error message.
+    // wrong-item write the removal exists to prevent, minus the error message. Args refuses
+    // unknown options since 2026-10-21; --index stays known to it so this refusal, which says
+    // why, is the one a caller sees.
     if (args.Has("--index"))
     {
         throw new ArgumentException(

@@ -19,7 +19,11 @@ public sealed class Args
     private Args(IReadOnlyList<string> positional) => Positional = positional;
 
     /// <summary>Options that take no value.</summary>
-    private static readonly HashSet<string> Switches = new(StringComparer.OrdinalIgnoreCase)
+    /// <remarks>
+    /// Public so Janet.Tests can hold it to every <c>args.Flag</c> read in Program.cs. An option
+    /// in neither this set nor <see cref="ValueOptions"/> is refused by <see cref="Parse"/>.
+    /// </remarks>
+    public static IReadOnlySet<string> Switches { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "--all", "--expand", "--full", "--text", "--pretty", "--append", "--dry-run", "--http",
         "--help", "--no-trace",
@@ -53,6 +57,39 @@ public sealed class Args
         "--ensure", "--print", "--rotate",
     };
 
+    /// <summary>Options that take a value, as <c>--name value</c> or <c>--name=value</c>.</summary>
+    /// <remarks>
+    /// The other half of the known set, and the reason an unknown option can be refused at all.
+    /// Until 2026-10-21 anything not in <see cref="Switches"/> was assumed to take a value, so a
+    /// switch nobody had registered consumed the NEXT argument: on 2026-09-16 an unregistered
+    /// <c>--no-split --path X</c> made the path its value and acted on the machine-wide store.
+    /// Now an option in neither set is an error naming it. Global rather than per verb: the
+    /// point is that nothing is swallowed, and a per-verb table is a second place to forget.
+    /// </remarks>
+    public static IReadOnlySet<string> ValueOptions { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // Where things are: the catalog, the thread list, a bicep file.
+        "--graph", "--base", "--path",
+
+        // Thread items. --index is retired and stays known only so Program.cs can refuse it
+        // with the reason, rather than the parser refusing it as a stranger.
+        "--topic", "--area", "--notes", "--next", "--ref", "--status", "--index",
+
+        // The catalog: query, add, update, rename.
+        "--query", "--id", "--tag", "--kind", "--type", "--first", "--depth",
+        "--summary", "--link", "--caveat", "--param", "--section", "--remove", "--new-id",
+        "--json", "--json-path",
+
+        // API and assembly introspection.
+        "--package", "--version", "--tfm", "--assembly", "--member", "--max-types", "--search-root",
+
+        // The build check.
+        "--target", "--configuration", "--test-filter",
+
+        // Azure tokens.
+        "--scope", "--tenant", "--out-file",
+    };
+
     public static Args Parse(IReadOnlyList<string> argv)
     {
         List<string> positional = [];
@@ -71,9 +108,17 @@ public sealed class Args
             // --name=value is accepted alongside --name value; both appear in the wild and
             // guessing wrong at a shell prompt is a needless round trip.
             int equals = arg.IndexOf('=');
+            string name = equals > 0 ? arg[..equals] : arg;
+
+            if (!Switches.Contains(name) && !ValueOptions.Contains(name))
+            {
+                throw new ArgumentException(
+                    $"Unknown option '{name}'. Run 'janet --help' for the options each command takes.");
+            }
+
             if (equals > 0)
             {
-                parsed.AddValue(arg[..equals], arg[(equals + 1)..]);
+                parsed.AddValue(name, arg[(equals + 1)..]);
                 continue;
             }
 
