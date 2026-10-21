@@ -284,21 +284,14 @@ public class AzureSchemaTests
 
     [Theory]
     [MemberData(nameof(Schemas))]
-    public void EveryObjectTheSchemaDeclaresIsClosedAndRequiresEveryProperty(string file)
-    {
-        foreach ((string path, JsonObject schema) in ObjectSchemas(Load(file), "#"))
-        {
-            Assert.True(schema["additionalProperties"]?.GetValue<bool>() == false, $"{file} {path}: additionalProperties is not false");
-            Assert.True(Declared(schema).SequenceEqual(schema["required"]!.AsArray().Select(r => r!.GetValue<string>()).Order(StringComparer.Ordinal)),
-                $"{file} {path}: required is not every declared property");
-        }
-    }
+    public void EveryObjectTheSchemaDeclaresIsClosedAndRequiresEveryProperty(string file) =>
+        ContractSchema.AssertEveryObjectIsClosedAndRequiresEveryProperty(file);
 
     [Theory]
     [MemberData(nameof(Schemas))]
     public void EveryPropertyTheSchemaDeclaresIsDescribed(string file)
     {
-        foreach ((string path, JsonObject schema) in ObjectSchemas(Load(file), "#"))
+        foreach ((string path, JsonObject schema) in ContractSchema.ObjectSchemas(Load(file), "#"))
         {
             foreach ((string name, JsonNode? property) in schema["properties"]!.AsObject())
             {
@@ -319,39 +312,5 @@ public class AzureSchemaTests
 
         Assert.Equal(contract, root["$janet"]!["contract"]!.GetValue<int>());
         Assert.Equal(contract, root["properties"]!["contract"]!["const"]!.GetValue<int>());
-    }
-
-    /// <summary>Every node in the document that declares properties, with a readable path to it.</summary>
-    private static IEnumerable<(string Path, JsonObject Schema)> ObjectSchemas(JsonNode? node, string path)
-    {
-        switch (node)
-        {
-            case JsonObject obj:
-                if (obj["properties"] is JsonObject)
-                {
-                    yield return (path, obj);
-                }
-
-                foreach ((string key, JsonNode? child) in obj)
-                {
-                    foreach ((string Path, JsonObject Schema) found in ObjectSchemas(child, $"{path}/{key}"))
-                    {
-                        yield return found;
-                    }
-                }
-
-                break;
-
-            case JsonArray array:
-                for (int i = 0; i < array.Count; i++)
-                {
-                    foreach ((string Path, JsonObject Schema) found in ObjectSchemas(array[i], $"{path}/{i}"))
-                    {
-                        yield return found;
-                    }
-                }
-
-                break;
-        }
     }
 }

@@ -168,6 +168,90 @@ public class DotnetCheckSchemaTests
             statuses.Select(value => value!.GetValue<string>()).Order(StringComparer.Ordinal));
     }
 
+    // ---- the whole document ----------------------------------------------------------------
+
+    [Fact]
+    public void EveryObjectTheSchemaDeclaresIsClosedAndRequiresEveryProperty() =>
+        ContractSchema.AssertEveryObjectIsClosedAndRequiresEveryProperty("dotnet-check.schema.json");
+
+    /// <summary>
+    /// Both arms of the union, every nullable object present and every list non-empty, so no
+    /// object the schema declares is left unreached for want of data.
+    /// </summary>
+    private static IEnumerable<(string Arm, JsonObject Emitted)> FullyPopulated()
+    {
+        Diagnostic warning = new("src/App/Program.cs", 12, "warning", "CS8618", "Non-nullable property");
+
+        CheckResult complete = new(
+            @"D:\Repos\Sample\App.slnx",
+            "Debug",
+            false,
+            new BuildReport(
+                true,
+                4.2,
+                [new Diagnostic("src/App/Broken.cs", null, "error", "CS0103", "The name does not exist")],
+                [new WarningGroup("CS8618", 3, [warning], 2)],
+                3,
+                [warning],
+                1,
+                new BaselineReport(@"D:\Repos\Sample\.janet\baseline.json", "2026-10-20T09:00:00Z", true),
+                "MSB4126: the tool passed no platform."),
+            new TestRun(
+                false,
+                3,
+                1,
+                1,
+                1,
+                [new TestFailure("Sample.Tests.T.Fails", "boom", ["at Sample.Tests.T.Fails()"])],
+                [new TestAssembly("Sample.Tests", 3, 1, 1, 1, "complete") { ResultsFile = @"D:\Temp\Sample.Tests.trx" }])
+            {
+                RunnerExitCode = 1,
+                Abort = "The active test run was aborted.",
+                Slowest = [new TestClassTime("Sample.Tests.T", 6.25, 3)],
+                ResultsDirectory = @"D:\Temp\janet-trx\run",
+            },
+            new GraphState
+            {
+                Via = "razorgraph",
+                GraphId = "sample",
+                Path = @"D:\Repos\Sample\App.slnx",
+                BuiltAt = "2026-10-21T09:00:00Z",
+                NewestSourceAt = "2026-10-21T08:00:00Z",
+                Status = "current",
+                CanRefresh = true,
+            });
+
+        yield return ("complete", JsonNode.Parse(DotnetCheckJson.Serialize(complete))!.AsObject());
+
+        CheckPending running = new(@"D:\Repos\Sample\App.slnx", "Debug", "h-1234", "2026-10-21T09:00:00Z", 12.5);
+
+        yield return ("running", JsonNode.Parse(DotnetCheckJson.Serialize(running))!.AsObject());
+    }
+
+    [Fact]
+    public void EveryObjectTheSchemaDeclaresIsReachedAndMatchedByAFullyPopulatedEnvelope()
+    {
+        // The section tests above pin build, tests, assemblies[] and slowest[] by name; the root
+        // keys, graph, failures[], warnings[], instances[], baseline, the diagnostic definition
+        // and the running arm had nothing. This walks the whole emitted envelope instead, and then
+        // requires that the walk reached every object the schema declares, so a section the
+        // sample leaves empty fails here rather than passing unchecked.
+        JsonObject root = Schema();
+        HashSet<JsonObject> reached = new(ReferenceEqualityComparer.Instance);
+
+        foreach ((string arm, JsonObject emitted) in FullyPopulated())
+        {
+            ContractSchema.AssertEmittedMatches(root, root, emitted, arm, reached);
+        }
+
+        string[] unreached = ContractSchema.ObjectSchemas(root, "#")
+            .Where(found => !reached.Contains(found.Schema))
+            .Select(found => found.Path)
+            .ToArray();
+
+        Assert.True(unreached.Length == 0, $"no emitted object reached: {string.Join(", ", unreached)}");
+    }
+
     [Fact]
     public void TheSchemaStampsTheContractTheCodeEmits()
     {
