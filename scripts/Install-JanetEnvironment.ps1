@@ -190,10 +190,16 @@ else {
             }
         }
 
-        # A skill whose hardcoded fallback names a different checkout still resolves
-        # through $env:JanetBase, so this is a warning rather than a failure.
+        # The $janet line is a fallback for a session where JanetBase is unset: it is
+        # how a skill that runs `& $janet\scripts\...` still finds the scripts. A
+        # skill that resolves $janet must name this checkout there, or a machine move
+        # strands it. A skill that never resolves $janet -- pure prose, such as
+        # checking-in and graph-node-reading -- has no fallback to check, and until
+        # 2026-10-21 demanding one made every run report a problem and exit 1.
         $manifest = Join-Path $dir.FullName 'SKILL.md'
-        if ((Test-Path -LiteralPath $manifest) -and -not (Select-String -LiteralPath $manifest -SimpleMatch $Base -Quiet)) {
+        $resolvesJanet = (Test-Path -LiteralPath $manifest) -and
+            (Select-String -LiteralPath $manifest -Pattern '\$janet\b' -CaseSensitive -Quiet)
+        if ($resolvesJanet -and -not (Select-String -LiteralPath $manifest -SimpleMatch $Base -Quiet)) {
             $problems.Add("$($dir.Name)\SKILL.md does not mention $Base -- check its `$janet fallback.")
         }
 
