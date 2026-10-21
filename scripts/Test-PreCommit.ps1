@@ -3,8 +3,9 @@
     Pre-commit validation: lint, test, config check, and encoding audit.
 
 .DESCRIPTION
-    Runs PSScriptAnalyzer and the deep-nesting gate on staged .ps1 files, executes
-    the Pester test suite, validates toolkit config via Test-Config.ps1, and checks
+    Runs PSScriptAnalyzer and the deep-nesting gate on staged .ps1 files, builds every
+    solution at the repo root through `janet check` when the commit stages a C# or build
+    file, executes the Pester test suite, validates toolkit config via Test-Config.ps1, and checks
     file encoding on staged files via Test-FileEncoding.ps1. Returns exit code 0
     only when every step passes.
 
@@ -132,6 +133,74 @@ if ($stagedPs1.Count -eq 0) {
 } else {
     Write-Host '  Test-DeepNesting.ps1 not found and .ps1 files are staged.' -ForegroundColor Red
     Write-StepResult 'Deep Nesting' $false
+}
+
+# ---------- 2b. Solution Build ----------
+# Ahead of the test steps, and the only step that compiles anything. Until 2026-10-21 nothing
+# in the commit path built Janet.Cli: no test project referenced it, so `dotnet test` never
+# compiled it, and on 2026-09-07 a raw string literal's indentation break (CS8999 in its
+# Program.cs) passed both test runs and this gate. The verdict and the errors are read from
+# the `janet check` envelope, never scraped from msbuild text.
+#
+# CONDITIONAL on the staged set: it runs when the commit adds, changes or deletes a build
+# input. A commit that stages none cannot change the verdict, and in a repo with a slow
+# solution an unconditional build would tax every commit for nothing. Measured here the same
+# day: about 1s for an up-to-date build, more once a project has to recompile. Like every
+# step but the encoding audit's file list, it checks the WORKING TREE, not the index.
+# --no-graph because a gate must not refresh anything as a side effect.
+Write-StepHeader 'Solution Build'
+
+$buildExtensions = @('.cs', '.csproj', '.sln', '.slnx', '.props', '.targets', '.editorconfig')
+$buildFiles = @('global.json', 'nuget.config')
+$stagedBuildInputs = @((Invoke-External -NoThrow $git diff --cached --name-only --diff-filter=ACMRD).StdOut |
+    Where-Object { $_ -and (([IO.Path]::GetExtension($_) -in $buildExtensions) -or ((Split-Path $_ -Leaf) -in $buildFiles)) })
+$solutions = @(Get-ChildItem -LiteralPath $repoRoot -File | Where-Object Extension -in '.sln', '.slnx')
+$janetCli = Get-Command janet -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+
+function Test-SolutionBuild ([string]$Janet, [System.IO.FileInfo]$Solution) {
+    $check = Invoke-External -NoThrow -Quiet -TimeoutSec 600 -WorkingDirectory $repoRoot `
+        $Janet check --target $Solution.FullName --no-tests --no-graph
+
+    $envelope = $null
+    try { $envelope = ($check.StdOut -join "`n") | ConvertFrom-Json } catch { $envelope = $null }
+
+    if ($null -eq $envelope -or $envelope.status -ne 'complete') {
+        # No envelope is a check that could not run, which is not a check that passed.
+        Write-Host "  janet check returned no complete envelope for $($Solution.Name) (exit $($check.ExitCode)): $($check.StdErr -join ' ')" -ForegroundColor Red
+        return $false
+    }
+
+    if ($envelope.build.succeeded) {
+        Write-Host "  $($Solution.Name) builds ($($envelope.build.durationSeconds)s)."
+        return $true
+    }
+
+    Write-Host "  $($Solution.Name) does not build:" -ForegroundColor Red
+    foreach ($buildError in @($envelope.build.errors)) {
+        Write-Host "    $($buildError.file)($($buildError.line)): $($buildError.code) $($buildError.message)" -ForegroundColor Red
+    }
+    if ($envelope.build.diagnosis) {
+        Write-Host "    $($envelope.build.diagnosis)" -ForegroundColor Yellow
+    }
+    return $false
+}
+
+if ($stagedBuildInputs.Count -eq 0) {
+    Write-Host '  No staged C# or build files -- skipping.'
+    $stepResults['Solution Build'] = $true
+} elseif ($solutions.Count -eq 0) {
+    Write-Host '  Build files are staged but there is no .sln or .slnx at the repo root -- nothing to build, skipping.' -ForegroundColor Yellow
+    $stepResults['Solution Build'] = $true
+} elseif ($null -eq $janetCli) {
+    # Same rule as the analyzer: build inputs staged and no way to build them is a failure.
+    Write-Host '  The janet CLI is not on PATH and build files are staged (dotnet tool install -g Janet.Cli).' -ForegroundColor Red
+    Write-StepResult 'Solution Build' $false
+} else {
+    $built = $true
+    foreach ($solution in $solutions) {
+        if (-not (Test-SolutionBuild -Janet $janetCli.Source -Solution $solution)) { $built = $false }
+    }
+    Write-StepResult 'Solution Build' $built
 }
 
 # ---------- 3. Pester Tests ----------
