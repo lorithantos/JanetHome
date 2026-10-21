@@ -93,6 +93,9 @@ the client dials, so it can be killed, rebuilt and restarted while a session sta
 open — `scripts/Update-McpServer.ps1` does that rotation in about two seconds.
 `janet-mcp` with no `--http` speaks stdio instead, which every MCP client supports
 and no client reconnects to.
+Over HTTP every endpoint, `/health` and `/az/token` included, refuses a Host other than
+`127.0.0.1`, `localhost` or `[::1]` (400), an `Origin` that is not one of those (403;
+no `Origin` is fine), and a POST that is not `application/json` (415).
 
 The tools need the **.NET 10 SDK**; the scripts target **PowerShell 7**. Some carry
 known limitations; retrieval always prints a node's `caveats`, so ask the catalog
