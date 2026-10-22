@@ -26,10 +26,22 @@
     and replace the notes with a shorter working log. An -AppendNotes over the ceiling is not
     refused; see -NoSplit.
 
+    Notes carrying a closing notes, next, invoke or parameter tag, or the attribute text that
+    opens a parameter, are refused whole as "Refused: notes for '<topic>' contains '<signature>'
+    at character N. Nothing was written. This is the body of a tool call, not content --
+    re-issue the call with one parameter per field.", so describe such markup in prose. With
+    -AppendNotes only the appended text is scanned, so notes that already quote the tags stay
+    amendable.
+
 .PARAMETER Next
     Replacement resume cursor, or '' to clear. Capped at 1,000 characters, with no override:
     it is the one thing to do first on return, and a cursor needing a thousand characters is
     notes wearing the wrong label. Put the detail in -Notes.
+
+    A cursor carrying a closing notes, next, invoke or parameter tag, or the attribute text that
+    opens a parameter, is refused whole as "Refused: next for '<topic>' contains '<signature>'
+    at character N. Nothing was written. This is the body of a tool call, not content --
+    re-issue the call with one parameter per field.", so describe such markup in prose.
 
 .PARAMETER AppendNotes
     Add to the existing notes rather than replacing them, separated by a blank line.

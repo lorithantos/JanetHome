@@ -24,9 +24,19 @@
     existing item has nothing to work with here. Long-form belongs in a catalogued note -- write
     it to notes\<slug>.md, `janet research add` it as note.<slug>, and put the id in -Refs.
 
+    Notes carrying a closing notes, next, invoke or parameter tag, or the attribute text that
+    opens a parameter, are refused whole as "Refused: notes for '<topic>' contains '<signature>'
+    at character N. Nothing was written. This is the body of a tool call, not content --
+    re-issue the call with one parameter per field.", so describe such markup in prose.
+
 .PARAMETER Next
     The resume cursor: the one thing to do first on return. Capped at 1,000 characters, with no
     override: a cursor needing a thousand characters is notes wearing the wrong label.
+
+    A cursor carrying a closing notes, next, invoke or parameter tag, or the attribute text that
+    opens a parameter, is refused whole as "Refused: next for '<topic>' contains '<signature>'
+    at character N. Nothing was written. This is the body of a tool call, not content --
+    re-issue the call with one parameter per field.", so describe such markup in prose.
 
 .PARAMETER Refs
     Catalog node ids carrying the context for this topic.
