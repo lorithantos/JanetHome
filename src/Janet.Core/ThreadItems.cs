@@ -716,6 +716,9 @@ public static class ThreadItems
     /// The distinction is the point: clearing 'next' is a legitimate request, so "not supplied"
     /// and "supplied as empty" cannot be the same thing. The PowerShell read
     /// $PSBoundParameters to tell them apart; here it is nullability.
+    ///
+    /// Moving an ACTIVE item to an area that already holds a cursor is refused whole unless the
+    /// same call sets status=active (see <see cref="EnsureMoveKeepsOneCursor"/>).
     /// </remarks>
     /// <param name="split">
     /// Let an over-ceiling APPEND archive the oldest part of the notes rather than be refused.
@@ -817,6 +820,12 @@ public static class ThreadItems
                 // went on listing them.
                 ParkActive(items, AreaOf(item));
             }
+            else
+            {
+                // Not asked for focus, so it may not take any: an active item moved into an
+                // area that already holds a cursor is refused, never resolved by parking.
+                EnsureMoveKeepsOneCursor(items, target, item);
+            }
 
             items[target] = item;
 
@@ -828,6 +837,43 @@ public static class ThreadItems
                 Split = archived,
             };
         });
+    }
+
+    /// <summary>
+    /// Refuses an update that would carry an ACTIVE item into an area already holding focus.
+    /// </summary>
+    /// <remarks>
+    /// Found 2026-10-21. Only status=active parked a cursor, so an update that changed nothing
+    /// but the area moved an item, still active, into an area that might already have one: two
+    /// cursors in one area, which per-area focus says cannot exist, and nothing reported it.
+    /// Refused rather than resolved, by decision: parking either item would silently move some
+    /// session's focus, and which one the caller meant is theirs to say. Thrown inside the
+    /// queued operation before the list is touched, so the whole write is dropped.
+    ///
+    /// An update that ALSO sets status=active never reaches here. That is the caller asking for
+    /// focus in the area the item ends in, and status=active's rule is that it parks whatever
+    /// held focus there -- so the switch is explicit, and it is the escape this refusal names.
+    ///
+    /// Only a MOVE is checked. An item already active in its own area beside another cursor is a
+    /// hand-edited file, and refusing every amendment to it would be a refusal nobody can act on
+    /// (see <see cref="InFocus"/>).
+    /// </remarks>
+    private static void EnsureMoveKeepsOneCursor(List<ThreadItem> items, int target, ThreadItem after)
+    {
+        string destination = AreaOf(after);
+
+        if (!after.IsActive
+            || string.Equals(AreaOf(items[target]), destination, StringComparison.Ordinal)
+            || ActiveTopic(items, destination) is not { } holder)
+        {
+            return;
+        }
+
+        throw new GraphException(
+            $"Moving '{after.Topic}' to area '{destination}' would leave that area with two " +
+            $"active items: it is active, and so is '{holder}'. Focus is one per area, so nothing " +
+            "was written. Park one of them first (status parked), or set status active in the " +
+            "same call to take that area's focus deliberately.");
     }
 
     /// <summary>

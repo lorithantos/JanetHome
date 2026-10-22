@@ -772,7 +772,10 @@ static int Usage()
                               several the clear is refused and every cursor named. With
                               no topic, update and complete act on the sole cursor by
                               the same rule. On add and update --area is a stored label,
-                              never inferred from the topic; --area '' unfiles)
+                              never inferred from the topic; --area '' unfiles. Moving an
+                              ACTIVE item into an area that holds focus is refused whole,
+                              both topics named: park one first, or pass --status active
+                              in the same call to take that area's focus)
 
         janet api             (--package ID | --path FILE) [--version V] [--tfm TFM]
                               [--query TEXT] [--id MEMBER]... [--kind Type|Method|Property|Field|Event]

@@ -166,7 +166,9 @@ public static class ThreadTools
         [Description(
             "Which project or area this item belongs to, or empty to unfile it. Omit to leave " +
             "alone. This is how an existing item gets labelled -- none were backfilled, so most " +
-            "read as '(unfiled)' until someone says otherwise.")]
+            "read as '(unfiled)' until someone says otherwise. Moving an ACTIVE item into an " +
+            "area that already holds focus is refused whole, both topics named: park one first, " +
+            "or set status=active in the same call to take that area's focus.")]
         string? area = null,
         [Description(
             "Let an over-ceiling appendNotes archive the OLDEST paragraphs to a file beside the " +

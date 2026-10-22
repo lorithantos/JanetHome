@@ -183,6 +183,97 @@ public class ThreadAreaFocusTests : IDisposable
         Assert.Single(ThreadItems.Show(path, area: "JanetHome").Items, i => i.IsActive);
     }
 
+    // ---- moving an item between areas ----------------------------------------------------
+
+    /// <summary>
+    /// Moving an ACTIVE item into an area that already holds focus is refused, whole.
+    /// </summary>
+    /// <remarks>
+    /// Found 2026-10-21: Update parked the destination's cursor only when the same call set
+    /// status=active, so an area-only move carried an active item, still active, into an area
+    /// that already had one -- two cursors in one area, which per-area focus says cannot
+    /// happen. Decided: refuse rather than pick which one to park, because either choice would
+    /// silently move some session's focus. The refusal names both topics so the caller can park
+    /// the one they mean, and the file is compared byte for byte because "writes nothing" is
+    /// the claim.
+    /// </remarks>
+    [Fact]
+    public void MovingAnActiveItemIntoAnAreaHoldingFocusIsRefusedAndWritesNothing()
+    {
+        string path = Filed();
+        string before = File.ReadAllText(path);
+
+        GraphException refused = Assert.Throws<GraphException>(() => ThreadItems.Update(
+            path, new ThreadSelector { Topic = "the startup brief" }, area: "gamehub",
+            notes: "and a note that must not land either"));
+
+        Assert.Contains("the startup brief", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("the doctrine board", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("gamehub", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("Park one", refused.Message, StringComparison.Ordinal);
+
+        Assert.Equal(before, File.ReadAllText(path));
+        Assert.Equal("the startup brief", FocusIn(path, "JanetHome"));
+        Assert.Equal("the doctrine board", FocusIn(path, "gamehub"));
+    }
+
+    /// <summary>An active item moved into an area with no cursor takes its focus along.</summary>
+    /// <remarks>
+    /// The refusal is about two cursors in one area and nothing wider: the area it left simply
+    /// has none afterwards, which is an ordinary state.
+    /// </remarks>
+    [Fact]
+    public void MovingAnActiveItemIntoAnAreaWithoutFocusCarriesItsFocus()
+    {
+        string path = Filed();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "the startup brief" }, area: "RazorGraphTool");
+
+        Assert.Equal("the startup brief", FocusIn(path, "RazorGraphTool"));
+        Assert.Null(FocusIn(path, "JanetHome"));
+        Assert.Equal("the doctrine board", FocusIn(path, "gamehub"));
+    }
+
+    /// <summary>
+    /// Moving with status=active in the same call takes the destination's focus, as before.
+    /// </summary>
+    /// <remarks>
+    /// Kept deliberately. status=active is the caller asking for focus in the area the item
+    /// ends in, and its documented rule is that it parks whatever held focus there -- so this
+    /// is not an accidental second cursor but an explicit switch, and it is the escape the
+    /// refusal above names.
+    /// </remarks>
+    [Fact]
+    public void MovingAndSettingActiveInOneCallTakesTheDestinationsFocus()
+    {
+        string path = Filed();
+
+        ThreadItems.Update(
+            path, new ThreadSelector { Topic = "the startup brief" }, area: "gamehub",
+            status: ThreadItems.Active);
+
+        Assert.Equal("the startup brief", FocusIn(path, "gamehub"));
+        Assert.Single(ThreadItems.Show(path, area: "gamehub").Items, i => i.IsActive);
+        Assert.Null(FocusIn(path, "JanetHome"));
+    }
+
+    /// <summary>Moving an active item and parking it in the same call is not refused.</summary>
+    [Fact]
+    public void MovingAnActiveItemAndParkingItInOneCallIsAllowed()
+    {
+        string path = Filed();
+
+        ThreadItems.Update(
+            path, new ThreadSelector { Topic = "the startup brief" }, area: "gamehub",
+            status: ThreadItems.Parked);
+
+        Assert.Equal("the doctrine board", FocusIn(path, "gamehub"));
+        Assert.Null(FocusIn(path, "JanetHome"));
+        Assert.Equal(
+            "gamehub",
+            ThreadItems.Show(path, topic: "the startup brief").Items.Single().Area);
+    }
+
     // ---- the ambiguity rule --------------------------------------------------------------
 
     /// <summary>
