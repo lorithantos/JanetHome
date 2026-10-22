@@ -78,6 +78,10 @@ parameter tag or the parameter-name attribute text -- describe such things in pr
 One thread update may set notes, next, status and area together; every field lands.
 Any .ps1 you touch: `pwsh [repo]\scripts\Test-PowerShellRules.ps1 -Path <file>`; fix
 what it reports.
+[POWERSHELL -- if the agent will run PowerShell at all, paste the "Running PowerShell from
+a tool call" list from the powershell-authoring skill here. It is short, and every entry is
+a mistake an agent made: text with a dollar sign goes in single quotes, list and notes
+flags replace unless appended, check .error on every janet result, and the rest.]
 [ENCODING -- PER REPO, CHECK BEFORE QUOTING. Revised 2026-09-07; the previous version
 told agents the opposite of two of these.
 LINE ENDINGS ARE NOT A RULE. Say nothing about them, and never convert them. git
@@ -129,6 +133,7 @@ it be decided; do not fold it into an unrelated edit.
   guard is the result, not a refusal to work around?
 - Says which encoding rule THIS repo has, or says nothing?
 - Sets `--area` for thread items?
+- Pastes the powershell-authoring list if the agent will run PowerShell?
 - Gives the scratchpad path and the date?
 - States the report shape, word budget, and the boundary (no commit/push, scope)?
 - Keeps the thread-add carve-out under "Do not"? An isolation rule that names a store
