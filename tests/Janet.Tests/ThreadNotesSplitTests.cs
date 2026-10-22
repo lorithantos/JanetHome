@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using Janet.Core;
@@ -497,6 +498,56 @@ public class ThreadNotesSplitTests : IDisposable
         Assert.Contains("P000", File.ReadAllText(orphan), StringComparison.Ordinal);
         Assert.Equal(stored, Notes(path, "splittable"));
         Assert.Null(NotesSplit.PointerIn(stored));
+    }
+
+    /// <summary>
+    /// The archive file is already on disk when the queue takes the batch, so the queued
+    /// operation itself writes nothing.
+    /// </summary>
+    /// <remarks>
+    /// The ORDERING the two failure tests above cannot see. A queued operation must be pure with
+    /// respect to disk, because in-process writers coalesce into one read-apply-write and a
+    /// discarded operation must leave no side effect behind -- so the archive is written before
+    /// Submit. Moving that write inside the operation passed both failure tests, because for a
+    /// single writer the outcomes are the same. This looks at the moment between: the consumer
+    /// has taken the batch and applied none of it, and the archive must already exist. Inside
+    /// the operation it would not exist yet. No timing is involved; the hook runs on the
+    /// consumer thread at exactly that point, and the collection runs with nothing alongside,
+    /// so the static hook reaches no other test's lane.
+    /// </remarks>
+    [Fact]
+    public void TheArchiveIsWrittenBeforeTheQueuedOperationRuns()
+    {
+        string path = Splittable();
+        string store = Path.GetFullPath(path);
+        string archives = NotesSplit.ArchiveDirectory(path);
+        ConcurrentQueue<int> filesWhenTaken = new();
+
+        WriteQueue.BeforeApplyForTests = lanePath =>
+        {
+            if (string.Equals(lanePath, store, StringComparison.OrdinalIgnoreCase))
+            {
+                filesWhenTaken.Enqueue(
+                    Directory.Exists(archives) ? Directory.GetFiles(archives, "*.md").Length : 0);
+            }
+        };
+
+        ThreadUpdateResult result;
+
+        try
+        {
+            result = ThreadItems.Update(
+                path, Topic("splittable"), notes: Block(99, 600), appendNotes: true);
+        }
+        finally
+        {
+            WriteQueue.BeforeApplyForTests = null;
+        }
+
+        NotesArchive split = Assert.IsType<NotesArchive>(result.Split);
+
+        Assert.True(File.Exists(split.Where), $"the archive file {split.Where} was not written");
+        Assert.Equal(1, Assert.Single(filesWhenTaken));
     }
 
     // ---- the ceiling's purpose ---------------------------------------------------------
