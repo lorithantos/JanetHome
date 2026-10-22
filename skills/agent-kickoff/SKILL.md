@@ -75,7 +75,7 @@ Work you surface but are not doing: `janet thread add --topic "..." --area "[are
 --notes "..."`. Set --area or it lands in (unfiled). Notes are capped at 8,000
 characters, and the write path REFUSES text carrying a closing notes, next, invoke or
 parameter tag or the parameter-name attribute text -- describe such things in prose.
-Send notes, next and status in separate calls; together, only the status lands.
+One thread update may set notes, next, status and area together; every field lands.
 Any .ps1 you touch: `pwsh [repo]\scripts\Test-PowerShellRules.ps1 -Path <file>`; fix
 what it reports.
 [ENCODING -- PER REPO, CHECK BEFORE QUOTING. Revised 2026-09-07; the previous version
