@@ -2041,13 +2041,13 @@
       "id": "note.csharp-house-rules",
       "kind": "note",
       "path": "notes\\csharp-house-rules.md",
-      "summary": "C# and Blazor house rules. Decided: flaky tests are priority 1; page checks read named data-testid elements; catalogues and their text are JSON data with one source; shared state is immutable or concurrent by design; NO TUPLES IN ANY SIGNATURE (records instead, test code included); EXPLICIT TYPES (never var), BRACES ON EVERY BLOCK, this. on member access, file-scoped namespaces, shared namespaces as <Using Include> in the csproj -- enforced as build errors via .editorconfig + EnforceCodeStyleInBuild (CardImport is the reference). Still candidates: JavaScript only where the browser demands it, server-rendered layout with on-change binding, and the remaining Neelam vs ImageSelectorV2 differences.",
+      "summary": "C# and Blazor house rules. Decided: flaky tests are priority 1; page checks read named data-testid elements; catalogues and their text are JSON data with one source; shared state is immutable, concurrent, or owned by one consumer (no locks, per pattern.single-consumer-queue; a lock only at a cross-process edge); NO TUPLES IN ANY SIGNATURE (records instead, test code included); EXPLICIT TYPES (never var), BRACES ON EVERY BLOCK, this. on member access, file-scoped namespaces, shared namespaces as <Using Include> in the csproj -- enforced as build errors via .editorconfig + EnforceCodeStyleInBuild (CardImport is the reference). Still candidates: JavaScript only where the browser demands it, server-rendered layout with on-change binding, and the remaining Neelam vs ImageSelectorV2 differences.",
       "caveats": [
         "Part 2 is candidates only: nothing there is a rule until the owner moves it to Part 1, and no code is refactored to a candidate.",
         "Rules 1-5 are ADVISORY until a test or analyzer enforces them in a given repo; rule 6 ships with its enforcement (.editorconfig + Directory.Build.props) but only in repos that copy it. Existing repos (ImageSelectorV2, Neelam, RetirementCore) are NOT yet converted -- adopt deliberately, not by sweep."
       ],
       "tags": ["csharp", "blazor", "style", "rules", "testing", "quality"],
-      "links": ["note.powershell-house-rules", "note.tuples-do-not-cross-boundaries", "script.compare-il-binding-snapshot", "script.get-il-binding-snapshot", "script.test-namespace-folders"]
+      "links": ["note.powershell-house-rules", "note.tuples-do-not-cross-boundaries", "script.compare-il-binding-snapshot", "script.get-il-binding-snapshot", "script.test-namespace-folders", "pattern.single-consumer-queue"]
     },
 
     {
