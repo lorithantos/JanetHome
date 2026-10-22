@@ -28,14 +28,36 @@ internal static class ContractSchema
     /// Every object the schema declares refuses a key it does not name, and requires every key it
     /// does. The failure names the file and the JSON path of the open object.
     /// </summary>
-    public static void AssertEveryObjectIsClosedAndRequiresEveryProperty(string file)
+    public static void AssertEveryObjectIsClosedAndRequiresEveryProperty(string file) =>
+        AssertEveryObjectIsClosedAndRequiresEveryProperty(file, []);
+
+    /// <summary>
+    /// The same, for a contract that declares keys which are present only when there is
+    /// something to say -- assembly-api's siblingWarning, az-token's token.
+    /// </summary>
+    /// <param name="file">The schema under contracts\.</param>
+    /// <param name="optional">
+    /// Each key allowed to be left out of 'required', as its object's path and the key name,
+    /// "#/siblingWarning" for a root key. Every entry must name a declared property, so a list
+    /// that outlives the key it excused fails rather than excusing nothing.
+    /// </param>
+    public static void AssertEveryObjectIsClosedAndRequiresEveryProperty(string file, IReadOnlyCollection<string> optional)
     {
+        HashSet<string> excused = [];
+
         foreach ((string path, JsonObject schema) in ObjectSchemas(Load(file), "#"))
         {
             Assert.True(schema["additionalProperties"]?.GetValue<bool>() == false, $"{file} {path}: additionalProperties is not false");
-            Assert.True(Declared(schema).SequenceEqual(Required(schema)),
+
+            IEnumerable<string> mustRequire = Declared(schema).Where(key => !optional.Contains($"{path}/{key}"));
+            Assert.True(mustRequire.SequenceEqual(Required(schema)),
                 $"{file} {path}: required is not every declared property");
+
+            excused.UnionWith(Declared(schema).Select(key => $"{path}/{key}").Where(optional.Contains));
         }
+
+        string[] stale = optional.Where(entry => !excused.Contains(entry)).ToArray();
+        Assert.True(stale.Length == 0, $"{file}: optional names no declared property: {string.Join(", ", stale)}");
     }
 
     /// <summary>Every node in the document that declares properties, with a readable path to it.</summary>
@@ -73,16 +95,23 @@ internal static class ContractSchema
     }
 
     /// <summary>
-    /// Walks an emitted envelope beside its schema: every emitted object's keys must equal the
-    /// keys its schema object declares, at every depth, and each schema object the walk reaches
-    /// is recorded in <paramref name="reached"/>.
+    /// Walks an emitted envelope beside its schema: every emitted object must carry every key its
+    /// schema object requires and nothing it does not declare, at every depth, and each schema
+    /// object the walk reaches is recorded in <paramref name="reached"/>.
     /// </summary>
     /// <remarks>
+    /// For a schema whose objects require every key they declare -- which the closed check above
+    /// enforces wherever no key is named optional -- that is an exact key-set comparison. A key
+    /// the schema declares but does not require may be absent, so an envelope that leaves out a
+    /// present-only-when-there-is-something-to-say key still matches; a test that wants such a
+    /// key sampled has to emit an envelope that carries it.
+    /// <para>
     /// A schema object is found through a local $ref, through the one non-null arm of a nullable
     /// oneOf, or -- for a tagged union -- through the arm whose 'status' const is the emitted
     /// status. Comparing <paramref name="reached"/> with <see cref="ObjectSchemas"/> afterwards
     /// says whether the sample was populated enough to reach every object, which is the thing a
     /// cheap live sample cannot promise: a subschema only applies to data that exists.
+    /// </para>
     /// </remarks>
     public static void AssertEmittedMatches(JsonObject root, JsonNode schemaNode, JsonNode emitted, string where, ISet<JsonObject> reached)
     {
@@ -95,8 +124,9 @@ internal static class ContractSchema
 
         reached.Add(schema);
         IEnumerable<string> keys = emitted.AsObject().Select(p => p.Key).Order(StringComparer.Ordinal);
-        Assert.True(Declared(schema).SequenceEqual(keys),
-            $"{where}: declared [{string.Join(", ", Declared(schema))}] but emitted [{string.Join(", ", keys)}]");
+        Assert.True(
+            !Required(schema).Except(keys).Any() && !keys.Except(Declared(schema)).Any(),
+            $"{where}: declared [{string.Join(", ", Declared(schema))}], required [{string.Join(", ", Required(schema))}] but emitted [{string.Join(", ", keys)}]");
 
         foreach ((string name, JsonNode? value) in emitted.AsObject())
         {
