@@ -15,10 +15,10 @@ namespace Janet.Tests;
 /// Every refusal test snapshots the store first and asserts it is byte-identical afterwards,
 /// because "refused" and "refused after writing" read the same in a message.
 ///
-/// In the "thread store" collection for the reason the other thread test classes give: another
-/// class sets the notes ceiling on the process for the length of one test.
+/// In no collection, so it runs in parallel with other classes: every thread test writes its
+/// own store under a fresh directory, every catalog test a fresh Sandbox copy, and nothing here
+/// sets process state. See ThreadItemTests for why the "thread store" collection was dissolved.
 /// </remarks>
-[Collection("thread store")]
 public class MalformedInputTests : IDisposable
 {
     private readonly Sandbox _sandbox = new();

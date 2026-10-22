@@ -20,10 +20,11 @@ namespace Janet.Tests;
 /// stopped returning every note whole: the recording described the retired behaviour, and the
 /// only way to keep it green was to edit the expectation by hand. See Cases.Threads.
 ///
-/// In the "thread store" collection because ThreadNotesCeilingTests sets JANET_NOTES_BUDGET
-/// on the process, and the appended-notes case here writes 56 characters.
+/// In no collection, so it runs in parallel with other classes: each case writes a fresh copy
+/// of the seed under its own directory and only reads the goldens. The appended-notes case is
+/// still safe from a lowered JANET_NOTES_BUDGET because every class that sets it runs alone, in
+/// ProcessEnvironmentCollection -- see ThreadItemTests for why "thread store" was dissolved.
 /// </remarks>
-[Collection("thread store")]
 public class ThreadGoldenTests : IDisposable
 {
     private readonly List<string> _directories = [];

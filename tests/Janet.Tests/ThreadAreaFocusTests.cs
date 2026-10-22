@@ -20,11 +20,10 @@ namespace Janet.Tests;
 /// here is about SCOPE, and the central one is the first -- that a write in one area leaves
 /// another area's cursor exactly where it was.
 ///
-/// In the "thread store" collection with every other class that writes items, because
-/// ThreadNotesCeilingTests sets JANET_NOTES_BUDGET on the process and a write here racing that
-/// window would be refused for a reason this file never mentions.
+/// In no collection, so it runs in parallel with other classes: every test writes its own store
+/// under a fresh directory and sets no process state. See ThreadItemTests for why the "thread
+/// store" collection was dissolved.
 /// </remarks>
-[Collection("thread store")]
 public class ThreadAreaFocusTests : IDisposable
 {
     private readonly List<string> _directories = [];

@@ -13,11 +13,12 @@ namespace Janet.Tests;
 /// status change, an ambiguous selector refuses rather than guessing, and concurrent writers
 /// all survive.
 ///
-/// In the "thread store" collection with every other class that writes items, because
-/// ThreadNotesCeilingTests sets JANET_NOTES_BUDGET on the process and a write here racing that
-/// window would be refused for a reason this file never mentions.
+/// In no collection, so it runs in parallel with other classes. Every test writes its own store
+/// under a fresh directory and sets no process state; the classes that set JANET_NOTES_BUDGET or
+/// WriteQueue.LockTimeout run with nothing alongside, in ProcessEnvironmentCollection and
+/// WriteLockTimeoutCollection. This was the "thread store" collection until 2026-10-21, kept
+/// out of the setters' way at a time when sharing a collection was the only guard.
 /// </remarks>
-[Collection("thread store")]
 public class ThreadItemTests : IDisposable
 {
     private readonly List<string> _directories = [];

@@ -16,8 +16,11 @@ namespace Janet.Tests;
 /// The behaviour worth guarding is not the size but the HONESTY: an envelope that dropped the
 /// notes silently would look complete and read as "these items have no notes". Every test here
 /// is ultimately about notesLength being present and right.
+///
+/// In no collection, so it runs in parallel with other classes: every test writes its own store
+/// under a fresh directory and sets no process state. See ThreadItemTests for why the "thread
+/// store" collection was dissolved.
 /// </remarks>
-[Collection("thread store")]
 public class ThreadReportTests : IDisposable
 {
     private readonly List<string> _directories = [];

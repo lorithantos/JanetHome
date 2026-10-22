@@ -19,7 +19,8 @@ namespace Janet.Tests;
 /// JANET_NOTES_BUDGET on the process for the length of one test, and a write in another class
 /// racing that window would be refused for a reason its own file never mentions. This class was
 /// the reason the other thread test classes joined the "thread store" collection; a shared
-/// collection only queued them behind each other, where this one runs with nothing alongside.
+/// collection only queued them behind each other, where this one runs with nothing alongside,
+/// and the "thread store" collection was dissolved on 2026-10-21 once nothing else needed it.
 /// </remarks>
 [Collection(ProcessEnvironmentCollection.Name)]
 public class ThreadNotesCeilingTests : IDisposable
