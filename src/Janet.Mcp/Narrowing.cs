@@ -75,6 +75,10 @@ internal static class Narrowing
             ["azure_role_remove"] = BoundedByConstruction,
             ["storage_probe"] =
                 "pass containers and tables to probe a few targets rather than all of them.",
+
+            // The body, the header count and the attempt count are all capped, so the answer
+            // cannot grow with whatever the endpoint sends back.
+            ["http_probe"] = BoundedByConstruction,
             ["server_rotate"] = BoundedByConstruction,
             ["server_rotation"] = BoundedByConstruction,
         };

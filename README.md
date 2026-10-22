@@ -51,6 +51,7 @@ in this repo exists to close one of those gaps:
 | Build/test output gets scraped | `dotnet_check` / `janet check` — structured, contract-numbered JSON instead of scrollback |
 | Bicep findings arrive as a text stream beside the compiled template | `bicep_check` — verdict and every compiler and linter finding as fields in one envelope |
 | Live Azure changes made by hand-typed `az` commands | `azure_whatif` / `azure_deploy` / `azure_role_*` / `storage_probe` — ARM over REST with the `az login` token; reads and writes are separate tools so every live change is asked about; failures come back as fields with ARM's nested details |
+| "Is it up?" answered through a cached, model-summarised web fetch | `http_probe` / `janet http-probe` -- one real request from this machine, status, headers and a capped body as fields, retried only while the endpoint is warming; read-only and never throws |
 | Rebuilding a server means a shell and a script | `server_rotate` / `server_rotation` — rotate janet-mcp or razorgraph-mcp natively; servers start with a clean environment, not the launching terminal's |
 
 The common thread: **prefer contracts that fail loudly over documents that degrade

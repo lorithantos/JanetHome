@@ -54,6 +54,11 @@ static int Run(Args args)
         return Az(args);
     }
 
+    if (command == "http-probe")
+    {
+        return HttpProbeVerb(args);
+    }
+
     // The bicep_check envelope for callers that cannot speak MCP. The verb itself lives in
     // Janet.Core (BicepVerb) so a test can reach it; nothing references this project.
     if (command == "bicep")
@@ -476,6 +481,65 @@ static AzTokenResult? Borrowed(Args args, AzTokenRequest request)
         : null;
 }
 
+/// <summary>
+/// The http_probe envelope for shells and hooks: one real request from this process, retried
+/// only while the endpoint is warming.
+/// </summary>
+/// <remarks>
+/// Does not borrow a server the way az token does: there is nothing to cache, and the point is
+/// that the request leaves from wherever this command runs. The exit code means exactly one
+/// thing: 0 when 'ok'. A refused request is an envelope too, with exit 1, not a usage error --
+/// only an option that is not a number is.
+/// </remarks>
+static int HttpProbeVerb(Args args)
+{
+    string url = args.Value("--url")
+        ?? (args.Positional.Count > 1 ? args.Positional[1] : null)
+        ?? throw new ArgumentException("http-probe needs a URL: janet http-probe URL, or --url URL.");
+
+    List<int> warming = [];
+    foreach (string given in args.Values("--warming"))
+    {
+        foreach (string part in given.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            warming.Add(StrictInt("--warming", part));
+        }
+    }
+
+    HttpProbeRequest request = new()
+    {
+        Url = url,
+        Method = args.Value("--method") ?? "GET",
+        ExpectStatus = args.Value("--expect-status") is string expect ? StrictInt("--expect-status", expect) : null,
+        Retries = Number("--retries", args.Value("--retries"), 0),
+        DelayMs = Number("--delay-ms", args.Value("--delay-ms"), HttpProbe.DefaultDelayMs),
+        WarmingStatuses = args.Has("--warming") ? warming : HttpProbe.DefaultWarmingStatuses,
+        TimeoutMs = Number("--timeout-ms", args.Value("--timeout-ms"), HttpProbe.DefaultTimeoutMs),
+        Headers = args.Values("--header"),
+        ResponseHeaders = args.Values("--response-header"),
+        BodyCap = Number("--body-cap", args.Value("--body-cap"), HttpProbe.DefaultBodyCap),
+    };
+
+    HttpProbeResult result = HttpProbe.Shared.Probe(request);
+
+    Console.Out.Write(args.Flag("--text")
+        ? HttpProbeJson.Render(result)
+        : HttpProbeJson.Serialize(result, args.Flag("--pretty")) + Environment.NewLine);
+
+    return result.Ok ? 0 : 1;
+}
+
+// Args.Int falls back silently on a value that is not a number; for a probe, --retries abc
+// quietly meaning 0 is a wrong answer delivered confidently, so these refuse instead. The
+// option is still read at the call site with args.Value, so CliArgsTests sees every read.
+static int Number(string name, string? raw, int fallback) =>
+    raw is null ? fallback : StrictInt(name, raw);
+
+static int StrictInt(string name, string raw) =>
+    int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int value)
+        ? value
+        : throw new ArgumentException($"{name} takes a whole number, not '{raw}'.");
+
 static int Query(Args args, string graphPath, bool pretty)
 {
     ResearchGraph graph = ResearchGraph.Load(graphPath);
@@ -803,6 +867,13 @@ static int Usage()
                               (aliases: arm, management, storage, graph, keyvault, sql,
                                servicebus, cosmos; anything else must be a full scope)
 
+        janet http-probe      (URL | --url URL) [--method GET|HEAD|OPTIONS] [--expect-status N]
+                              [--retries N] [--delay-ms N] [--warming N[,N]]... [--timeout-ms N]
+                              [--header 'Name: value']... [--response-header NAME]...
+                              [--body-cap BYTES] [--text] [--pretty]
+                              (the http_probe envelope; exit 0 iff ok -- the status equals
+                               --expect-status, or is any 2xx without it)
+
         janet mcp-token       (--ensure | --print | --rotate)
                               (--ensure creates the token if absent, --rotate replaces it;
                                both print a one-line JSON status WITHOUT the token. --print
@@ -825,6 +896,14 @@ static int Usage()
         The answer says which happened in 'servedBy', and --why explains it on stderr. --local
         never contacts a server; --no-launch uses one already running but starts nothing. A
         missing or broken server is never an error -- the work just happens here instead.
+
+        http-probe sends one real request from this process: no cache, no cookies, no redirects
+        followed, and no headers but the --header ones, which are never echoed. --retries asks
+        again, --delay-ms apart, only while the answer is warming: no HTTP answer at all, or a
+        status in --warming (default 503; e.g. --warming 502,503,404 for a slot swap). Any
+        other status ends it at once. A transport failure is an envelope with status null and
+        'error' set, not a crash; a request it will not send (not http or https, a method that
+        could change something) is an envelope with no attempts.
 
         check reports build and tests as one structured answer. --new diffs the warning census
         against the previous --new run, which is the question "what did THIS change introduce";

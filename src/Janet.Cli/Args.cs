@@ -88,6 +88,11 @@ public sealed class Args
 
         // Azure tokens.
         "--scope", "--tenant", "--out-file",
+
+        // The HTTP probe. --header and --response-header repeat; --warming repeats or takes a
+        // comma list.
+        "--url", "--method", "--expect-status", "--retries", "--delay-ms", "--warming",
+        "--timeout-ms", "--header", "--response-header", "--body-cap",
     };
 
     public static Args Parse(IReadOnlyList<string> argv)

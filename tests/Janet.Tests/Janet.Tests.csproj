@@ -65,6 +65,7 @@
     <None Include="..\..\contracts\azure-deployment.schema.json" Link="Contracts\azure-deployment.schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\contracts\azure-roles.schema.json" Link="Contracts\azure-roles.schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\contracts\storage-probe.schema.json" Link="Contracts\storage-probe.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\http-probe.schema.json" Link="Contracts\http-probe.schema.json" CopyToOutputDirectory="PreserveNewest" />
 
     <!--
       The assembly-api envelope: the gate's sample reads a folder that holds its dependencies,

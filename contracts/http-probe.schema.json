@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/http-probe.schema.json",
+  "title": "http_probe envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "http_probe / janet http-probe",
+    "surface": [
+      "src/Janet.Core/HttpProbe.cs",
+      "src/Janet.Core/HttpProbeJson.cs",
+      "src/Janet.Cli/Program.cs",
+      "src/Janet.Mcp/HttpTools.cs"
+    ],
+    "node": "file.http-probe",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.noRequestHeaders": "There is deliberately no field that echoes the request headers. They may carry a caller's credentials, and the envelope lands in a transcript that is written to disk and re-sent every turn; adding such a field is a change of purpose, not of format.",
+    "$comment.everyKey": "Every key is always present; a value that does not apply is null rather than absent."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "url", "method", "expectStatus", "warmingStatuses", "ok", "status", "reason", "elapsedMs", "attempts", "headers", "headersTruncated", "body", "bodyBytes", "bodyTruncated", "error"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "url": {
+      "type": "string",
+      "description": "The URL as the caller passed it."
+    },
+    "method": {
+      "type": "string",
+      "description": "The method, upper-cased. Only GET, HEAD and OPTIONS are ever sent; anything else is refused, which is what keeps the tool read-only."
+    },
+    "expectStatus": {
+      "type": ["integer", "null"],
+      "description": "The status the caller called success, or null for any 2xx."
+    },
+    "warmingStatuses": {
+      "type": "array",
+      "items": { "type": "integer" },
+      "description": "The statuses that were retried on, echoed so a reader can tell a deliberate stop from an exhausted wait. No HTTP answer at all is always retried and is not listed here."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "True when the final status equals expectStatus (or is any 2xx when that is null) and the body was read without error. False for a refused request, a transport failure, a warm-up that never ended, and a definitive other status alike; 'attempts' and 'error' say which."
+    },
+    "status": {
+      "type": ["integer", "null"],
+      "description": "The final attempt's HTTP status, or null when it got no HTTP answer at all."
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "description": "The final response's reason phrase as the server sent it, or null with no response. HTTP/2 has none, so it may be null beside a status."
+    },
+    "elapsedMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Milliseconds for the whole probe, every attempt and every delay between them. Each attempt's own time is in 'attempts'."
+    },
+    "attempts": {
+      "type": "array",
+      "description": "One entry per request sent, in order. Empty only when the request was refused before anything was sent.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attempt", "status", "elapsedMs", "outcome", "error"],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 for the first request."
+          },
+          "status": {
+            "type": ["integer", "null"],
+            "description": "This attempt's HTTP status, or null for no HTTP answer."
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "From sending this request to its last body byte read, or to its failure."
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["matched", "warming", "unexpected", "noResponse"],
+            "description": "matched: the status the caller wanted, so the probe stopped. warming: a status in warmingStatuses, so it asked again if retries remained. noResponse: no HTTP answer (refused, reset, DNS, TLS, timeout), which is warming too. unexpected: any other status, which ends the probe because asking again would only repeat it."
+          },
+          "error": {
+            "type": ["string", "null"],
+            "description": "Why this attempt had no answer, or no whole body; null when it had both."
+          }
+        }
+      }
+    },
+    "headers": {
+      "type": "array",
+      "description": "The final response's headers in the order received, a repeated one's values joined with ', '. Only the named ones when the caller named some; otherwise all, up to 50.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The header name as the server sent it."
+          },
+          "value": {
+            "type": "string",
+            "description": "Its value, verbatim."
+          }
+        }
+      }
+    },
+    "headersTruncated": {
+      "type": "boolean",
+      "description": "True when the response had more headers than the 50 returned. Never true when the caller named the headers it wanted."
+    },
+    "body": {
+      "type": ["string", "null"],
+      "description": "The final response's body, at most bodyCap bytes, decoded as UTF-8 with anything undecodable as U+FFFD. Empty for an empty body or a HEAD; null when there was no response."
+    },
+    "bodyBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many bytes of body were read into 'body'. Not the response's full length, which the probe deliberately does not read past the cap to learn."
+    },
+    "bodyTruncated": {
+      "type": "boolean",
+      "description": "True when the body went on past bodyCap. The probe reads one byte beyond the cap to know, and no further."
+    },
+    "error": {
+      "type": ["string", "null"],
+      "description": "The final attempt's transport failure, or 'refused: ...' when the request was never sent (not http or https, a method that could change something, a value out of range, a header that cannot be sent). A header is named by position and name, never by value. Null when the final attempt was answered in full."
+    }
+  }
+}
