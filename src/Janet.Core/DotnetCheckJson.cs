@@ -225,6 +225,15 @@ public static class DotnetCheckJson
 
     // ---- the reading view ---------------------------------------------------------------
 
+    /// <summary>Where a diagnostic points: the file, and its line only when it has one.</summary>
+    /// <remarks>
+    /// A file-level diagnostic such as MSB4126 carries no line, and formatting the null printed
+    /// "(App.slnx:)" -- a trailing colon that reads as a line number lost in transit.
+    /// </remarks>
+    private static string Location(Diagnostic diagnostic) => diagnostic.Line is null
+        ? diagnostic.File
+        : $"{diagnostic.File}:{diagnostic.Line}";
+
     public static string Render(CheckResult result)
     {
         StringBuilder text = new();
@@ -235,7 +244,7 @@ public static class DotnetCheckJson
 
         foreach (Diagnostic error in build.Errors)
         {
-            text.AppendLine($"  error {error.Code}: {error.Message} ({error.File}:{error.Line})");
+            text.AppendLine($"  error {error.Code}: {error.Message} ({Location(error)})");
         }
 
         // Under the errors it explains, because it is about where they came from. A reader who
@@ -257,7 +266,7 @@ public static class DotnetCheckJson
 
             foreach (Diagnostic fresh in build.NewWarnings)
             {
-                text.AppendLine($"  NEW {fresh.Code}: {fresh.Message} ({fresh.File}:{fresh.Line})");
+                text.AppendLine($"  NEW {fresh.Code}: {fresh.Message} ({Location(fresh)})");
             }
         }
 
