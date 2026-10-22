@@ -496,6 +496,48 @@ Describe 'Invoke-DelegationGuard' {
         }
     }
 
+    Context 'the prompt gate names the repo the prompt names' {
+        # 2026-10-01: a prompt about work in C:\repos\neelam-aesthetics was denied with a
+        # block naming C:\repos\gamehub\GameHub.slnx -- the solution came from the session's
+        # project dir, not from the repo the prompt named. The same defect was fixed in
+        # Invoke-GraphGuard.ps1 on 2026-09-14 (8164956). Here it is worse: the block is
+        # pasted INTO the subagent's prompt, so the agent queries another codebase's graph.
+
+        BeforeAll {
+            # A second repo, with its solution at the root and a source folder below it.
+            $script:otherRepo = Join-Path $TestDrive 'other-repo'
+            New-Item -ItemType Directory -Path (Join-Path $script:otherRepo 'src\Core') -Force | Out-Null
+            $script:otherSolution = Join-Path $script:otherRepo 'Other.sln'
+            Set-Content -LiteralPath $script:otherSolution -Value '' -Encoding utf8
+
+            function Get-DenyReason {
+                param([string]$Prompt)
+                $raw = (Invoke-Guard -ToolName 'Agent' -ToolInput @{ prompt = $Prompt }).Raw
+                return ($raw | ConvertFrom-Json).hookSpecificOutput.permissionDecisionReason
+            }
+        }
+
+        It 'names the solution above an absolute path in the prompt, not the project dir''s' {
+            # Grid.cs does not exist: a prompt often names a file it is about to create, so
+            # the walk starts from the nearest ancestor that does.
+            $reason = Get-DenyReason "Refactor $script:otherRepo\src\Core\Grid.cs and find the callers."
+            $reason | Should -Match ([regex]::Escape($script:otherSolution))
+            $reason | Should -Not -Match 'Stub\.slnx'
+        }
+
+        It 'passes over a named path with no solution above it and takes the next' {
+            $plain = Join-Path $TestDrive 'plain-notes'
+            New-Item -ItemType Directory -Path $plain -Force | Out-Null
+            $reason = Get-DenyReason "Notes go in $plain\out.md; refactor $script:otherRepo\src\Core\Grid.cs and find the callers"
+            $reason | Should -Match ([regex]::Escape($script:otherSolution))
+        }
+
+        It 'falls back to the project dir''s solution when the prompt names no absolute path' {
+            $reason = Get-DenyReason 'Refactor src\Nav.Core\Grid.cs and find the callers'
+            $reason | Should -Match ([regex]::Escape((Join-Path $script:projectDir 'Stub.slnx')))
+        }
+    }
+
     Context 'the prompt gate does not fire on plain English' {
         # 2026-09-29: a claude-code-guide question about Remote Control asked for the
         # "login method", and \bmethods?\b alone denied it as C# structural work. It was

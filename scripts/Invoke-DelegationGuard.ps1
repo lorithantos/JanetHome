@@ -39,7 +39,8 @@
     the single thing whose absence caused the failure. A brittle multi-check gate that
     tried to regex the rest of the kickoff checklist would get disabled.
 
-    The denial does the work. It finds the solution file and hands back a ready-to-paste
+    The denial does the work. It finds the solution file -- above the first absolute path
+    in the prompt that has one, else under the project dir -- and hands back a ready-to-paste
     block with real tool and file names in it, rather than a template full of brackets,
     or a scolding.
 
@@ -230,6 +231,50 @@ function Get-SolutionFile {
             Sort-Object { $_.FullName.Length } |
             Select-Object -First 1
         if ($null -ne $hit) { return $hit }
+    }
+    return $null
+}
+
+# The solution that OWNS a path, found by walking UP from it -- from its nearest existing
+# ancestor, since a prompt often names a file it is about to create. $null when nothing
+# above it holds one. The same walk Invoke-GraphGuard.ps1 does for a searched path; a
+# copy, not a dot-source, for the reason Get-RecentToolNames gives.
+function Get-SolutionForPath {
+    param([string]$Path)
+
+    $dir = $null
+    try { $dir = [System.IO.Path]::GetFullPath($Path) } catch { return $null }
+    while ($dir -and -not (Test-Path -LiteralPath $dir)) { $dir = Split-Path -Parent $dir }
+    if (-not $dir) { return $null }
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { $dir = Split-Path -Parent $dir }
+
+    while ($dir) {
+        foreach ($filter in @('*.slnx', '*.sln')) {
+            $hit = Get-ChildItem -LiteralPath $dir -Filter $filter -File -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($null -ne $hit) { return $hit }
+        }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    return $null
+}
+
+# The solution of the repo the PROMPT names, from the first drive-absolute path in it that
+# has one above it. 2026-10-01: a prompt about work in C:\repos\neelam-aesthetics was handed
+# a block naming C:\repos\gamehub\GameHub.slnx, because the solution came from the session's
+# project dir -- and this text is pasted into a subagent's prompt, so the agent would have
+# queried another codebase's graph. $null when no named path leads to one; the caller then
+# falls back to the project dir. Relative paths are not read: they resolve against a
+# directory this hook cannot see.
+function Get-PromptSolution {
+    param([string]$Prompt)
+
+    foreach ($match in [regex]::Matches($Prompt, '(?<![\w])[A-Za-z]:[\\/][^\s"''<>|*?`]*')) {
+        $path = $match.Value.TrimEnd('.', ',', ';', ':', ')', ']', '}')
+        $solution = Get-SolutionForPath $path
+        if ($null -ne $solution) { return $solution }
     }
     return $null
 }
@@ -456,7 +501,9 @@ A dispatch or a new request from Lori resets the count. JANET_DELEGATION_GUARD=o
     if (-not (Test-CSharpStructuralPrompt $prompt)) { exit 0 }
 
     $projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
-    $solution = Get-SolutionFile $projectDir
+    # The repo the prompt names first; the session's own project only when it names none.
+    $solution = Get-PromptSolution $prompt
+    if ($null -eq $solution) { $solution = Get-SolutionFile $projectDir }
 
     if ($null -ne $solution) {
         # NO graphId is derived here, and the omission is the correction. Filing a graph
