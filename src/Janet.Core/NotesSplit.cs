@@ -342,9 +342,11 @@ public static class NotesSplit
     /// The pointer line the retained notes open with.
     /// </summary>
     /// <remarks>
-    /// ONE LINE, deliberately: the notesLead is the first non-empty line, so a header wrapped
-    /// over three lines would publish "ARCHIVED 2026-09-16: the first 6,142 characters of these
-    /// notes moved to" and leave the path out of every report that matters.
+    /// ONE LINE, deliberately: <see cref="PointerIn"/> recognises the pointer only as one whole
+    /// first line carrying both the prefix and the path, and the notesLead steps past exactly
+    /// that line. A header wrapped over three lines would go unrecognised, so the lead would
+    /// publish "ARCHIVED 2026-09-16: the first 6,142 characters of these notes moved to" and
+    /// leave the path out of every report that matters.
     /// </remarks>
     public static string Header(DateOnly date, int archived, string path, int paragraphs) =>
         string.Format(

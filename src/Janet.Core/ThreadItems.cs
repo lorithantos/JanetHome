@@ -113,8 +113,9 @@ public sealed record ThreadShowResult(
 /// </summary>
 /// <remarks>
 /// A separate record from <see cref="ThreadItem"/> because what is returned is no longer what
-/// is stored. Since 2026-09-05 Show returns the same lead the report does (first non-empty line,
-/// capped at 200) and states the withheld size beside it; before that it returned every note
+/// is stored. Since 2026-09-05 Show returns the same lead the report does (the first non-empty
+/// line that is not an archive pointer, capped at 200 -- see <see cref="ThreadItems.Lead"/>) and
+/// states the withheld size beside it; before that it returned every note
 /// body whatever the selector, which is how a single read reached 238,552 characters.
 ///
 /// NotesLength is always the STORED size, so a reader can tell a one-line note from a
@@ -137,7 +138,9 @@ public sealed record ThreadShownItem(
 
 /// <summary>One item as the reporter sees it: everything except the note body.</summary>
 /// <remarks>
-/// NotesLead is the first non-empty line, trimmed and capped; NotesLength is the full size in
+/// NotesLead is the first non-empty line that is not an archive pointer (the "ARCHIVED date:
+/// ... moved to path" line an archiving append leaves on top), trimmed and capped -- see
+/// <see cref="ThreadItems.Lead"/>; NotesLength is the full size in
 /// characters, so the reader can tell a one-line note from a five-day log without carrying it.
 /// NotesLead is null when the caller asked for the map without leads (lead: false), and the
 /// serializer then omits the key rather than writing an empty string that would read as "this

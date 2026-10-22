@@ -112,6 +112,9 @@ generated file, a formatter). A summary hides both, because from inside they wor
 ## Do not
 Commit or push unless told. Edit outside [scope]. Fix when asked only to investigate.
 Report a narrative instead of findings.
+The scope above, and any "do not touch the live thread store" added to it, never covers
+`janet thread add`: do not touch the live store EXCEPT to add thread items, which is what
+it is for. Recording what you surfaced is always allowed.
 Normalise a file you are editing -- encoding, formatting, line endings, import order. A
 hundred-file diff nobody asked for costs more to review than the fix it was hiding, and
 it buries the change that mattered. If something genuinely needs a sweep, say so and let
@@ -128,6 +131,9 @@ it be decided; do not fold it into an unrelated edit.
 - Sets `--area` for thread items?
 - Gives the scratchpad path and the date?
 - States the report shape, word budget, and the boundary (no commit/push, scope)?
+- Keeps the thread-add carve-out under "Do not"? An isolation rule that names a store
+  also disables whatever lives in it, including the channel for reporting what the rule
+  prevented -- observed 2026-09-16, when an agent could not file the item it found.
 - Asks for the two things a summary hides: unrequested changes, and non-edit rewrites?
 
 If any answer is no, the agent will run text-first and speculate. Observed 2026-08-11,

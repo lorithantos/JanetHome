@@ -743,7 +743,9 @@ static int Usage()
                               reported on stderr, never rewritten)
 
         janet thread show     [--all] [--topic TEXT] [--area TEXT] [--full] [--text] [--pretty]
-                              (each item's notes is a LEAD -- first non-empty line, capped at
+                              (each item's notes is a LEAD -- the first non-empty line that is
+                               not an archive pointer, the 'ARCHIVED <date>: ... moved to
+                               <path>' line an archiving append leaves on top, capped at
                                200 -- with notesLength and notesTruncated beside it; --full
                                returns the notes whole and needs --topic: notes are read one
                                item at a time, never expanded across a set)

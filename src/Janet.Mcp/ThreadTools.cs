@@ -20,8 +20,10 @@ public static class ThreadTools
     [Description(
         "The investigation topics from this session and the last, with which one is in focus. " +
         "Read this when resuming work, or when you have lost the thread of what you were doing. " +
-        "Each item's 'notes' is a LEAD by default -- the first non-empty line, capped at 200 " +
-        "characters, the same lead thread_report carries -- with 'notesLength' (the stored " +
+        "Each item's 'notes' is a LEAD by default -- the first non-empty line that is not an " +
+        "archive pointer (the 'ARCHIVED <date>: ... moved to <path>' line an archiving append " +
+        "leaves on top), capped at 200 characters, the same lead thread_report carries -- with " +
+        "'notesLength' (the stored " +
         "size) beside it and 'notesTruncated': true whenever the lead is not the whole text. " +
         "To read one item's notes whole, pass topic AND full=true; full is refused with area " +
         "or with no selector, because notes are returned one item at a time. Pass area to see " +
@@ -61,7 +63,8 @@ public static class ThreadTools
         "START HERE when resuming: the topics, which one is in focus, and how large each item's " +
         "notes are -- WITHOUT the note bodies. Answers 'where was I' for a fraction of the cost; " +
         "thread_show on the same list returns every note in full and is refused over the result " +
-        "budget unless narrowed. Each item carries notesLead (the first non-empty line) and notesLength " +
+        "budget unless narrowed. Each item carries notesLead (the first non-empty line that is " +
+        "not an archive pointer) and notesLength " +
         "(the full size in characters), and the envelope totals what was withheld, so nothing is " +
         "omitted silently. Read one item in full with thread_show once you know which one you " +
         "want. Each item carries the area it is filed under; pass area to see one project's " +
@@ -87,7 +90,8 @@ public static class ThreadTools
             "with no area set.")]
         string? area = null,
         [Description(
-            "Carry each item's notesLead (first non-empty line of its notes, capped at 200). " +
+            "Carry each item's notesLead (first non-empty line of its notes that is not an " +
+            "'ARCHIVED <date>: ... moved to <path>' pointer, capped at 200). " +
             "false omits the key; notesLength is carried either way.")]
         bool lead = true) =>
         ThreadJson.Serialize(ThreadItems.Report(null, all, topic, area, lead));

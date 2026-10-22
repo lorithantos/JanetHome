@@ -19,8 +19,9 @@
     so that envelope cannot grow a field without a declared correction to a contract that has a
     live consumer. Nothing existing changes; this is a new format beside it.
 
-    Each item carries notesLead (the first NON-EMPTY line, capped at 200 characters) and
-    notesLength (the full size). The envelope totals what was left behind, so the omission is
+    Each item carries notesLead (the first NON-EMPTY line that is not an archive pointer --
+    the 'ARCHIVED <date>: ... moved to <path>' line an archiving append leaves on top --
+    capped at 200 characters) and notesLength (the full size). The envelope totals what was left behind, so the omission is
     stated rather than implied -- the same rule the catalog follows when it reports its own
     truncation. Read one item in full with Show-ThreadItems.ps1 once you know which one.
 

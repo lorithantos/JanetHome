@@ -38,8 +38,9 @@
 
 .PARAMETER Full
     Return the selected item's notes whole rather than the lead. Since 2026-09-05 every item's
-    'notes' is a LEAD -- the first non-empty line, capped at 200 characters, the same lead
-    Get-ThreadReport carries -- with 'notesLength' (the stored size) beside it and
+    'notes' is a LEAD -- the first non-empty line that is not an archive pointer (the
+    'ARCHIVED <date>: ... moved to <path>' line an archiving append leaves on top), capped at
+    200 characters, the same lead Get-ThreadReport carries -- with 'notesLength' (the stored size) beside it and
     'notesTruncated': true whenever the lead is not the whole text. -Full needs -Topic and is
     refused with -Area or with no selector: notes are read one item at a time, and a flag that
     expanded them across a set would re-create the oversized read the lead exists to prevent.
