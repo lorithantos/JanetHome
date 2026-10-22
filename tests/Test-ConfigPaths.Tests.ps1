@@ -31,13 +31,18 @@ BeforeAll {
         # A project dir with a .claude\settings.json holding one PreToolUse hook per
         # command, and the named scripts created under it.
         [CmdletBinding()]
-        param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string[]]$Command, [string[]]$Present = @())
+        param(
+            [Parameter(Mandatory)][string]$Name,
+            [Parameter(Mandatory)][string[]]$Command,
+            [string[]]$Present = @(),
+            [string]$SettingsFile = 'settings.json'
+        )
         $dir = Join-Path $TestDrive $Name
         New-Item -ItemType Directory -Path (Join-Path $dir '.claude'), (Join-Path $dir 'scripts') -Force | Out-Null
         foreach ($leaf in $Present) { Set-Content -Path (Join-Path $dir "scripts\$leaf") -Value '# fixture hook' -Encoding UTF8 }
         $groups = @($Command | ForEach-Object { [ordered]@{ matcher = 'Write'; hooks = @([ordered]@{ type = 'command'; command = $_ }) } })
         $text = [ordered]@{ hooks = [ordered]@{ PreToolUse = $groups } } | ConvertTo-Json -Depth 8
-        Set-Content -Path (Join-Path $dir '.claude\settings.json') -Value $text -Encoding UTF8
+        Set-Content -Path (Join-Path $dir ".claude\$SettingsFile") -Value $text -Encoding UTF8
         return $dir
     }
 
@@ -96,6 +101,20 @@ Describe 'hook commands in Test-ConfigPaths' {
         $mine = @($result.broken | Where-Object { $_.file -like "$project*" })
         $mine.Count | Should -Be 1
         $mine[0].path | Should -Be $gone
+    }
+
+    It 'scans the project settings.local.json, where a hook can also be declared' {
+        # Startup reads settings.local.json when it decides ENFORCED, so a hook declared
+        # there pointing at a deleted script was counted wired and never checked here.
+        $project = New-HookProject 'LocalSettings' -Command $script:projectCommand -SettingsFile 'settings.local.json'
+        $local = Join-Path $project '.claude\settings.local.json'
+        $result = Invoke-ConfigPaths $project
+
+        $result.filesScanned | Should -Contain $local
+        $result.checked | Should -Be ($script:baseline.checked + 1)
+        $mine = @($result.broken | Where-Object { $_.file -eq $local })
+        $mine.Count | Should -Be 1
+        $mine[0].path | Should -Be (Join-Path $project 'scripts\Missing.ps1')
     }
 
     It 'leaves a project-form hook in the user-level file unchecked rather than guessing' {

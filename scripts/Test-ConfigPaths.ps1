@@ -38,8 +38,8 @@
     Never throws (house rule 6). Every failure lands in the JSON result.
 
 .PARAMETER ProjectDir
-    Extra directory whose .mcp.json and .claude\settings.json to check, on top of this
-    repo's. Defaults to CLAUDE_PROJECT_DIR, else the current directory -- the same
+    Extra directory whose .mcp.json, .claude\settings.json and .claude\settings.local.json
+    (each only when present) to check, on top of this repo's. Defaults to CLAUDE_PROJECT_DIR, else the current directory -- the same
     resolution Invoke-JanetStartup.ps1 uses.
 
 .PARAMETER SkipUserSettings
@@ -274,8 +274,12 @@ try {
     $candidates = [System.Collections.Generic.List[string]]::new()
     $candidates.Add((Join-Path $repoRoot '.mcp.json'))
     $candidates.Add((Join-Path $repoRoot '.claude\settings.json'))
+    $candidates.Add((Join-Path $repoRoot '.claude\settings.local.json'))
     $candidates.Add((Join-Path $ProjectDir '.mcp.json'))
     $candidates.Add((Join-Path $ProjectDir '.claude\settings.json'))
+    # settings.local.json carries hooks and permissions too, and startup reads it when
+    # it decides a rule is ENFORCED. Absent files are skipped below, like the rest.
+    $candidates.Add((Join-Path $ProjectDir '.claude\settings.local.json'))
     if (-not $SkipUserSettings) {
         $candidates.Add((Join-Path $env:USERPROFILE '.claude\settings.json'))
     }
