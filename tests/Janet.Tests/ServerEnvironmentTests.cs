@@ -131,13 +131,15 @@ public class ServerEnvironmentTests
     public void AValueReferringToAnotherExpandableValueResolves()
     {
         Hashtable launcher = new(StringComparer.OrdinalIgnoreCase) { ["USERPROFILE"] = @"C:\Users\pat" };
-        Hashtable user = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Inner"] = @"%USERPROFILE%\inner",
-            ["Outer"] = @"%Inner%\outer",
-        };
 
-        IReadOnlyDictionary<string, string> clean = ServerEnvironment.Build(launcher, new Hashtable(), user);
+        // Outer from the machine and Inner from the user, so Outer is expanded BEFORE Inner: a
+        // single pass would copy Inner's still-unexpanded value into it. With both in one table
+        // (as this test had them until 2026-10-22) Inner comes first and one pass is enough, so
+        // that shape passed with the second pass deleted. RazorGraphTool's copy has this shape.
+        Hashtable machine = new(StringComparer.OrdinalIgnoreCase) { ["Outer"] = @"%Inner%\outer" };
+        Hashtable user = new(StringComparer.OrdinalIgnoreCase) { ["Inner"] = @"%USERPROFILE%\inner" };
+
+        IReadOnlyDictionary<string, string> clean = ServerEnvironment.Build(launcher, machine, user);
 
         Assert.Equal(@"C:\Users\pat\inner\outer", clean["Outer"]);
     }
