@@ -187,6 +187,28 @@ $samplers = @{
         return [pscustomobject]@{ samples = $samples }
     }
 
+    'http-probe' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Root
+
+        # Loopback only, never the internet. A port just released answers nothing (the transport
+        # arm); janet-mcp's unauthenticated /health answers 200 when a server is up and is refused
+        # when not, a valid envelope either way. Exit 1 is 'not ok', so stdout is read, not the code.
+        $free = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+        $free.Start(); $port = $free.LocalEndpoint.Port; $free.Stop()
+        $refused = @(& $Janet http-probe "http://127.0.0.1:$port/" --timeout-ms 5000 2>$null) -join "`n"
+        $health = @(& $Janet http-probe 'http://127.0.0.1:7717/health' --timeout-ms 5000 2>$null) -join "`n"
+        $scheme = @(& $Janet http-probe 'file:///C:/Windows/win.ini' 2>$null) -join "`n"
+
+        return [pscustomobject]@{
+            samples = @(
+                [pscustomobject]@{ label = 'janet http-probe: refused port'; json = $refused }
+                [pscustomobject]@{ label = 'janet http-probe: janet-mcp /health'; json = $health }
+                [pscustomobject]@{ label = 'janet http-probe: file: refused'; json = $scheme }
+            )
+        }
+    }
+
     # ---- Formats served only over MCP ------------------------------------------------------
     #
     # These five have no CLI verb: sessions reach them as tools, so the sampler does too, through
@@ -340,6 +362,11 @@ $samplers = @{
             # is null by contract 4, and a fixture that never narrowed would only ever show the
             # gate the null.
             $scoped = @(& $Janet thread report --path $seed --area '(unfiled)') -join "`n"
+
+            # A selector matching no item, open or completed, so 'unmatchedArea' (contract 5)
+            # is seen as its {area, knownAreas} object as well as the null every other sample
+            # carries. Without it the gate only ever validated the null arm.
+            $missed = @(& $Janet thread report --path $seed --area 'nosuch') -join "`n"
         }
         finally {
             # A sampler that leaves temp files behind runs on every commit.
@@ -353,6 +380,7 @@ $samplers = @{
                 [pscustomobject]@{ label = 'live items'; json = $live }
                 [pscustomobject]@{ label = 'including completed'; json = $all }
                 [pscustomobject]@{ label = 'narrowed to one area'; json = $scoped }
+                [pscustomobject]@{ label = 'area matching nothing'; json = $missed }
                 [pscustomobject]@{ label = 'empty list'; json = $none }
             )
         }

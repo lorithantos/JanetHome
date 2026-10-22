@@ -349,6 +349,61 @@ Describe 'a run entry that fails without throwing' {
 }
 
 <#
+    Thread report contract 5 (2026-10-22): a selector that matches no item answers count 0
+    with 'unmatchedArea' set, where a finished area answers count 0 with it null. Startup
+    picks the selector from the project dir's name, so the brief has to say which one it got.
+    The stub stands in for Get-ThreadReport.ps1 and echoes an envelope of that shape, so no
+    test here reads or writes the machine's real thread list.
+#>
+Describe "a thread report whose area matched nothing" {
+    BeforeAll {
+        $script:reportStubSource = @'
+param([string]$Area = '', [switch]$NoLead)
+$flag = if ($Area -eq 'JanetHome') { $null } else { [ordered]@{ area = $Area; knownAreas = @('gamehub', 'JanetHome') } }
+[ordered]@{ contract = 5; count = 0; active = $null; areas = @(); items = @(); notesLength = 0; error = $null; unmatchedArea = $flag } | ConvertTo-Json -Compress -Depth 4
+'@
+        function New-ReportProbe {
+            [CmdletBinding()]
+            param()
+            $stub = Join-Path $TestDrive 'ReportProbe.ps1'
+            [System.IO.File]::WriteAllText($stub, $script:reportStubSource, (New-Object System.Text.UTF8Encoding $false))
+            return [System.IO.Path]::GetRelativePath($script:repoRoot, $stub)
+        }
+    }
+
+    It "adds a notice naming the area and the areas it was matched against" {
+        $probe = New-ReportProbe
+        $manifest = New-Manifest @{ cmd = $probe; args = @('-Area', '{projectName}', '-NoLead'); captureAs = 'threadReport' }
+
+        $brief = Invoke-Startup $manifest -ProjectDir (New-ProjectDir 'repos') 3>$null
+
+        $brief.run[0].status | Should -Be 'ok'
+        @($brief.notices).Count | Should -Be 1
+        $brief.notices[0] | Should -BeLike "threads:*narrowed to area 'repos'*matches no thread item*gamehub, JanetHome*"
+        # A fact about a capture, never a reason to refuse the session.
+        $brief.problems | Should -BeNullOrEmpty
+        $brief.enforcement | Should -BeNullOrEmpty
+    }
+
+    It 'adds no notice when the area matched, even with nothing open' {
+        $probe = New-ReportProbe
+        $manifest = New-Manifest @{ cmd = $probe; args = @('-Area', '{projectName}', '-NoLead'); captureAs = 'threadReport' }
+
+        $brief = Invoke-Startup $manifest -ProjectDir (New-ProjectDir 'JanetHome') 3>$null
+
+        $brief.notices | Should -BeNullOrEmpty
+    }
+
+    It 'adds no notice for a capture that is not a report envelope' {
+        $manifest = New-Manifest @{ cmd = (New-Probe); args = @('-Area', 'JanetHome'); captureAs = 'probe' }
+
+        $brief = Invoke-Startup $manifest 3>$null
+
+        $brief.notices | Should -BeNullOrEmpty
+    }
+}
+
+<#
     ENFORCED means a settings file DECLARES the hook, not that the script is on disk.
     Until 2026-10-21 the project-level arm was Test-Path on the script alone, so in
     every ordinary JanetHome session the brief said ENFORCED whether or not

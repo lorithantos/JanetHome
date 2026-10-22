@@ -40,6 +40,15 @@
     merely honest about being unscoped -- and "nothing is in focus anywhere" is every row
     carrying null, which is a different statement from the envelope's own null.
 
+    'unmatchedArea' since 2026-10-22 (report contract 5). It is null unless -Area matched NO
+    item on the list, open or completed, and then it is {area, knownAreas}: the selector as
+    given, and every area on the list including completed ones -- the set the selector was
+    matched against, which 'areas' (open items only) cannot show. The report still answers
+    rather than failing, so count 0 with a null flag means the area's work is finished, and
+    count 0 with the flag set means the selector missed: a mistyped or never-used label. The
+    text view says the selector missed instead of "No thread items.". Startup surfaces a set
+    flag as a 'notices' entry in the brief, since it narrows by the project dir's name.
+
 .PARAMETER Path
     List file to read. Defaults to Janet\thread-stack.json under TEMP.
 
@@ -54,7 +63,8 @@
     Narrows to one area, case-insensitive substring. Each item carries the area it is filed
     under -- a STORED label, never derived from the topic -- and '(unfiled)' is the group of
     items with none. Nothing was backfilled, so most items read as (unfiled) until they are
-    labelled deliberately.
+    labelled deliberately. A selector that matches no item at all is answered, not refused,
+    with 'unmatchedArea' set (see the description).
 
     This is the selector the list needed: it is shared by every repo on this machine, so an
     unnarrowed report is mostly some other project's work. The startup manifest passes it

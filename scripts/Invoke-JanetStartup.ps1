@@ -360,6 +360,31 @@ function Get-RuleText {
     return $ruleText
 }
 
+function Get-UnmatchedAreaNotice {
+    # One 'notices' line when a run's captured output is a report envelope whose
+    # 'unmatchedArea' is set (thread report contract 5, 2026-10-22), else $null.
+    # The report answers a selector that matches nothing with count 0 rather than
+    # an error, which is also what a finished area looks like -- and startup picks
+    # the selector itself, from the project dir's name, so a session working in a
+    # repo nothing is filed under would read an empty list as a clean backlog.
+    # Read by field rather than by cmd: any envelope carrying the flag means it.
+    # Output that is not a JSON object (a -Text view, an error) carries no flag.
+    param([string]$Cmd, [string]$Output)
+    if ([string]::IsNullOrWhiteSpace($Output)) { return $null }
+    try { $parsed = $Output | ConvertFrom-Json -ErrorAction Stop }
+    catch { return $null }
+    if ($parsed -isnot [System.Management.Automation.PSCustomObject]) { return $null }
+    $flag = Get-Prop $parsed 'unmatchedArea'
+    if ($null -eq $flag) { return $null }
+    $area = Get-Prop $flag 'area' ''
+    $known = @(Get-Prop $flag 'knownAreas' @())
+    $knownText = if ($known.Count -gt 0) { $known -join ', ' } else { '(none)' }
+    return "threads: '$Cmd' was narrowed to area '$area', which matches no thread item, " +
+           "open or completed, so its empty list is a selector that missed, not a finished " +
+           "backlog. Areas on the list: $knownText. File this project's work with --area " +
+           "naming one of those or a new label, or check the manifest's args for the entry."
+}
+
 $readEntries = Get-ManifestSection $manifest 'read'
 $runEntries  = Get-ManifestSection $manifest 'run'
 $rules       = Get-ManifestSection $manifest 'rules'
@@ -631,6 +656,18 @@ foreach ($run in $runs) {
     }
 }
 
+# Facts about what the runs answered, as opposed to 'problems' (the manifest did
+# not resolve; fatal to Start-Janet) and 'enforcement' (a mechanism is missing).
+# Neither severity fits a selector that matched nothing: the brief is intact and
+# every rule holds, but one capture reads as something it is not.
+$notices = @()
+foreach ($res in $runResults) {
+    if ($res.status -ne 'ok') { continue }
+    $notice = Get-UnmatchedAreaNotice $res.cmd $res.output
+    if ($notice) { $notices += $notice }
+}
+foreach ($notice in $notices) { Write-Warning $notice }
+
 # ---- Brief -----------------------------------------------------------------
 
 # Built unconditionally.  -Text selects how this run is *displayed*; it does not
@@ -695,6 +732,7 @@ $brief = [PSCustomObject]@{
     rules       = @($rulesOut)
     problems    = @($problems)
     enforcement = @($enforcementNotes)
+    notices     = @($notices)
 }
 $json = if ($Pretty) { $brief | ConvertTo-Json -Depth 6 }
         else { $brief | ConvertTo-Json -Depth 6 -Compress }
@@ -781,6 +819,12 @@ if ($null -ne $retrieval) {
 if ($enforcementNotes.Count -gt 0) {
     Write-Host 'ENFORCEMENT' -ForegroundColor Yellow
     foreach ($note in $enforcementNotes) { Write-Host "  $note" -ForegroundColor Yellow }
+    Write-Host ''
+}
+
+if ($notices.Count -gt 0) {
+    Write-Host 'NOTICES' -ForegroundColor Yellow
+    foreach ($notice in $notices) { Write-Host "  $notice" -ForegroundColor Yellow }
     Write-Host ''
 }
 

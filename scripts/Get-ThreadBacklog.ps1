@@ -26,6 +26,13 @@
     server this script fills activeCaveat rather than presenting the topic as
     though it belonged to the area asked for.
 
+    'unmatchedArea' is passed through from the server (report contract 5,
+    2026-10-22): null unless -Area matched no item at all, open or completed,
+    and then {area, knownAreas}. An area whose work is finished and an area
+    nothing was ever filed under both answer zero items; the flag is the only
+    thing telling them apart, so 'note' and the -Text view say which. Absent
+    from a contract-4 server, it reads as null.
+
 .PARAMETER Area
     Area to narrow to, case-insensitive substring. Defaults to JanetHome.
     '(unfiled)' is the group with no area set.
@@ -129,11 +136,13 @@ $active = $null
 $activeCaveat = $null
 $areas = @()
 $serverError = $null
+$unmatchedArea = $null
 
 if ($problems.Count -eq 0) {
     $contract = Get-Prop $payload 'contract'
     $active = Get-Prop $payload 'active'
     $serverError = Get-Prop $payload 'error'
+    $unmatchedArea = Get-Prop $payload 'unmatchedArea'
 
     $rawAreas = Get-Prop $payload 'areas'
     if ($null -ne $rawAreas) { $areas = @($rawAreas) }
@@ -157,8 +166,19 @@ if ($problems.Count -eq 0) {
     }
 }
 
+$unmatchedText = $null
+if ($null -ne $unmatchedArea) {
+    $known = @(Get-Prop $unmatchedArea 'knownAreas')
+    $unmatchedText = "No item on the list is filed under an area matching '$Area', open or completed, " +
+                     "so this is a selector that missed, not a finished backlog. Areas on the list: " +
+                     $(if ($known.Count -gt 0) { $known -join ', ' } else { '(none)' }) + '.'
+}
+
 $note = if ($problems.Count -gt 0) {
     'No answer; see problems.'
+}
+elseif ($null -ne $unmatchedText) {
+    $unmatchedText
 }
 else {
     $suffix = if ($null -eq $activeCaveat) { '' } else { ' Focus is unreliable at this contract -- see activeCaveat.' }
@@ -166,18 +186,19 @@ else {
 }
 
 $result = [ordered]@{
-    ok           = ($problems.Count -eq 0)
-    uri          = $Uri
-    area         = $Area
-    contract     = $contract
-    count        = $items.Count
-    active       = $active
-    activeCaveat = $activeCaveat
-    areas        = $areas
-    items        = $items
-    note         = $note
-    problems     = @($problems)
-    error        = $serverError
+    ok            = ($problems.Count -eq 0)
+    uri           = $Uri
+    area          = $Area
+    contract      = $contract
+    count         = $items.Count
+    active        = $active
+    activeCaveat  = $activeCaveat
+    unmatchedArea = $unmatchedArea
+    areas         = $areas
+    items         = $items
+    note          = $note
+    problems      = @($problems)
+    error         = $serverError
 }
 
 if ($Text) {
