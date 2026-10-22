@@ -759,7 +759,9 @@ static int Usage()
                                narrowed to, or null when you narrowed to nothing, since
                                focus is one cursor per area. 'areas' carries them all:
                                one {area, open, active} row per area with open items,
-                               over the whole list, whatever --area narrowed to)
+                               over the whole list, whatever --area narrowed to.
+                               'unmatchedArea' is null unless --area matched no item,
+                               open or completed; then {area, knownAreas})
         janet thread add      --topic TEXT [--notes TEXT] [--next TEXT] [--ref ID]...
                               [--area TEXT] [--active]
         janet thread update   [--topic TEXT] [--notes TEXT] [--next TEXT]

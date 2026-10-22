@@ -57,8 +57,13 @@ public static class ThreadJson
     /// 3 -> 4 on 2026-09-06: focus became one cursor PER AREA, so 'active' changed meaning and
     /// 'areas' rows gained one. Two changes, one bump, because neither is readable without the
     /// other. Same rule, same two files.
+    ///
+    /// 4 -> 5 on 2026-10-22: the envelope gained 'unmatchedArea', null unless an area selector
+    /// matched no item, open or completed, and then {area, knownAreas}. Before it a mistyped
+    /// or unused area answered count 0 with no error, indistinguishable from an area whose
+    /// items were all finished. Same rule, same two files.
     /// </remarks>
-    private const int ReportContract = 4;
+    private const int ReportContract = 5;
 
     public static string Serialize(ThreadAddResult result, bool pretty = false) => Render(new JsonObject
     {
@@ -195,6 +200,10 @@ public static class ThreadJson
     ///
     /// 'areas' sits before 'items' because it is the map the items are drawn from: a reader
     /// narrowed to one area meets the other areas' counts before the list that omits them.
+    ///
+    /// 'unmatchedArea' is APPENDED, by the rule 'active' was appended to the area rows: what
+    /// already existed keeps its order. Always present and null when the selector matched or
+    /// none was passed, so "no miss" is a stated null rather than an absent key.
     /// </remarks>
     public static string Serialize(ThreadReportResult result, bool pretty = false) => Render(new JsonObject
     {
@@ -205,7 +214,15 @@ public static class ThreadJson
         ["items"] = new JsonArray([.. result.Items.Select(ReportItem)]),
         ["notesLength"] = result.NotesLength,
         ["error"] = result.Error,
+        ["unmatchedArea"] = result.UnmatchedArea is null ? null : UnmatchedArea(result.UnmatchedArea),
     }, pretty);
+
+    /// <summary>An area selector that matched nothing, and every area it could have matched.</summary>
+    private static JsonNode UnmatchedArea(ThreadUnmatchedArea unmatched) => new JsonObject
+    {
+        ["area"] = unmatched.Area,
+        ["knownAreas"] = Strings(unmatched.KnownAreas),
+    };
 
     /// <summary>One row of the area map: how much is open there, and what it has in hand.</summary>
     /// <remarks>
@@ -277,6 +294,15 @@ public static class ThreadJson
         if (result.Error is not null)
         {
             return $"List unreadable: {result.Error}";
+        }
+
+        // A selector that missed says so here too, in Show's refusal wording, rather than reading
+        // like an area whose work is all finished.
+        if (result.UnmatchedArea is { } unmatched)
+        {
+            return $"No item is filed under an area matching '{unmatched.Area}'. " + (unmatched.KnownAreas.Count > 0
+                ? $"Areas in use: {string.Join(", ", unmatched.KnownAreas)}."
+                : "The list is empty, so no area is in use yet.");
         }
 
         if (result.Items.Count == 0)

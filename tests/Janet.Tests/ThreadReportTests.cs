@@ -149,11 +149,12 @@ public class ThreadReportTests : IDisposable
     {
         JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(ThreadItems.Report(Seeded())))!.AsObject();
 
-        // 4 since 2026-09-06, when focus became one cursor per area, so 'active' changed
-        // meaning and 'areas' rows gained one (3 on 2026-09-04, when the envelope gained
-        // 'areas'; 2 on 2026-09-03, when items gained 'area'). Pinned here as a literal rather
-        // than read from the code, so that a bump has to be stated in two places by a person.
-        Assert.Equal(4, (int)envelope["contract"]!);
+        // 5 since 2026-10-22, when the envelope gained 'unmatchedArea' (4 on 2026-09-06, when
+        // focus became one cursor per area, so 'active' changed meaning and 'areas' rows gained
+        // one; 3 on 2026-09-04, when the envelope gained 'areas'; 2 on 2026-09-03, when items
+        // gained 'area'). Pinned here as a literal rather than read from the code, so that a
+        // bump has to be stated in two places by a person.
+        Assert.Equal(5, (int)envelope["contract"]!);
 
         // The point of the format: no field anywhere holds a note body.
         foreach (JsonNode? item in envelope["items"]!.AsArray())
@@ -459,6 +460,100 @@ public class ThreadReportTests : IDisposable
         Assert.Null(report.Error);
         Assert.Equal(0, report.NotesLength);
         Assert.Null(report.Active);
+    }
+
+    /// <summary>
+    /// A list with labelled open work and one area whose only item is finished: RazorGraph and
+    /// (unfiled) open, 'retired' known only through a completed item.
+    /// </summary>
+    private string Labelled()
+    {
+        string path = Seeded();
+
+        ThreadItems.Update(path, new ThreadSelector { Topic = "cache eviction" }, area: "RazorGraph");
+        ThreadItems.Add(path, "old migration", area: "retired");
+        ThreadItems.Complete(path, new ThreadSelector { Topic = "old migration" });
+
+        return path;
+    }
+
+    /// <summary>
+    /// An area selector that matches no item, open or completed, is flagged with every area it
+    /// could have matched.
+    /// </summary>
+    /// <remarks>
+    /// Thread item 42, 2026-10-22: from a session in C:\repos, 'janet thread report --area repos'
+    /// answered count 0 with no error -- the same answer an area whose work is all finished
+    /// gives -- so a label nothing carries looked like an empty one. Still an answer and not a
+    /// throw (the 2026-09-04 call); the flag is what tells the two empties apart. knownAreas
+    /// includes 'retired', which only a completed item carries and 'areas' therefore omits:
+    /// it is the set the selector was matched against, not the open-work map.
+    /// </remarks>
+    [Fact]
+    public void AnAreaMatchingNoItemIsFlaggedWithEveryAreaItCouldHaveMatched()
+    {
+        string path = Labelled();
+
+        ThreadReportResult report = ThreadItems.Report(path, area: "repos");
+
+        Assert.Equal(0, report.Count);
+        Assert.Null(report.Error);
+        Assert.NotNull(report.UnmatchedArea);
+        Assert.Equal("repos", report.UnmatchedArea.Area);
+        Assert.Equal(["(unfiled)", "RazorGraph", "retired"], report.UnmatchedArea.KnownAreas);
+
+        // The envelope carries it in the shape the checked-in contract declares.
+        JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(report))!.AsObject();
+        JsonObject schema = JsonNode.Parse(File.ReadAllText(ContractPath("thread-report.schema.json")))!.AsObject();
+        JsonObject unmatched = envelope["unmatchedArea"]!.AsObject();
+
+        AssertSameKeys(schema["properties"]!["unmatchedArea"]!.AsObject(), unmatched, "unmatchedArea");
+        Assert.Equal("repos", (string)unmatched["area"]!);
+        Assert.Equal(["(unfiled)", "RazorGraph", "retired"], unmatched["knownAreas"]!.AsArray().Select(a => (string)a!));
+
+        // And the text view says the selector missed instead of "No thread items.".
+        Assert.StartsWith("No item is filed under an area matching 'repos'. Areas in use: (unfiled), RazorGraph, retired.", ThreadJson.Render(report), StringComparison.Ordinal);
+    }
+
+    /// <summary>An area selector that matches an item is not flagged, and the key is still there, null.</summary>
+    [Fact]
+    public void AMatchedAreaIsNotFlagged()
+    {
+        ThreadReportResult report = ThreadItems.Report(Labelled(), area: "RazorGraph");
+
+        Assert.Equal(1, report.Count);
+        Assert.Null(report.UnmatchedArea);
+
+        JsonObject envelope = JsonNode.Parse(ThreadJson.Serialize(report))!.AsObject();
+        Assert.True(envelope.ContainsKey("unmatchedArea"));
+        Assert.Null(envelope["unmatchedArea"]);
+    }
+
+    /// <summary>A selector differing from a stored area only in case matches it, so it is not flagged.</summary>
+    /// <remarks>
+    /// Area matching has always been case-insensitive; the flag must agree with the narrowing
+    /// about what matched, or a report could return an item and call its own selector a miss.
+    /// </remarks>
+    [Fact]
+    public void AnAreaDifferingOnlyInCaseIsNotFlagged()
+    {
+        ThreadReportResult report = ThreadItems.Report(Labelled(), area: "razorgraph");
+
+        Assert.Equal(1, report.Count);
+        Assert.Null(report.UnmatchedArea);
+    }
+
+    /// <summary>
+    /// An area whose items are all completed is a real label, not a miss, even though its
+    /// answer is empty without all=true.
+    /// </summary>
+    [Fact]
+    public void AnAreaWhoseItemsAreAllCompletedIsNotFlagged()
+    {
+        ThreadReportResult report = ThreadItems.Report(Labelled(), area: "retired");
+
+        Assert.Equal(0, report.Count);
+        Assert.Null(report.UnmatchedArea);
     }
 
     [Fact]

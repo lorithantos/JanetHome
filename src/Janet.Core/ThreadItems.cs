@@ -172,6 +172,20 @@ public sealed record ThreadReportItem(
 /// </remarks>
 public sealed record ThreadAreaCount(string Area, int Open, string? Active);
 
+/// <summary>An area selector that matched no item on the list, open or completed, and what it could have matched.</summary>
+/// <remarks>
+/// Added 2026-10-22 (report contract 5). Until then 'janet thread report --area repos' answered
+/// count 0 with no error, exactly as an area whose items were all finished would, so a mistyped
+/// or never-used label looked like an empty one. The report still answers rather than throwing
+/// -- Lori's 2026-09-04 call stands -- but now says that the selector itself missed.
+///
+/// KnownAreas is every resolved area on the list, completed items included, sorted
+/// case-insensitively: the set the selector was matched against, which is the set Show's
+/// refusal names as "Areas in use". It is NOT the 'areas' map, which counts open items only and
+/// so cannot explain a miss against an area whose work is all done.
+/// </remarks>
+public sealed record ThreadUnmatchedArea(string Area, IReadOnlyList<string> KnownAreas);
+
 /// <summary>
 /// The list as a map rather than as its contents.
 /// </summary>
@@ -195,10 +209,13 @@ public sealed record ThreadAreaCount(string Area, int Open, string? Active);
 /// focus when one was passed, and null when none was, because a scalar cannot carry four
 /// cursors and picking one of them to report is how the startup brief came to name another
 /// repo's work. The complete answer to "what is in focus" when nothing narrowed is Areas.
+///
+/// UnmatchedArea is null unless an area selector matched no item at all, open or completed
+/// (contract 5, 2026-10-22): see <see cref="ThreadUnmatchedArea"/>.
 /// </remarks>
 public sealed record ThreadReportResult(
     int Count, string? Active, IReadOnlyList<ThreadAreaCount> Areas, IReadOnlyList<ThreadReportItem> Items,
-    int NotesLength, string? Error);
+    int NotesLength, string? Error, ThreadUnmatchedArea? UnmatchedArea);
 
 /// <summary>
 /// The thread-item list: investigation topics with explicit focus.
@@ -1295,26 +1312,54 @@ public static class ThreadItems
     private static IReadOnlyList<ThreadItem> InArea(
         IReadOnlyList<ThreadItem> items, string area, bool refuseUnknown = true)
     {
-        IReadOnlyList<ThreadItem> matched =
-            [.. items.Where(i => AreaOf(i).Contains(area, StringComparison.OrdinalIgnoreCase))];
+        IReadOnlyList<ThreadItem> matched = [.. items.Where(i => FiledUnder(i, area))];
 
         if (matched.Count > 0 || !refuseUnknown)
         {
             return matched;
         }
 
-        string[] known =
-        [
-            .. items.Select(AreaOf)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Order(StringComparer.OrdinalIgnoreCase)
-        ];
+        IReadOnlyList<string> known = KnownAreas(items);
 
         throw new GraphException(
-            $"No item is filed under an area matching '{area}'. " + (known.Length > 0
+            $"No item is filed under an area matching '{area}'. " + (known.Count > 0
                 ? $"Areas in use: {string.Join(", ", known)}. Set one with thread_update."
                 : "The list is empty, so no area is in use yet."));
     }
+
+    /// <summary>
+    /// Whether an item is filed under an area selector: case-insensitive containment against the
+    /// RESOLVED area. The one matcher <see cref="InArea"/> and the report's miss flag share, so
+    /// "narrowed to nothing" and "flagged as unmatched" cannot disagree about what matched.
+    /// </summary>
+    private static bool FiledUnder(ThreadItem item, string area) =>
+        AreaOf(item).Contains(area, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Every resolved area on the list, completed items included, distinct and sorted
+    /// case-insensitively: the set an area selector is matched against.
+    /// </summary>
+    private static IReadOnlyList<string> KnownAreas(IReadOnlyList<ThreadItem> items) =>
+    [
+        .. items.Select(AreaOf)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+    ];
+
+    /// <summary>
+    /// The report's flag for an area selector that matched no item, open or completed; null when
+    /// it matched one, when none was passed, or when the list could not be read.
+    /// </summary>
+    /// <remarks>
+    /// Over the WHOLE list, not the 'all'-filtered one: an area whose items are all finished is a
+    /// real label whose answer happens to be empty without 'all', not a miss. An unreadable list
+    /// is not flagged either -- 'error' already says why the answer is empty, and with no items
+    /// read there is nothing to say the selector missed.
+    /// </remarks>
+    private static ThreadUnmatchedArea? Unmatched(IReadOnlyList<ThreadItem> items, string? error, string? area) =>
+        error is null && !string.IsNullOrWhiteSpace(area) && !items.Any(i => FiledUnder(i, area))
+            ? new ThreadUnmatchedArea(area, KnownAreas(items))
+            : null;
 
     /// <summary>
     /// Resolves a topic to exactly ONE item, or throws.
@@ -1416,6 +1461,11 @@ public static class ThreadItems
     /// status=error with an exception text where a report belonged -- a repo with nothing in it
     /// should return a json like everything else.
     ///
+    /// Empty is not the whole answer, though: since 2026-10-22 (contract 5) 'unmatchedArea'
+    /// says when the selector matched no item at all, open or completed, and names every area
+    /// it could have matched. Without it 'repos' -- a label nothing on this machine carries --
+    /// read exactly like an area whose work is all finished.
+    ///
     /// 'notesLength' totals the items ACTUALLY RETURNED, so a narrowed report states what its
     /// own answer withheld rather than what the whole list holds. 'areas' is the opposite: it
     /// is computed over the whole open list, before either selector, so the narrowed answer
@@ -1443,7 +1493,8 @@ public static class ThreadItems
             [.. shown.Items.Select(i => new ThreadReportItem(
                 i.Topic, i.Status, AreaOf(i), i.Refs, i.Next, lead ? Lead(i.Notes) : null, i.Notes.Length))],
             shown.Items.Sum(i => i.Notes.Length),
-            shown.Error);
+            shown.Error,
+            Unmatched(items, error, area));
     }
 
     /// <summary>

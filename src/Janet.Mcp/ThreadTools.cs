@@ -76,6 +76,9 @@ public static class ThreadTools
         "narrowing, so a report of one project still says how much is open elsewhere, under " +
         "which labels, and what each of them has in hand. Nothing in focus anywhere is every " +
         "row's 'active' being null. " +
+        "'unmatchedArea' is null unless area matched no item at all, open or completed; then " +
+        "it is {area, knownAreas}, so a mistyped or unused label is not mistaken for an empty " +
+        "one. " +
         "Completed items are excluded unless all=true, and never counted in 'areas'. " +
         "lead=false omits each item's notesLead key (notesLength stays), for when the map is " +
         "all you need.")]

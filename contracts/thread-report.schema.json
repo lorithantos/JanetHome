@@ -5,12 +5,19 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
-    "contract": 4,
+    "contract": 5,
     "$comment.contract2": "1 -> 2 on 2026-09-03: items gained 'area', the stored project label that show and report can now be narrowed by. A field added to the envelope is a format change, so the number moved and so did the surface below.",
     "$comment.contract3": "2 -> 3 on 2026-09-04: the envelope gained 'areas', one {area, open} entry per area with open items over the WHOLE list, whatever the area selector narrowed to. Startup now narrows the report to the session's own area (the manifest's run entry passes -Area), and without this map the other projects' backlog would vanish from the brief rather than be summarised. Same rule as contract 2: a field added is a format change. The same bump made items[].notesLead OPTIONAL: narrowing alone left the JanetHome brief at 9,969 characters against a budget of about 8,000, and the leads were 1,827 of the report, so the startup entry now passes -NoLead as well. One bump, two changes, because they landed together.",
     "$comment.contract4": "3 -> 4 on 2026-09-06: focus became one cursor PER AREA rather than one for the whole list, so 'active' changed meaning and every 'areas' row gained one. The defect: items gained a stored 'area' on 2026-09-03 and the reading verbs gained an 'area' selector, but focus was left global -- the list was partitioned for reading and not for focus, so the sessions running in four repos against this one shared store fought over a single variable. Measured the morning of the bump: the startup brief ran the report with -Area JanetHome, returned 21 JanetHome items, and named a gamehub item beside them as the thing in hand -- the brief that exists to orient a JanetHome session pointed at another repo's work. In the same session, setting a JanetHome item active parked a gamehub session's item twice, and completing a JanetHome item cleared focus for all four areas. So 'active' now names the focus of THIS ANSWER'S SCOPE: the area you narrowed to, or null when you narrowed to nothing, because a scalar cannot carry four cursors and reporting an arbitrary one of them is exactly how the brief came to lie. 'areas[].active' is what makes the unnarrowed answer complete, and it removes the null ambiguity the change would otherwise introduce: 'nothing is in focus anywhere' is every row carrying null, which a reader can tell apart from the envelope's own null, which means 'you did not narrow -- read the map'. NO STORAGE CHANGE and nothing to migrate: status plus the item's area already encoded this, so the one item then active kept focus within its own area and every other area started with none. Same rule as contracts 2 and 3, and the same two files move together.",
+    "$comment.contract5": "4 -> 5 on 2026-10-22: the envelope gained 'unmatchedArea', null unless an area selector matched no item on the list, open or completed, and then {area, knownAreas}. Found from a session started in C:\\repos: 'janet thread report --area repos' answered count 0 with no error, and nothing distinguished a label no item carries from a real area whose work was all finished. The report still answers rather than throwing (the 2026-09-04 call stands); it now says that the selector itself missed, and lists every area -- completed items included, unlike 'areas' -- that it could have matched. Same rule as contracts 2 to 4. The same bump brought items[].notesLead's description up to the archive-pointer rule the code has followed since 2026-09-16, which had been waiting on a bump because the gate compares descriptions too.",
     "produces": "thread_report / janet thread report / scripts\\Get-ThreadReport.ps1",
     "script": "scripts\\Get-ThreadReport.ps1",
+    "surface": [
+      "src/Janet.Core/ThreadJson.cs",
+      "src/Janet.Mcp/ThreadTools.cs",
+      "src/Janet.Cli/Program.cs"
+    ],
+    "$comment.surface": "Added with contract 5. The script is a shim that passes the CLI's stdout through untouched, so the code that writes this format, and the help that describes it to the MCP and CLI callers, are the C# files above; until then a format change could satisfy the gate only by editing the shim.",
     "node": "script.get-thread-report",
     "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction. The older thread envelopes carry no such field -- they are pinned by recorded goldens instead -- which is why this one differs from its own family.",
     "$comment.notShow": "Deliberately NOT the thread_show envelope. Show carries items[].notes in full and is asserted byte for byte against output recorded from the pre-shim PowerShell, which the golden generator extracts out of git and re-runs -- so it cannot grow a field without a declared correction. This is a separate format beside it, which is why it needed no correction at all."
@@ -18,10 +25,10 @@
 
   "type": "object",
   "additionalProperties": false,
-  "required": ["contract", "count", "active", "areas", "items", "notesLength", "error"],
+  "required": ["contract", "count", "active", "areas", "items", "notesLength", "error", "unmatchedArea"],
   "properties": {
     "contract": {
-      "const": 4,
+      "const": 5,
       "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
     },
     "count": {
@@ -67,6 +74,24 @@
       "type": ["string", "null"],
       "description": "A list that could not be read, reported in-band because this runs in the startup path. It is a fact about the list, not a failure of the call: a reader that ignores it sees an empty list, which is the honest degraded answer rather than a wrong one."
     },
+    "unmatchedArea": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["area", "knownAreas"],
+      "description": "Null unless an area selector was passed and matched NO item on the list, open or completed -- matched as the selector always is, a case-insensitive substring of the resolved area. Then it names the selector and every area it could have matched, so a mistyped or never-used label is not read as an area that is merely empty. Since contract 5. An area whose items are all completed is NOT unmatched: it is a real label whose answer is empty without all=true. Null too when no area was passed and when 'error' is set, since an unread list gives a selector nothing to miss. Always present, never omitted, so 'no miss' is a stated null rather than an absent key.",
+      "properties": {
+        "area": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The area selector exactly as it was passed."
+        },
+        "knownAreas": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Every resolved area on the list, completed items included, distinct and sorted case-insensitively -- the set the selector was matched against, and the set thread_show's refusal names as 'Areas in use'. Wider than 'areas', which counts open items only. Empty when the list is."
+        }
+      }
+    },
     "items": {
       "type": "array",
       "items": {
@@ -99,7 +124,7 @@
           },
           "notesLead": {
             "type": "string",
-            "description": "First NON-EMPTY line of the notes, trimmed, capped at 200 characters with a trailing ellipsis when cut. First non-empty rather than first, because notes built by appending begin with a blank line. OPTIONAL since contract 3: absent (the key, not an empty string) when the caller declined leads -- --no-lead, -NoLead, lead=false -- so that an item with no notes and an item whose lead was withheld cannot be confused. notesLength is carried either way."
+            "description": "First NON-EMPTY line of the notes that is not an archive pointer, trimmed, capped at 200 characters with a trailing ellipsis when cut. First non-empty rather than first, because notes built by appending begin with a blank line; and past the pointer since 2026-09-16, because an archiving append leaves an 'ARCHIVED <date>: ... moved to <path>' header on top that is longer than the cap and says nothing about the item. Notes that are only a pointer lead with the pointer. OPTIONAL since contract 3: absent (the key, not an empty string) when the caller declined leads -- --no-lead, -NoLead, lead=false -- so that an item with no notes and an item whose lead was withheld cannot be confused. notesLength is carried either way."
           },
           "notesLength": {
             "type": "integer",
