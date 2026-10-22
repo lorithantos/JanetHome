@@ -206,6 +206,24 @@ if ($stagedBuildInputs.Count -eq 0) {
 # ---------- 3. Pester Tests ----------
 Write-StepHeader 'Pester Tests'
 
+# Under this hook git exports GIT_INDEX_FILE -- for 'commit --only' and 'commit -a' a
+# temporary index the commit is written from -- and fixtures run git in scratch repos of
+# their own. An absolute GIT_INDEX_FILE wins over 'git -C': reproduced 2026-10-21, a
+# fixture's 'add -A' in its temp repo rewrote the commit-in-progress index. So every GIT_*
+# variable is lifted here, once, for this step alone, and no test has to know. They are put
+# back afterwards because the encoding audit's staged list ('git diff --cached') must read
+# the index the commit is made from; without it a '--only' commit would be audited against
+# whatever else sits staged in .git\index.
+function Invoke-PesterWithoutGitEnv ([string]$Path) {
+    $saved = @(Get-ChildItem Env: | Where-Object Name -like 'GIT_*')
+    foreach ($variable in $saved) { Remove-Item -LiteralPath "Env:\$($variable.Name)" }
+    try {
+        return Invoke-Pester -Path $Path -Output Minimal -PassThru
+    } finally {
+        foreach ($variable in $saved) { Set-Item -LiteralPath "Env:\$($variable.Name)" -Value $variable.Value }
+    }
+}
+
 # Keyed to the presence of test files, not a tests directory: a repo whose
 # tests\ holds fixtures for some other language must not conscript Pester.
 $testsDir = Join-Path $repoRoot 'tests'
@@ -219,7 +237,7 @@ if ($pesterFiles.Count -gt 0) {
         Write-Host "  Pester 5+ required to run the tests directory (found: $found). Install-Module Pester -Force." -ForegroundColor Red
         Write-StepResult 'Pester Tests' $false
     } else {
-        $pesterResult = Invoke-Pester -Path $testsDir -Output Minimal -PassThru
+        $pesterResult = Invoke-PesterWithoutGitEnv $testsDir
         Write-StepResult 'Pester Tests' ($pesterResult.FailedCount -eq 0)
     }
 } else {
