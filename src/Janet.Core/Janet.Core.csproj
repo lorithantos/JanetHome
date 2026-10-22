@@ -38,7 +38,7 @@
       The alternative was a second token reader here, which is the drift the shared package
       exists to end.
     -->
-    <PackageReference Include="Janet.Mcp.Security" Version="0.7.0" />
+    <PackageReference Include="Janet.Mcp.Security" Version="0.8.0" />
   </ItemGroup>
 
   <ItemGroup>

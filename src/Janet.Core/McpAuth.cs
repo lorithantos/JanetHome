@@ -31,6 +31,13 @@ public static class McpAuth
     /// <summary>What razorgraph-mcp is told to run to read the token (--auth-token-command).</summary>
     public const string TokenCommand = "janet mcp-token --print";
 
+    /// <summary>
+    /// The last sentence of janet-mcp's 401. Janet.Mcp.Security's own default names no tool, since
+    /// the package is usable without janet; both servers here pass this one, because their clients
+    /// get the header from janet.
+    /// </summary>
+    public const string HeaderHint = "Run `janet mcp-headers` to print the header to send.";
+
     /// <summary>The three values, as the servers' --auth option spells them.</summary>
     public static readonly IReadOnlyList<string> Modes = ["require", "report", "off"];
 

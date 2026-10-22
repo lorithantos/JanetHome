@@ -32,7 +32,7 @@
       Janet.Core references it too, for the token store; named here as well because this
       project calls the middleware directly.
     -->
-    <PackageReference Include="Janet.Mcp.Security" Version="0.7.0" />
+    <PackageReference Include="Janet.Mcp.Security" Version="0.8.0" />
     <!--
       No Microsoft.Extensions.Hosting package reference: the ASP.NET Core shared framework
       already carries it, and NU1510 correctly calls the duplicate unnecessary.

@@ -158,7 +158,7 @@ if (http)
     // The bearer check asks its provider once now and again (throttled) when a token does not
     // match, so a rotated token is picked up without a restart. Owned here and disposed when
     // this block ends -- after shutdown, or on any early return below.
-    using BearerAuthenticator bearer = new(authMode, ReadToken);
+    using BearerAuthenticator bearer = new(authMode, ReadToken, headerHint: McpAuth.HeaderHint);
 
     // Services, the loopback guard (Host, Origin, JSON-only POST), the bearer check and every
     // endpoint live in HttpServer, so a test can host exactly this application.

@@ -255,7 +255,7 @@ internal sealed class PipelineServer : IAsyncDisposable
 
     internal PipelineServer(BearerMode mode, string? token, string? graphPath = null)
     {
-        _bearer = new BearerAuthenticator(mode, () => token);
+        _bearer = new BearerAuthenticator(mode, () => token, headerHint: McpAuth.HeaderHint);
         _graphPath = graphPath ?? GraphPath();
     }
 
