@@ -73,6 +73,12 @@
     <None Include="..\..\contracts\assembly-api.schema.json" Link="Contracts\assembly-api.schema.json" CopyToOutputDirectory="PreserveNewest" />
 
     <!--
+      The az-token envelope: the gate's sample needs a live sign-in and never asks for the
+      token, so the token arm is held here by AzTokenSchemaTests, from a fake value.
+    -->
+    <None Include="..\..\contracts\az-token.schema.json" Link="Contracts\az-token.schema.json" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
       The CLI's source, copied live as text. CliArgsTests reads every option Program.cs reads
       and holds each to Args.Switches or Args.ValueOptions, so the pin is the code itself and
       not a hand-kept list beside it that a new flag would also have to remember.
