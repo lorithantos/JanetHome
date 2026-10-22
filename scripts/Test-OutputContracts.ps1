@@ -19,7 +19,9 @@
     differs from the reference commit, this requires that the contract number inside it
     changed too, and that the script exposing the format changed in the same set. A
     schema edit with no script edit is either an engine change that leaked into the
-    format, or a format change whose surface was left behind.
+    format, or a format change whose surface was left behind. The comparison ignores the
+    $janet block and every 'description' keyword (descriptions are prose, decided
+    2026-10-21), so neither a metadata edit nor a reworded description demands a bump.
 
     JSON envelope by default; -Text to read at a terminal. Exit code 1 if any contract
     failed, 0 otherwise -- stated explicitly rather than inherited from the last command.
@@ -407,20 +409,9 @@ $samplers = @{
     }
 }
 
-function Get-SchemaBody {
-    <#
-    .SYNOPSIS
-        The schema with its $janet metadata block removed, canonicalised so that reformatting
-        is not mistaken for a format change.
-    #>
-    [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Text)
-
-    $parsed = $Text | ConvertFrom-Json -AsHashtable
-    $parsed.Remove('$janet')
-
-    return ($parsed | ConvertTo-Json -Depth 30 -Compress)
-}
+# Get-SchemaBody: the schema minus its $janet block and every 'description' keyword, which is
+# what the change check below compares. In lib\SchemaBody.ps1 so it can be tested alone.
+. (Join-Path $PSScriptRoot 'lib\SchemaBody.ps1')
 
 $findings = @()
 $pendingContracts = @()
@@ -506,6 +497,10 @@ foreach ($schemaFile in $schemas) {
     # which script produces it, whether the code exists yet -- and editing it is not a format
     # change. Comparing whole files made clearing implemented:false demand a contract bump for
     # a change that altered no format at all, which is a gate firing on correct work.
+    # Every 'description' keyword is removed too, since 2026-10-22 (decided 2026-10-21):
+    # descriptions are prose about the format, and rewording one is not a format change.
+    # Structure, types, required, enum, const and additionalProperties all still count, and so
+    # does a PROPERTY named description -- see Remove-SchemaDescription.
     $formatChanged = $false
     if ($Against -and $previous -and $changed -contains $relative) {
         $formatChanged = (Get-SchemaBody $previous) -cne (Get-SchemaBody $schemaText)
