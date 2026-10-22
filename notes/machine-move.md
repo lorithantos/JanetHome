@@ -74,8 +74,9 @@ Three silent-failure shapes, worth recognising because they recur:
 
 ## What is still unswept
 
-Absolute paths are not confined to the catalog. `script.ensure-razorgraph-server`
-carries a machine-specific `-Repo` default of `C:\repos\RazorGraphTool`, declared
+Absolute paths are not confined to the catalog. The razorgraph run entry in
+`startup-manifest.json` (the `Ensure-RazorGraphServer.ps1` forwarder until
+2026-10-22) carries machine-specific paths under `C:\repos\RazorGraphTool`, declared
 in its own caveats — correct on this machine, and a landmine on the next one. The
 sweep did not try to remove machine-specific values, only to make them visible.
 The next move will find them the same way this one did.

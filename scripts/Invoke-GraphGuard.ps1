@@ -44,7 +44,8 @@
       anything else   passes.
 
     WHEN RAZORGRAPH CANNOT ANSWER. Unreachable (connection refused or timed out): run
-    Ensure-RazorGraphServer.ps1 and retry once. If the server is not running and cannot
+    startup-manifest.json's razorGraphServer entry (Ensure-McpServer.ps1 with razorgraph's
+    args) and retry once. If the server is not running and cannot
     be started, the hook runs the search ITSELF -- git's file list, the same file-name
     glob, binaries and files over 2 MB skipped, .NET regex with a 1-second match timeout
     -- and denies with those hits, saying the graph was down. Every other failure (isError,
@@ -61,8 +62,8 @@
     JSON envelope. Injectable so tests never need a live server.
 
 .PARAMETER EnsureServer
-    Starts razorgraph when it is down. Returns Ensure-RazorGraphServer.ps1's JSON
-    envelope. Injectable for the same reason.
+    Starts razorgraph when it is down. Returns Ensure-McpServer.ps1's JSON envelope, run
+    through the manifest's razorGraphServer entry. Injectable for the same reason.
 
 .OUTPUTS
     A PreToolUse deny carrying the answer or the remediation, a PreToolUse
@@ -92,7 +93,10 @@ param(
     },
 
     [scriptblock]$EnsureServer = {
-        & (Join-Path $PSScriptRoot 'Ensure-RazorGraphServer.ps1')
+        # The startup manifest's razorgraph entry, run with its own args: since
+        # 2026-10-22 that entry is the only place razorgraph's launch defaults live.
+        . (Join-Path $PSScriptRoot 'lib\RunArguments.ps1')
+        Invoke-ManifestRunEntry -RepoRoot (Split-Path $PSScriptRoot -Parent) -CaptureAs 'razorGraphServer'
     }
 )
 
@@ -317,7 +321,7 @@ function Invoke-EnsureServer {
         $envelope = $text | ConvertFrom-Json
     }
     catch {
-        return [PSCustomObject]@{ Up = $false; Message = "Ensure-RazorGraphServer failed: $($_.Exception.Message)" }
+        return [PSCustomObject]@{ Up = $false; Message = "starting razorgraph failed: $($_.Exception.Message)" }
     }
 
     $up = ((Get-Prop $envelope 'ok') -eq $true) -or ((Get-Prop $envelope 'stale') -eq $true)

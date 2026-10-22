@@ -182,6 +182,40 @@ Describe "manifest 'args'" {
         $brief.captured.PSObject.Properties.Name | Should -Not -Contain 'probe'
     }
 
+    It 'binds a nested array whole to an array-typed parameter' {
+        # Since 2026-10-22, for the razorgraph entry's -ServerArgument: five values, two of
+        # them starting with '--', which a flat token list cannot delimit.
+        $stub = Join-Path $TestDrive 'ArrayProbe.ps1'
+        [System.IO.File]::WriteAllText($stub, @'
+param([string]$Name = '', [string[]]$ServerArgument = @())
+[pscustomobject]@{ name = $Name; serverArgument = @($ServerArgument) } | ConvertTo-Json -Compress
+'@, (New-Object System.Text.UTF8Encoding $false))
+        $probe = [System.IO.Path]::GetRelativePath($script:repoRoot, $stub)
+        $manifest = New-Manifest @{ cmd = $probe; args = @('-Name', 'X', '-ServerArgument', @('--http', '--port', '7718', 'janet mcp-token --print')); captureAs = 'probe' }
+
+        $brief = Invoke-Startup $manifest
+
+        $brief.problems | Should -BeNullOrEmpty
+        $bound = $brief.captured.probe | ConvertFrom-Json
+        $bound.name | Should -Be 'X'
+        $bound.serverArgument | Should -Be @('--http', '--port', '7718', 'janet mcp-token --print')
+    }
+
+    It 'refuses a nested array after a parameter that takes one value' {
+        $probe = New-Probe
+        $manifest = New-Manifest @{ cmd = $probe; args = @('-Area', @('a', 'b')); captureAs = 'probe' }
+
+        { Invoke-Startup $manifest -SkipRun } | Should -Throw -ExpectedMessage "*'-Area' for '$probe' takes one value, not an array*"
+    }
+
+    It 'refuses a nested array in a positional slot' {
+        $probe = New-Probe
+        # The unary comma: @(@('a','b')) would flatten to two strings before reaching JSON.
+        $manifest = New-Manifest @{ cmd = $probe; args = @(, @('a', 'b')); captureAs = 'probe' }
+
+        { Invoke-Startup $manifest -SkipRun } | Should -Throw -ExpectedMessage "*nested array at position 0*"
+    }
+
     It 'resolves the path from cmd alone, so args never changes what is found' {
         $probe = New-Probe
         $manifest = New-Manifest @{ cmd = "$probe-missing"; args = @('-Area', 'JanetHome'); captureAs = 'probe' }
@@ -345,6 +379,53 @@ Describe 'a run entry that fails without throwing' {
         $brief.run[0].status | Should -Be 'error'
         $brief.run[1].status | Should -Be 'ok'
         ($brief.captured.probe | ConvertFrom-Json).area | Should -Be 'RazorGraphTool'
+    }
+}
+
+<#
+    The razorgraph run entry (2026-10-22) replaced Ensure-RazorGraphServer.ps1, a forwarder
+    that carried razorgraph's launch values as defaults. The manifest is now the only copy
+    of them, and Invoke-GraphGuard.ps1 re-runs the entry through lib\RunArguments.ps1 when
+    the server is down, so both the values and that re-run path are pinned here.
+#>
+Describe 'the razorgraph run entry and Invoke-ManifestRunEntry' {
+    BeforeAll {
+        . (Join-Path $script:repoRoot 'scripts\lib\RunArguments.ps1')
+    }
+
+    It "binds the real manifest's razorgraph entry to Ensure-McpServer.ps1 with the forwarder's values" {
+        $manifest = Get-Content -LiteralPath (Join-Path $script:repoRoot 'startup-manifest.json') -Raw | ConvertFrom-Json
+        $entry = @($manifest.run) | Where-Object { $_.captureAs -eq 'razorGraphServer' }
+        $full = Join-Path $script:repoRoot $entry.cmd
+
+        $resolved = Resolve-RunArguments $entry $entry.cmd $full $true ''
+
+        $resolved.problems | Should -BeNullOrEmpty
+        $entry.cmd | Should -Be 'scripts\Ensure-McpServer.ps1'
+        $resolved.named['Name'] | Should -Be 'RazorGraph.Mcp'
+        $resolved.named['Port'] | Should -Be '7718'
+        $resolved.named['Base'] | Should -Be 'C:\repos\RazorGraphTool'
+        $resolved.named['BinDir'] | Should -Be 'C:\repos\RazorGraphTool\.mcp-bin\current'
+        $resolved.named['SourceDir'] | Should -Be 'C:\repos\RazorGraphTool\src\RazorGraph.Mcp'
+        $resolved.named['ServerArgument'] | Should -Be @('--http', '--port', '7718', '--auth-token-command', 'janet mcp-token --print')
+        $resolved.positional | Should -BeNullOrEmpty
+    }
+
+    It 'runs the entry named by captureAs with its args resolved' {
+        $root = Join-Path $TestDrive 'runentry'
+        New-Item -ItemType Directory -Path (Join-Path $root 'scripts') -Force | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $root 'scripts\Echo.ps1'), @'
+param([string]$Name = '', [string[]]$ServerArgument = @())
+"$Name|$($ServerArgument -join ',')"
+'@, (New-Object System.Text.UTF8Encoding $false))
+        $json = [ordered]@{ run = @(
+            @{ cmd = 'scripts\Echo.ps1'; args = @('-Name', 'other'); captureAs = 'other' },
+            @{ cmd = 'scripts\Echo.ps1'; args = @('-Name', 'rg', '-ServerArgument', @('--http', '--port', '7718')); captureAs = 'razorGraphServer' }
+        ) } | ConvertTo-Json -Depth 5
+        [System.IO.File]::WriteAllText((Join-Path $root 'startup-manifest.json'), $json, (New-Object System.Text.UTF8Encoding $false))
+
+        Invoke-ManifestRunEntry -RepoRoot $root -CaptureAs 'razorGraphServer' | Should -Be 'rg|--http,--port,7718'
+        { Invoke-ManifestRunEntry -RepoRoot $root -CaptureAs 'absent' } | Should -Throw -ExpectedMessage "*no run entry with captureAs 'absent'*"
     }
 }
 

@@ -93,7 +93,8 @@ public static class ServerRotation
     /// is not waiting, and the first call after a rotation can fail.
     ///
     /// RazorGraphTool's checkout defaults to C:\repos\RazorGraphTool, the same machine-specific
-    /// default Ensure-RazorGraphServer.ps1 carries; JANET_RAZORGRAPH_REPO overrides it.
+    /// path startup-manifest.json's razorGraphServer run entry carries; JANET_RAZORGRAPH_REPO
+    /// overrides it.
     ///
     /// Both servers get --auth from startup-manifest.json's mcpAuth (<see cref="McpAuth"/>), the
     /// one setting Ensure-McpServer.ps1 and ServerLink read too, and razorgraph additionally

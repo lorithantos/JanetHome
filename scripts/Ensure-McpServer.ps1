@@ -76,7 +76,8 @@
     .\Ensure-McpServer.ps1 -NoStart -Pretty
 
 .EXAMPLE
-    # razorgraph-mcp, which lives in another repo and takes no --base.
+    # razorgraph-mcp, which lives in another repo and takes no --base. The same values as
+    # startup-manifest.json's razorGraphServer run entry, which is where they are kept.
     .\Ensure-McpServer.ps1 -Name RazorGraph.Mcp -Port 7718 `
         -Base C:\repos\RazorGraphTool `
         -BinDir C:\repos\RazorGraphTool\.mcp-bin\current `
@@ -282,7 +283,7 @@ try {
     if (-not $ServerArgument) { $ServerArgument = @('--http', '--base', "$Base", '--port', "$Port") }
 
     # --auth from the one setting, appended unless the caller already chose. Both servers get
-    # it this way: Ensure-RazorGraphServer.ps1 forwards here.
+    # it this way: startup-manifest.json runs this script for both, razorgraph with its args.
     $authMode = Get-AuthMode
     $result.auth = $authMode
     if ($null -ne $authMode -and $ServerArgument -notcontains '--auth') {

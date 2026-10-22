@@ -183,7 +183,7 @@ catch {
             uri   = $Uri
             tool  = if ($ListTools) { 'tools/list' } else { $Tool }
             error = "cannot reach the MCP server: $($_.Exception.Message)"
-            hint  = 'Start it with Ensure-McpServer.ps1 (7717) or Ensure-RazorGraphServer.ps1 (7718).'
+            hint  = 'Run Invoke-JanetStartup.ps1, which starts both (janet on 7717, razorgraph on 7718) through Ensure-McpServer.ps1; that script alone starts janet.'
         }
     }
     if ($Text) { Write-Host $envelope.error -ForegroundColor Red; Write-Host "  $($envelope.hint)" -ForegroundColor DarkGray }

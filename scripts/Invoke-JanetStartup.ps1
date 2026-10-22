@@ -16,7 +16,11 @@
     parameter the command does not declare, is a problem and therefore a hard
     stop under onMissing 'fail'.  Since 2026-09-04, when the thread report entry
     gained ["-Area", "<this repo>"] so the brief carries one project's items and a
-    per-area map of the rest instead of every open item on the machine.
+    per-area map of the rest instead of every open item on the machine.  The
+    value after a '-Name' whose parameter is an array type may itself be an
+    array of strings, and binds whole (since 2026-10-22, for the razorgraph
+    entry's -ServerArgument); a nested array anywhere else is a problem.  The
+    reader is lib\RunArguments.ps1, shared with Invoke-GraphGuard.ps1.
 
     An args token may contain {projectName}: the leaf name of -ProjectDir, which is
     the repo the session will actually work in.  It exists because "<this repo>"
@@ -413,92 +417,10 @@ foreach ($entry in $readEntries) {
     }
 }
 
-function Resolve-RunArguments {
-    # Validates a run entry's optional 'args' and splits it into the two splats the
-    # invocation needs.  Returns an object, so nothing unrolls; read .problems first.
-    #
-    # 'args' is optional.  Present, it must be an array of strings -- anything else
-    # is a problem, never a coercion.  A bare string would splat as one token and
-    # happen to work for a lone switch, which is exactly the shape that stops
-    # working the day a value is added; a number or object would bind as something
-    # the target never asked for.  Read through PSObject.Properties rather than
-    # Get-Prop: a one-element array returned from a function unrolls to its
-    # element, and the type check here is the point.
-    #
-    # ARRAY SPLATTING IS POSITIONAL.  Measured 2026-09-04: & script @('-Area','X')
-    # bound the string '-Area' to the first parameter and 'X' to the second, and
-    # nothing failed.  Only the automatic $args keeps parameter names through a
-    # splat, and a manifest cannot produce that.  So the tokens are read the way
-    # the command line reads them -- '-Name value' binds by name, a lone '-Switch'
-    # is a switch, anything else is positional -- and each name is checked against
-    # the target's own parameter metadata.  A misspelled name is therefore a
-    # problem at lint time, not a string quietly bound to the wrong parameter at
-    # run time.  A positional value that itself begins with '-' is not supported;
-    # nothing in this repo needs one, and saying so beats guessing.
-    param($Entry, [string]$Cmd, [string]$FullPath, [bool]$Exists, [string]$ProjectName)
-    $result = [PSCustomObject]@{
-        tokens     = @()
-        named      = [ordered]@{}
-        positional = @()
-        problems   = @()
-    }
-    $prop = $Entry.PSObject.Properties['args']
-    if ($null -eq $prop -or $null -eq $prop.Value) { return $result }
-    $value = $prop.Value
-    if ($value -isnot [array]) {
-        $result.problems += "run: 'args' for '$Cmd' must be an array of strings, not a $($value.GetType().Name)"
-        return $result
-    }
-    $notStrings = @($value | Where-Object { $_ -isnot [string] })
-    if ($notStrings.Count -gt 0) {
-        $kinds = ($notStrings | ForEach-Object { if ($null -eq $_) { 'null' } else { $_.GetType().Name } }) -join ', '
-        $result.problems += "run: 'args' for '$Cmd' must be an array of strings; found $kinds"
-        return $result
-    }
-    $result.tokens = @([string[]]$value)
-
-    # Token substitution happens before binding, so what the brief reports under
-    # 'args' is what actually ran -- the resolved area, not the token.  That is the
-    # only place the brief says which repo it narrowed to, so a token surviving
-    # into the brief would leave nine items attributed to nothing.
-    #
-    # {projectName} is the only token, and an unrecognised one is a problem rather
-    # than a literal passed through.  Passing it through is the quiet failure:
-    # '-Area {repo}' matches nothing filed, and an empty item list is
-    # indistinguishable from a finished backlog.
-    if ($ProjectName) {
-        $result.tokens = @($result.tokens | ForEach-Object { $_ -replace '\{projectName\}', $ProjectName })
-    }
-    foreach ($token in $result.tokens) {
-        foreach ($unknown in [regex]::Matches($token, '\{[A-Za-z]\w*\}')) {
-            $result.problems += "run: 'args' for '$Cmd' contains unresolved token " +
-                                "'$($unknown.Value)'; the only token is {projectName}" +
-                                $(if (-not $ProjectName) { ' (no project name resolved)' })
-        }
-    }
-
-    # A missing command is already reported; there is no metadata to check against.
-    if (-not $Exists) { return $result }
-    $parameters = (Get-Command $FullPath -ErrorAction Stop).Parameters
-    for ($i = 0; $i -lt $result.tokens.Count; $i++) {
-        $token = $result.tokens[$i]
-        if ($token -notmatch '^-([A-Za-z]\w*)$') { $result.positional += $token; continue }
-        $name = $Matches[1]
-        if (-not $parameters.ContainsKey($name)) {
-            $result.problems += "run: '$Cmd' declares no parameter '-$name' (args: $($result.tokens -join ' '))"
-            continue
-        }
-        $meta = $parameters[$name]
-        if ($meta.ParameterType -eq [switch]) { $result.named[$meta.Name] = $true; continue }
-        if ($i + 1 -ge $result.tokens.Count) {
-            $result.problems += "run: '-$name' for '$Cmd' is not a switch and has no value after it"
-            continue
-        }
-        $i++
-        $result.named[$meta.Name] = $result.tokens[$i]
-    }
-    return $result
-}
+# Resolve-RunArguments (the 'args' reader) and Format-RunArguments live in
+# lib\RunArguments.ps1 since 2026-10-22, shared with Invoke-GraphGuard.ps1, which
+# re-runs the razorgraph entry when the server is down.
+. (Join-Path $PSScriptRoot 'lib\RunArguments.ps1')
 
 $runs = @()
 foreach ($entry in $runEntries) {
@@ -779,7 +701,7 @@ Write-Host ''
 foreach ($res in $runResults) {
     $label = if ($res.captureAs) { $res.captureAs } else { $res.cmd }
     Write-Host $label.ToUpperInvariant() -ForegroundColor Cyan
-    if (@($res.args).Count -gt 0) { Write-Host "  $($res.cmd) $($res.args -join ' ')" -ForegroundColor DarkGray }
+    if (@($res.args).Count -gt 0) { Write-Host "  $($res.cmd) $(Format-RunArguments $res.args)" -ForegroundColor DarkGray }
     switch ($res.status) {
         'ok'      { if ($res.output) { Write-Host $res.output } else { Write-Host '(no output)' -ForegroundColor DarkGray } }
         'skipped' { Write-Host '(skipped)' -ForegroundColor DarkGray }
