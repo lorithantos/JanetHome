@@ -39,6 +39,12 @@
     the single thing whose absence caused the failure. A brittle multi-check gate that
     tried to regex the rest of the kickoff checklist would get disabled.
 
+    Not demanded where razorgraph is switched off for the project dir (since 2026-10-22):
+    disabledMcpjsonServers in a settings file the harness loads, or the per-project
+    disabledMcpServers (the /mcp toggle) or disabledMcpjsonServers in ~\.claude.json. The
+    reader is lib\McpDisabled.ps1, the same one startup uses to relabel this rule, and the
+    call goes through with one line of additionalContext saying why.
+
     The denial does the work. It finds the solution file -- above the first absolute path
     in the prompt that has one, else under the project dir -- and hands back a ready-to-paste
     block with real tool and file names in it, rather than a template full of brackets,
@@ -501,6 +507,23 @@ A dispatch or a new request from Lori resets the count. JANET_DELEGATION_GUARD=o
     if (-not (Test-CSharpStructuralPrompt $prompt)) { exit 0 }
 
     $projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
+
+    # Not where razorgraph is switched off for this project dir (since 2026-10-22). The
+    # session has no mcp__razorgraph__ tools there, so neither will the agent, and a gate
+    # demanding instructions for tools nobody can load is one that gets pasted past.
+    # Startup's own reader decides it, so the brief's relabelled rule and this guard agree;
+    # the call goes through with one line saying why nothing was demanded.
+    . (Join-Path $PSScriptRoot 'lib\McpDisabled.ps1')
+    $razorgraphOff = Get-DisabledMcpServer -ProjectDir $projectDir -Server @('razorgraph')
+    if ($razorgraphOff.Contains('razorgraph')) {
+        [PSCustomObject]@{
+            hookSpecificOutput = [PSCustomObject]@{
+                hookEventName     = 'PreToolUse'
+                additionalContext = "Delegation guard: this prompt looks like C# structural work, but razorgraph is switched off for '$projectDir' ($($razorgraphOff['razorgraph'] -join '; ')), so no mcp__razorgraph__ instructions are required. Tell the agent to read the code directly, and say in its prompt that the graph is unavailable."
+            }
+        } | ConvertTo-Json -Depth 4 -Compress
+        exit 0
+    }
     # The repo the prompt names first; the session's own project only when it names none.
     $solution = Get-PromptSolution $prompt
     if ($null -eq $solution) { $solution = Get-SolutionFile $projectDir }

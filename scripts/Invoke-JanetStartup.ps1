@@ -268,54 +268,31 @@ function Test-RuleEnforced {
     return (Test-HookDeclared -SettingsPath @(Join-Path $env:USERPROFILE '.claude\settings.json') -Leaf $leaf)
 }
 
-# The local MCP servers whose tools a session can lose to 'disabledMcpjsonServers',
-# each with the enforcedBy leaves of the rules that cannot keep their promise
-# without it. Keyed by the server's name in .mcp.json. The graph guard's rule says
-# a search IS answered by mcp__razorgraph__grep and a shell search is denied with a
-# paste-ready call to it; with razorgraph disabled the session has no such tool, so
-# the denial is a dead end. No ENFORCED rule rests on janet's tools today (the
-# research guard reads a trace Get-Research.ps1 writes, and the CLI still works), but
-# losing them is still worth a line in 'enforcement'.
-#
-# Since 2026-10-22. On 2026-10-10 C:\repos\.claude\settings.local.json listed both
-# servers as disabled and the brief still printed graph-first as ENFORCED.
-$mcpDependents = [ordered]@{
-    janet      = @()
-    razorgraph = @('Invoke-GraphGuard.ps1')
-}
-
-function Get-DisabledMcpServer {
-    # Which servers in $mcpDependents a settings file the harness loads for the
-    # project dir lists under 'disabledMcpjsonServers', each with the files that
-    # list it. The same chain the hook check reads, except that the user-level file
-    # counts for every project dir: a disabled server is disabled wherever it is
-    # said, whereas the user-level hooks deliberately skip this repo.
-    # A missing, unreadable or malformed file disables nothing, as it declares no hook.
-    param([string]$ProjectDir)
-    $projectClaude = Join-Path $ProjectDir '.claude'
-    $paths = @(
-        (Join-Path $projectClaude 'settings.json')
-        (Join-Path $projectClaude 'settings.local.json')
-        (Join-Path $env:USERPROFILE '.claude\settings.json')
-    ) | ForEach-Object { [System.IO.Path]::GetFullPath($_) } | Select-Object -Unique
-
-    $found = [ordered]@{}
-    foreach ($path in $paths) {
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
-        try { $settings = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json }
-        catch { continue }
-        if ($settings -isnot [System.Management.Automation.PSCustomObject]) { continue }
-        $listed = $settings.PSObject.Properties['disabledMcpjsonServers']
-        if ($null -eq $listed -or $null -eq $listed.Value) { continue }
-        foreach ($name in @($listed.Value)) {
-            foreach ($server in $mcpDependents.Keys) {
-                if (-not [string]::Equals([string]$name, $server, [StringComparison]::OrdinalIgnoreCase)) { continue }
-                if (-not $found.Contains($server)) { $found[$server] = @() }
-                if ($found[$server] -notcontains $path) { $found[$server] += $path }
+# The local MCP servers a session can lose, each with the enforcedBy leaves of the
+# rules that cannot keep their promise without it. Read from the manifest's
+# 'mcpDependents', beside the rules it describes, since 2026-10-22 (it was a literal
+# here for a day); validated below with the other entries. Absent, nothing is
+# watched. Which of them are switched off for the project dir is
+# lib\McpDisabled.ps1's question, shared with Invoke-DelegationGuard.ps1.
+. (Join-Path $PSScriptRoot 'lib\McpDisabled.ps1')
+$mcpDependents = [ordered]@{}
+$mcpDependentProblems = @()
+$mcpProp = $manifest.PSObject.Properties['mcpDependents']
+if ($null -ne $mcpProp -and $null -ne $mcpProp.Value) {
+    if ($mcpProp.Value -isnot [System.Management.Automation.PSCustomObject]) {
+        $mcpDependentProblems += "mcpDependents: must be an object of server name -> array of enforcedBy paths"
+    }
+    else {
+        foreach ($server in $mcpProp.Value.PSObject.Properties) {
+            if ($server.Name.StartsWith('$')) { continue }
+            $backs = @($server.Value)
+            if (@($backs | Where-Object { $_ -isnot [string] }).Count -gt 0) {
+                $mcpDependentProblems += "mcpDependents: '$($server.Name)' must be an array of enforcedBy paths"
+                continue
             }
+            $mcpDependents[$server.Name] = @($backs | ForEach-Object { Split-Path $_ -Leaf })
         }
     }
-    return $found
 }
 
 function Get-RuleDisabledServer {
@@ -465,6 +442,19 @@ for ($i = 0; $i -lt $rules.Count; $i++) {
     }
 }
 
+# A dependent no rule carries would stop relabelling the rule it was meant for --
+# renamed, or its hook moved -- without anything saying so.
+$problems += $mcpDependentProblems
+$ruleLeaves = @($rules | Where-Object { $_ -isnot [string] } | ForEach-Object { Get-Prop $_ 'enforcedBy' } |
+                Where-Object { $_ } | ForEach-Object { Split-Path $_ -Leaf })
+foreach ($server in $mcpDependents.Keys) {
+    foreach ($leaf in @($mcpDependents[$server])) {
+        if ($ruleLeaves -notcontains $leaf) {
+            $problems += "mcpDependents: '$server' names '$leaf', which no rule's enforcedBy carries"
+        }
+    }
+}
+
 # Hooks load from the project dir, which is not necessarily this repo. Resolved
 # at the top of the script now, because the args token reads it during validation.
 $unwired = @()
@@ -497,7 +487,7 @@ if ($unwired.Count -gt 0) {
 # Same severity and the same field as an unwired hook, for the same reason: the
 # manifest is intact, what is false is a label, and Start-Janet treats 'problems'
 # as fatal. One entry per disabled server, naming the files that disable it.
-$disabledMcp = Get-DisabledMcpServer $ProjectDir
+$disabledMcp = Get-DisabledMcpServer -ProjectDir $ProjectDir -Server @($mcpDependents.Keys)
 foreach ($server in $disabledMcp.Keys) {
     $dependents = @($rules | Where-Object { @(Get-RuleDisabledServer $_ $disabledMcp) -contains $server } |
                     ForEach-Object { Get-Prop $_ 'enforcedBy' })
@@ -506,10 +496,10 @@ foreach ($server in $disabledMcp.Keys) {
     } else {
         'No rule is relabelled for it, but its tools are unavailable in a session there.'
     }
-    $enforcementNotes += "enforcement: MCP server '$server' is listed under disabledMcpjsonServers in " +
-                         "$($disabledMcp[$server] -join ', ') for project dir '$ProjectDir', so a session " +
-                         "there does not load its tools. $effect Remove it from that list and reconnect " +
-                         "with /mcp, or restart the session."
+    $enforcementNotes += "enforcement: MCP server '$server' is switched off for project dir '$ProjectDir' " +
+                         "by $($disabledMcp[$server] -join '; '), so a session there does not load its " +
+                         "tools. $effect Re-enable it -- remove it from that list, or toggle it on in " +
+                         "/mcp -- and reconnect, or restart the session."
 }
 
 if ($problems.Count -gt 0) {

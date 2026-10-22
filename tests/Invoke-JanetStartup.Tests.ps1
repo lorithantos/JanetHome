@@ -501,13 +501,16 @@ Describe 'hook-backed rules' {
         $script:guardRule = [ordered]@{ text = 'ENFORCED: fixture rule backed by a hook.'; enforcedBy = 'scripts\FixtureGuard.ps1' }
 
         function New-RuleManifest {
-            # One probe run entry, so the manifest is the ordinary shape, plus the rules.
+            # One probe run entry, so the manifest is the ordinary shape, plus the rules, and
+            # the server-to-rule map when a test is about MCP servers (it lives in the
+            # manifest since 2026-10-22, so a manifest without one watches nothing).
             [CmdletBinding()]
-            param([Parameter(Mandatory)][System.Collections.IDictionary[]]$Rule)
+            param([Parameter(Mandatory)][System.Collections.IDictionary[]]$Rule, [System.Collections.IDictionary]$McpDependents)
             $probe = New-Probe
             $manifest = Join-Path $TestDrive ("manifest-" + [guid]::NewGuid().ToString('N') + '.json')
-            $json = [ordered]@{ version = 1; onMissing = 'fail'; run = @(@{ cmd = $probe; captureAs = 'probe' }); rules = @($Rule) } |
-                ConvertTo-Json -Depth 6
+            $body = [ordered]@{ version = 1; onMissing = 'fail'; run = @(@{ cmd = $probe; captureAs = 'probe' }); rules = @($Rule) }
+            if ($McpDependents) { $body['mcpDependents'] = $McpDependents }
+            $json = $body | ConvertTo-Json -Depth 6
             [System.IO.File]::WriteAllText($manifest, $json, (New-Object System.Text.UTF8Encoding $false))
             return $manifest
         }
@@ -541,10 +544,12 @@ Describe 'hook-backed rules' {
             # Runs startup with USERPROFILE pointed at a fixture, holding the given user
             # settings text if any, and restores it however the run ends.
             [CmdletBinding()]
-            param([Parameter(Mandatory)][string]$ManifestPath, [Parameter(Mandatory)][string]$ProjectDir, [string]$UserSettingsText)
+            param([Parameter(Mandatory)][string]$ManifestPath, [Parameter(Mandatory)][string]$ProjectDir, [string]$UserSettingsText, [string]$ClaudeJsonText)
             $profileDir = Join-Path $TestDrive ("profile-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Path (Join-Path $profileDir '.claude') -Force | Out-Null
             if ($UserSettingsText) { Set-Content -Path (Join-Path $profileDir '.claude\settings.json') -Value $UserSettingsText -Encoding UTF8 }
+            # ~\.claude.json, the harness's own per-project state, for the /mcp toggle cases.
+            if ($ClaudeJsonText) { Set-Content -Path (Join-Path $profileDir '.claude.json') -Value $ClaudeJsonText -Encoding UTF8 }
             $prior = $env:USERPROFILE
             $env:USERPROFILE = $profileDir
             try { return Invoke-Startup $ManifestPath -SkipRun -ProjectDir $ProjectDir 3>$null }
@@ -629,6 +634,17 @@ Describe 'hook-backed rules' {
     Context 'MCP servers disabled in settings' {
         BeforeAll {
             $script:graphRule = [ordered]@{ text = 'ENFORCED: fixture graph-first rule.'; enforcedBy = 'scripts\Invoke-GraphGuard.ps1' }
+            # The manifest's server-to-rule map, as the real one is shaped for these rules.
+            $script:mcpMap = [ordered]@{ janet = @(); razorgraph = @('scripts\Invoke-GraphGuard.ps1') }
+
+            function New-ClaudeJson {
+                # ~\.claude.json with one project entry: the project dir's path the way the
+                # harness keys it (forward slashes), carrying the given per-project lists.
+                [CmdletBinding()]
+                param([Parameter(Mandatory)][string]$ProjectDir, [Parameter(Mandatory)][System.Collections.IDictionary]$Lists)
+                $key = [System.IO.Path]::GetFullPath($ProjectDir) -replace '\\', '/'
+                return ([ordered]@{ oauthAccount = [ordered]@{ note = 'fixture' }; projects = [ordered]@{ $key = $Lists } } | ConvertTo-Json -Depth 6)
+            }
 
             function New-GraphProject {
                 # A project dir whose settings.json wires the graph guard, and whose
@@ -646,7 +662,7 @@ Describe 'hook-backed rules' {
 
         It 'relabels the graph-first rule and reports it when razorgraph is disabled' {
             $project = New-GraphProject 'RazorDisabled' -LocalSettingsText '{ "disabledMcpjsonServers": ["razorgraph"] }'
-            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule) $project
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule -McpDependents $script:mcpMap) $project
 
             $brief.rules | Should -Be @('ADVISORY (claims ENFORCED; MCP server razorgraph disabled here): fixture graph-first rule.')
             @($brief.enforcement).Count | Should -Be 1
@@ -656,7 +672,7 @@ Describe 'hook-backed rules' {
 
         It 'keeps ENFORCED and reports nothing when no server it needs is disabled' {
             $project = New-GraphProject 'OtherDisabled' -LocalSettingsText '{ "disabledMcpjsonServers": ["some-other-server"] }'
-            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule) $project
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule -McpDependents $script:mcpMap) $project
 
             $brief.rules | Should -Be @('ENFORCED: fixture graph-first rule.')
             $brief.enforcement | Should -BeNullOrEmpty
@@ -664,11 +680,57 @@ Describe 'hook-backed rules' {
 
         It 'reports janet disabled at user level without relabelling a rule that does not need it' {
             $project = New-GraphProject 'JanetDisabled'
-            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule) $project -UserSettingsText '{ "disabledMcpjsonServers": ["janet"] }'
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule -McpDependents $script:mcpMap) $project -UserSettingsText '{ "disabledMcpjsonServers": ["janet"] }'
 
             $brief.rules | Should -Be @('ENFORCED: fixture graph-first rule.')
             @($brief.enforcement).Count | Should -Be 1
             $brief.enforcement[0] | Should -BeLike "*'janet'*No rule is relabelled*"
+        }
+
+        It 'relabels when razorgraph is toggled off in /mcp, which ~\.claude.json records per project' {
+            $project = New-GraphProject 'RazorToggled'
+            $claudeJson = New-ClaudeJson $project ([ordered]@{ disabledMcpServers = @('razorgraph') })
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule -McpDependents $script:mcpMap) $project -ClaudeJsonText $claudeJson
+
+            $brief.rules | Should -Be @('ADVISORY (claims ENFORCED; MCP server razorgraph disabled here): fixture graph-first rule.')
+            @($brief.enforcement).Count | Should -Be 1
+            $brief.enforcement[0] | Should -BeLike "*'razorgraph'*disabledMcpServers for this project in *.claude.json*"
+            # The file holds credentials; nothing from it but the path may reach the brief.
+            ($brief | ConvertTo-Json -Depth 8) | Should -Not -BeLike '*fixture*oauth*'
+            ($brief | ConvertTo-Json -Depth 8) | Should -Not -BeLike '*oauthAccount*'
+        }
+
+        It 'relabels when a declined .mcp.json approval is recorded in ~\.claude.json' {
+            $project = New-GraphProject 'RazorDeclined'
+            $claudeJson = New-ClaudeJson $project ([ordered]@{ disabledMcpjsonServers = @('razorgraph'); enabledMcpjsonServers = @('janet') })
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule -McpDependents $script:mcpMap) $project -ClaudeJsonText $claudeJson
+
+            $brief.rules[0] | Should -BeLike 'ADVISORY (claims ENFORCED; MCP server razorgraph disabled here)*'
+            $brief.enforcement[0] | Should -BeLike "*disabledMcpjsonServers for this project in *.claude.json*"
+        }
+
+        It "ignores another project's entry in ~\.claude.json" {
+            $project = New-GraphProject 'RazorElsewhere'
+            $claudeJson = New-ClaudeJson (Join-Path $TestDrive 'SomeOtherProject') ([ordered]@{ disabledMcpServers = @('razorgraph') })
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule -McpDependents $script:mcpMap) $project -ClaudeJsonText $claudeJson
+
+            $brief.rules | Should -Be @('ENFORCED: fixture graph-first rule.')
+            $brief.enforcement | Should -BeNullOrEmpty
+        }
+
+        It "reads the server-to-rule map from the manifest: without it nothing is relabelled" {
+            $project = New-GraphProject 'RazorUnmapped' -LocalSettingsText '{ "disabledMcpjsonServers": ["razorgraph"] }'
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule) $project
+
+            $brief.rules | Should -Be @('ENFORCED: fixture graph-first rule.')
+        }
+
+        It "refuses a map entry that no rule's enforcedBy carries" {
+            $project = New-GraphProject 'RazorDrift'
+            $map = [ordered]@{ razorgraph = @('scripts\Invoke-GraphGuard.ps1', 'scripts\Renamed-Guard.ps1') }
+
+            { Invoke-WithUserProfile (New-RuleManifest $script:graphRule -McpDependents $map) $project } |
+                Should -Throw -ExpectedMessage "*mcpDependents: 'razorgraph' names 'Renamed-Guard.ps1', which no rule's enforcedBy carries*"
         }
     }
 }

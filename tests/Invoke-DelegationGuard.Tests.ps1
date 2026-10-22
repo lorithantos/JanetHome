@@ -585,4 +585,57 @@ Describe 'Invoke-DelegationGuard' {
                 Select-Object -ExpandProperty Decision | Should -Be 'pass'
         }
     }
+
+    Context 'razorgraph switched off for the project dir' {
+        # 2026-10-22: the gate demanded mcp__razorgraph__ instructions even where the session
+        # could not load razorgraph, so clearing it meant pasting instructions for tools no
+        # agent there has. It now reads startup's disable check (lib\McpDisabled.ps1). Each
+        # case points USERPROFILE at a fixture, so the machine's real ~\.claude.json and
+        # ~\.claude\settings.json are never read.
+
+        BeforeAll {
+            function Invoke-GuardWithProfile {
+                param([string]$Prompt, [string]$ClaudeJsonText, [string]$UserSettingsText)
+                $profileDir = Join-Path $TestDrive ('profile-' + [guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Path (Join-Path $profileDir '.claude') -Force | Out-Null
+                if ($ClaudeJsonText) { Set-Content -LiteralPath (Join-Path $profileDir '.claude.json') -Value $ClaudeJsonText -Encoding utf8 }
+                if ($UserSettingsText) { Set-Content -LiteralPath (Join-Path $profileDir '.claude\settings.json') -Value $UserSettingsText -Encoding utf8 }
+                $prior = $env:USERPROFILE
+                $env:USERPROFILE = $profileDir
+                try { return Invoke-Guard -ToolName 'Agent' -ToolInput @{ prompt = $Prompt } }
+                finally { $env:USERPROFILE = $prior }
+            }
+
+            $script:structural = 'Refactor src\Nav.Core\Grid.cs and find the callers'
+            $script:projectKey = [System.IO.Path]::GetFullPath($script:projectDir) -replace '\\', '/'
+        }
+
+        It 'does not deny when /mcp switched razorgraph off for this project in ~\.claude.json' {
+            $json = [ordered]@{ projects = [ordered]@{ $script:projectKey = [ordered]@{ disabledMcpServers = @('razorgraph') } } } | ConvertTo-Json -Depth 5
+            $result = Invoke-GuardWithProfile -Prompt $script:structural -ClaudeJsonText $json
+
+            $result.Decision | Should -Be 'warn'
+            $result.Raw | Should -Match 'razorgraph is switched off'
+        }
+
+        It 'does not deny when the user settings reject razorgraph' {
+            $result = Invoke-GuardWithProfile -Prompt $script:structural -UserSettingsText '{ "disabledMcpjsonServers": ["razorgraph"] }'
+
+            $result.Decision | Should -Be 'warn'
+        }
+
+        It 'still denies when only another project has razorgraph off' {
+            $other = (Join-Path $TestDrive 'elsewhere') -replace '\\', '/'
+            $json = [ordered]@{ projects = [ordered]@{ $other = [ordered]@{ disabledMcpServers = @('razorgraph') } } } | ConvertTo-Json -Depth 5
+            $result = Invoke-GuardWithProfile -Prompt $script:structural -ClaudeJsonText $json
+
+            $result.Decision | Should -Be 'deny'
+        }
+
+        It 'still denies when a different server is off' {
+            $result = Invoke-GuardWithProfile -Prompt $script:structural -UserSettingsText '{ "disabledMcpjsonServers": ["janet"] }'
+
+            $result.Decision | Should -Be 'deny'
+        }
+    }
 }

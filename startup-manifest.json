@@ -80,6 +80,12 @@
 
   "$comment.rules.shape": "Each rule is { text, why }. 'text' is the imperative and is always emitted; 'why' is the justification and appears only under -Full or -Text. The split keeps the reasoning on disk and reviewable without billing it to every session -- a bare imperative is easier to argue past, which is what the comment above warns against. Plain strings still parse, for anything that does not decompose. Keep 'text' to one line; put the argument in 'why'.",
 
+  "$comment.mcpDependents": "The local MCP servers a session can lose, keyed by their name in .mcp.json, each with the 'enforcedBy' of every rule below that cannot keep its promise without that server's tools. Startup reads where a server is switched off for the project dir -- 'disabledMcpjsonServers' in the project's .claude\\settings.json or settings.local.json or in ~\\.claude\\settings.json, and the per-project 'disabledMcpServers' (the /mcp toggle) and 'disabledMcpjsonServers' (a declined .mcp.json approval) in ~\\.claude.json -- and for each listed server that is off, relabels the rules named here ADVISORY and adds an 'enforcement' line. A server with no dependent rule is still listed, because losing its tools is worth that line. Every entry must be some rule's enforcedBy, or startup reports a problem: a map naming a script no rule uses would stop relabelling the rule it was meant for without saying so. The graph guard's rule promises a search is answered by mcp__razorgraph__grep; with razorgraph off the session has no such tool. The delegation guard's rule demands mcp__razorgraph__ instructions in a subagent prompt, and since 2026-10-22 the guard stops demanding them where razorgraph is off, so that rule is no longer enforced there either. No ENFORCED rule rests on janet's tools today (the research guard reads a trace Get-Research.ps1 writes, and the CLI still works). Lived in Invoke-JanetStartup.ps1 as $mcpDependents from 2026-10-22 until it moved here the same day; Invoke-DelegationGuard.ps1 reads the same disable state through scripts\\lib\\McpDisabled.ps1.",
+  "mcpDependents": {
+    "janet": [],
+    "razorgraph": ["scripts\\Invoke-GraphGuard.ps1", "scripts\\Invoke-DelegationGuard.ps1"]
+  },
+
   "rules": [
     {
       "text": "ENFORCED: never edit research.json directly -- use the research_* MCP tools, 'janet research', or the Add-/Update-ResearchNode scripts.",
