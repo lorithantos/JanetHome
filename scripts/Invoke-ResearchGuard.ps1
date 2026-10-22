@@ -116,6 +116,25 @@ function Get-ClosestNode {
     return $found
 }
 
+# The trace's lastUtc is round-trip text ending in Z. What reaches here depends on
+# the host: Windows PowerShell 5.1's ConvertFrom-Json leaves it a string, while
+# pwsh 7 hands back a DateTime of Kind Utc. Parsing that DateTime again went
+# through its zone-less string form, came back as Local, and ToUniversalTime then
+# added the local offset -- so off UTC the trace read hours in the future and the
+# window held for most of a day (measured age -418 minutes, PDT). A DateTime is
+# used as it is; text is read as an offset, so neither host shifts it.
+function Get-TraceAgeMinutes {
+    param($LastUtc)
+
+    $thenUtc = if ($LastUtc -is [datetime]) {
+        $LastUtc.ToUniversalTime()
+    }
+    else {
+        [datetimeoffset]::Parse([string]$LastUtc, [System.Globalization.CultureInfo]::InvariantCulture).UtcDateTime
+    }
+    return ([datetime]::UtcNow - $thenUtc).TotalMinutes
+}
+
 try {
     $raw = if ($InputJson) { $InputJson } else { [Console]::In.ReadToEnd() }
     if (-not $raw) { exit 0 }
@@ -141,8 +160,7 @@ try {
         $trace = Get-Content $tracePath -Raw -Encoding UTF8 | ConvertFrom-Json
         $lastUtc = Get-Prop $trace 'lastUtc'
         if ($lastUtc) {
-            $age = (Get-Date).ToUniversalTime() - ([datetime]::Parse($lastUtc)).ToUniversalTime()
-            if ($age.TotalMinutes -le $WindowMinutes) { exit 0 }
+            if ((Get-TraceAgeMinutes $lastUtc) -le $WindowMinutes) { exit 0 }
         }
     }
 
