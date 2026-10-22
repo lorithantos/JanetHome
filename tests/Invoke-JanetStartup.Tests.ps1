@@ -482,4 +482,57 @@ Describe 'hook-backed rules' {
         $brief.rules[0] | Should -BeLike 'ADVISORY (claims ENFORCED*'
         @($brief.enforcement).Count | Should -Be 1
     }
+
+    <#
+        A wired hook is not enough when the rule's promise runs through an MCP server the
+        session does not load. On 2026-10-10 C:\repos\.claude\settings.local.json listed
+        janet and razorgraph under disabledMcpjsonServers and the brief still printed the
+        graph-first rule as ENFORCED. The project carries a fixture Invoke-GraphGuard.ps1
+        and declares its hook, so the hook arm passes and only the MCP check can relabel.
+    #>
+    Context 'MCP servers disabled in settings' {
+        BeforeAll {
+            $script:graphRule = [ordered]@{ text = 'ENFORCED: fixture graph-first rule.'; enforcedBy = 'scripts\Invoke-GraphGuard.ps1' }
+
+            function New-GraphProject {
+                # A project dir whose settings.json wires the graph guard, and whose
+                # settings.local.json holds the given text when there is one.
+                [CmdletBinding()]
+                param([Parameter(Mandatory)][string]$Name, [string]$LocalSettingsText)
+                $dir = New-ProjectDir $Name
+                New-Item -ItemType Directory -Path (Join-Path $dir 'scripts'), (Join-Path $dir '.claude') -Force | Out-Null
+                Set-Content -Path (Join-Path $dir 'scripts\Invoke-GraphGuard.ps1') -Value '# fixture hook' -Encoding UTF8
+                Set-Content -Path (Join-Path $dir '.claude\settings.json') -Value (New-SettingsJson 'Invoke-GraphGuard.ps1') -Encoding UTF8
+                if ($LocalSettingsText) { Set-Content -Path (Join-Path $dir '.claude\settings.local.json') -Value $LocalSettingsText -Encoding UTF8 }
+                return $dir
+            }
+        }
+
+        It 'relabels the graph-first rule and reports it when razorgraph is disabled' {
+            $project = New-GraphProject 'RazorDisabled' -LocalSettingsText '{ "disabledMcpjsonServers": ["razorgraph"] }'
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule) $project
+
+            $brief.rules | Should -Be @('ADVISORY (claims ENFORCED; MCP server razorgraph disabled here): fixture graph-first rule.')
+            @($brief.enforcement).Count | Should -Be 1
+            $brief.enforcement[0] | Should -BeLike "*'razorgraph'*disabledMcpjsonServers*settings.local.json*scripts\Invoke-GraphGuard.ps1*"
+            $brief.problems | Should -BeNullOrEmpty -Because 'a disabled server is reported, never fatal'
+        }
+
+        It 'keeps ENFORCED and reports nothing when no server it needs is disabled' {
+            $project = New-GraphProject 'OtherDisabled' -LocalSettingsText '{ "disabledMcpjsonServers": ["some-other-server"] }'
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule) $project
+
+            $brief.rules | Should -Be @('ENFORCED: fixture graph-first rule.')
+            $brief.enforcement | Should -BeNullOrEmpty
+        }
+
+        It 'reports janet disabled at user level without relabelling a rule that does not need it' {
+            $project = New-GraphProject 'JanetDisabled'
+            $brief = Invoke-WithUserProfile (New-RuleManifest $script:graphRule) $project -UserSettingsText '{ "disabledMcpjsonServers": ["janet"] }'
+
+            $brief.rules | Should -Be @('ENFORCED: fixture graph-first rule.')
+            @($brief.enforcement).Count | Should -Be 1
+            $brief.enforcement[0] | Should -BeLike "*'janet'*No rule is relabelled*"
+        }
+    }
 }

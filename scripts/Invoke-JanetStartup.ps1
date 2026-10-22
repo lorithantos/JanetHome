@@ -264,6 +264,85 @@ function Test-RuleEnforced {
     return (Test-HookDeclared -SettingsPath @(Join-Path $env:USERPROFILE '.claude\settings.json') -Leaf $leaf)
 }
 
+# The local MCP servers whose tools a session can lose to 'disabledMcpjsonServers',
+# each with the enforcedBy leaves of the rules that cannot keep their promise
+# without it. Keyed by the server's name in .mcp.json. The graph guard's rule says
+# a search IS answered by mcp__razorgraph__grep and a shell search is denied with a
+# paste-ready call to it; with razorgraph disabled the session has no such tool, so
+# the denial is a dead end. No ENFORCED rule rests on janet's tools today (the
+# research guard reads a trace Get-Research.ps1 writes, and the CLI still works), but
+# losing them is still worth a line in 'enforcement'.
+#
+# Since 2026-10-22. On 2026-10-10 C:\repos\.claude\settings.local.json listed both
+# servers as disabled and the brief still printed graph-first as ENFORCED.
+$mcpDependents = [ordered]@{
+    janet      = @()
+    razorgraph = @('Invoke-GraphGuard.ps1')
+}
+
+function Get-DisabledMcpServer {
+    # Which servers in $mcpDependents a settings file the harness loads for the
+    # project dir lists under 'disabledMcpjsonServers', each with the files that
+    # list it. The same chain the hook check reads, except that the user-level file
+    # counts for every project dir: a disabled server is disabled wherever it is
+    # said, whereas the user-level hooks deliberately skip this repo.
+    # A missing, unreadable or malformed file disables nothing, as it declares no hook.
+    param([string]$ProjectDir)
+    $projectClaude = Join-Path $ProjectDir '.claude'
+    $paths = @(
+        (Join-Path $projectClaude 'settings.json')
+        (Join-Path $projectClaude 'settings.local.json')
+        (Join-Path $env:USERPROFILE '.claude\settings.json')
+    ) | ForEach-Object { [System.IO.Path]::GetFullPath($_) } | Select-Object -Unique
+
+    $found = [ordered]@{}
+    foreach ($path in $paths) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        try { $settings = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json }
+        catch { continue }
+        if ($settings -isnot [System.Management.Automation.PSCustomObject]) { continue }
+        $listed = $settings.PSObject.Properties['disabledMcpjsonServers']
+        if ($null -eq $listed -or $null -eq $listed.Value) { continue }
+        foreach ($name in @($listed.Value)) {
+            foreach ($server in $mcpDependents.Keys) {
+                if (-not [string]::Equals([string]$name, $server, [StringComparison]::OrdinalIgnoreCase)) { continue }
+                if (-not $found.Contains($server)) { $found[$server] = @() }
+                if ($found[$server] -notcontains $path) { $found[$server] += $path }
+            }
+        }
+    }
+    return $found
+}
+
+function Get-RuleDisabledServer {
+    # The disabled servers this rule's mechanism needs, by its enforcedBy leaf.
+    param($Rule, [System.Collections.IDictionary]$Disabled)
+    if ($Rule -is [string]) { return }
+    $backing = Get-Prop $Rule 'enforcedBy'
+    if (-not $backing) { return }
+    $leaf = Split-Path $backing -Leaf
+    foreach ($server in $Disabled.Keys) {
+        if (@($mcpDependents[$server]) -contains $leaf) { $server }
+    }
+}
+
+function Get-RuleLabel {
+    # The rule line as the brief emits it. ENFORCED survives only when its hook is
+    # wired for the project dir and no server its mechanism needs is disabled there;
+    # otherwise it is relabelled with the reason. One function for the JSON and the
+    # -Text views, so they cannot disagree.
+    param($Rule, [string]$Line, [string]$ProjectDir, [System.Collections.IDictionary]$Disabled)
+    if ($Line -notmatch '^ENFORCED:') { return $Line }
+    if (-not (Test-RuleEnforced $Rule $ProjectDir)) {
+        return ($Line -replace '^ENFORCED:', 'ADVISORY (claims ENFORCED; hook not wired here):')
+    }
+    $servers = @(Get-RuleDisabledServer $Rule $Disabled)
+    if ($servers.Count -gt 0) {
+        return ($Line -replace '^ENFORCED:', "ADVISORY (claims ENFORCED; MCP server $($servers -join ', ') disabled here):")
+    }
+    return $Line
+}
+
 function Get-RuleText {
     # A rule is either a plain string or { text, why }.  The split exists so the
     # justification stays on disk and reviewable without being billed every
@@ -468,6 +547,24 @@ if ($unwired.Count -gt 0) {
                          ".claude\settings.json, or launch with '$repoRoot' as the project dir."
 }
 
+# Same severity and the same field as an unwired hook, for the same reason: the
+# manifest is intact, what is false is a label, and Start-Janet treats 'problems'
+# as fatal. One entry per disabled server, naming the files that disable it.
+$disabledMcp = Get-DisabledMcpServer $ProjectDir
+foreach ($server in $disabledMcp.Keys) {
+    $dependents = @($rules | Where-Object { @(Get-RuleDisabledServer $_ $disabledMcp) -contains $server } |
+                    ForEach-Object { Get-Prop $_ 'enforcedBy' })
+    $effect = if ($dependents.Count -gt 0) {
+        "Rule(s) whose mechanism needs it are emitted as ADVISORY (backed by: $($dependents -join ', '))."
+    } else {
+        'No rule is relabelled for it, but its tools are unavailable in a session there.'
+    }
+    $enforcementNotes += "enforcement: MCP server '$server' is listed under disabledMcpjsonServers in " +
+                         "$($disabledMcp[$server] -join ', ') for project dir '$ProjectDir', so a session " +
+                         "there does not load its tools. $effect Remove it from that list and reconnect " +
+                         "with /mcp, or restart the session."
+}
+
 if ($problems.Count -gt 0) {
     $detail = ($problems | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
     $summary = "Startup manifest has $($problems.Count) unresolved entr$(if ($problems.Count -eq 1) {'y'} else {'ies'}):"
@@ -578,10 +675,7 @@ $rulesOut = @()
 foreach ($rule in $rules) {
     $line = Get-RuleText $rule -WithWhy:$Full
     if (-not $line) { continue }
-    if (-not (Test-RuleEnforced $rule $ProjectDir)) {
-        $line = $line -replace '^ENFORCED:', 'ADVISORY (claims ENFORCED; hook not wired here):'
-    }
-    $rulesOut += $line
+    $rulesOut += (Get-RuleLabel $rule $line $ProjectDir $disabledMcp)
 }
 
 # 'problems' and 'enforcement' are separate fields because they carry different
@@ -695,10 +789,7 @@ if ($rules.Count -gt 0) {
     # someone uses when deciding whether a rule still earns its place.
     Write-Host 'OPERATING RULES' -ForegroundColor Cyan
     foreach ($rule in $rules) {
-        $ruleText = Get-RuleText $rule
-        if (-not (Test-RuleEnforced $rule $ProjectDir)) {
-            $ruleText = $ruleText -replace '^ENFORCED:', 'ADVISORY (claims ENFORCED; hook not wired here):'
-        }
+        $ruleText = Get-RuleLabel $rule (Get-RuleText $rule) $ProjectDir $disabledMcp
         Write-Host "  - $ruleText"
         $why = if ($rule -is [string]) { $null } else { Get-Prop $rule 'why' }
         if ($why) { Write-Host "      $why" -ForegroundColor DarkGray }
