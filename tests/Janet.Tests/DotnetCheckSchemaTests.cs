@@ -9,10 +9,11 @@ namespace Janet.Tests;
 /// </summary>
 /// <remarks>
 /// contracts\dotnet-check.schema.json is the published shape, and scripts\Test-OutputContracts.ps1
-/// validates a real sample against it on every commit -- but that sampler runs
-/// `janet check --no-tests`, so `tests` is null in the sample and the entire tests section has
-/// always been declared without ever being checked. A field added to the serializer and not the
-/// schema, or the reverse, passed the gate silently.
+/// validates a real sample against it on every commit -- but until 2026-10-23 that sampler ran
+/// only `janet check --no-tests`, so `tests` was null in the sample and the entire tests section
+/// was declared without ever being checked there. A field added to the serializer and not the
+/// schema, or the reverse, passed the gate silently. The gate now also samples one named test,
+/// which validates one populated shape; the exact set comparisons here still cover every field.
 /// <para>
 /// So this pins the two together from the side the gate cannot see. It is deliberately an
 /// EXACT set comparison rather than a subset one: the schema says additionalProperties false

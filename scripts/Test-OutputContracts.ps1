@@ -397,15 +397,61 @@ $samplers = @{
         if (-not (Test-Path $project)) { return [pscustomobject]@{ samples = @() } }
 
         $complete = @(& $Janet check --target $project --no-tests --no-graph) -join "`n"
+        $samples = @([pscustomobject]@{ label = 'complete, build only'; json = $complete })
+
+        # THE TESTS SECTION, sampled since 2026-10-23 (thread item 19). Until then only the
+        # build-only sample ran, so 'tests' was null in every envelope this gate saw and the
+        # whole section was declared without ever being validated here. One named test keeps
+        # it cheap: the test project's incremental build and one test host start.
+        #
+        # Run from a COPY of the CLI's output when that output is the repo build. Janet.Tests
+        # references Janet.Cli, so building it copies Janet.Core.dll into the directory the
+        # sampling janet.exe runs from -- and the build-only sample above has just rewritten
+        # Janet.Core.dll, so that copy is due. The running process holds the file open, and the
+        # build failed MSB3027 against its own sampler. The copy is about 3 MB.
+        $testProject = Join-Path $Root 'tests\Janet.Tests\Janet.Tests.csproj'
+        $oneTest = 'FullyQualifiedName=Janet.Tests.DotnetCheckAbortTests.AZeroExitLeavesAPassingRunPassing'
+
+        if (Test-Path $testProject) {
+            $runner = $Janet
+            $shadow = $null
+            $janetDirectory = Split-Path -Parent $Janet
+
+            if ($janetDirectory -and $janetDirectory.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $shadow = Join-Path ([System.IO.Path]::GetTempPath()) ('janet-contract-cli-' + [guid]::NewGuid().ToString('N'))
+                Copy-Item -LiteralPath $janetDirectory -Destination $shadow -Recurse
+                $runner = Join-Path $shadow (Split-Path -Leaf $Janet)
+            }
+
+            try {
+                $filtered = @(& $runner check --target $testProject --test-filter $oneTest --no-graph) -join "`n"
+            }
+            finally {
+                # A sampler that leaves temp files behind runs on every commit.
+                if ($shadow -and (Test-Path -LiteralPath $shadow)) {
+                    Remove-Item -LiteralPath $shadow -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+
+            # A run whose tests came back null validates nothing the build-only sample did not,
+            # and the schema allows the null -- so it is turned into a sample that cannot match,
+            # naming why, rather than passed.
+            $envelope = try { $filtered | ConvertFrom-Json } catch { $null }
+
+            if ($null -eq $envelope -or $null -eq $envelope.tests) {
+                $why = if ($envelope) { ($envelope.build.errors | ForEach-Object { "$($_.code) $($_.message)" }) -join '; ' } else { $filtered }
+                $filtered = "janet check --target $testProject --test-filter $oneTest produced no tests section, so the tests schema was not exercised: $why"
+            }
+
+            $samples += [pscustomobject]@{ label = 'complete, one named test'; json = $filtered }
+        }
 
         # ONLY THE 'complete' ARM IS SAMPLED. The running arm needs a build that outlasts the
         # grace period, and the CLI never produces one -- every invocation is a fresh process,
         # so there is nobody to poll and returning a handle would be useless. It is covered by
         # a unit test instead, and this comment is here so the gap is stated rather than
         # discovered.
-        return [pscustomobject]@{
-            samples = @([pscustomobject]@{ label = 'complete, build only'; json = $complete })
-        }
+        return [pscustomobject]@{ samples = $samples }
     }
 }
 
@@ -597,10 +643,18 @@ foreach ($schemaFile in $schemas) {
         $valid = Test-Json -Json $sample.json -Schema $schemaText -ErrorVariable errors -ErrorAction SilentlyContinue
 
         if (-not $valid) {
+            # A sample that is not JSON at all is a sampler saying why it could not produce one
+            # (a tool that exited non-zero, a tests section that never came back). Test-Json
+            # reports only "Cannot parse the JSON", so the sample's own words are quoted.
+            $said = if (-not [regex]::IsMatch([string]$sample.json, '^\s*[\{\[]')) {
+                $unparsed = [string]$sample.json
+                " Sample: $($unparsed.Substring(0, [Math]::Min(400, $unparsed.Length)))"
+            }
+
             $findings += [pscustomobject]@{
                 contract = $name
                 issue    = 'shape'
-                detail   = "[$($sample.label)] does not match the declared format: $(($errors | ForEach-Object { $_.ToString() }) -join '; ')"
+                detail   = "[$($sample.label)] does not match the declared format: $(($errors | ForEach-Object { $_.ToString() }) -join '; ')$said"
             }
             continue
         }
