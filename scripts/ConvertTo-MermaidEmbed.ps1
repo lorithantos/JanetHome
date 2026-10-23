@@ -33,6 +33,8 @@
 .EXAMPLE
     ConvertTo-MermaidEmbed.ps1 -Clipboard | Set-Clipboard
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Clipboard', Justification = 'Selects the Clipboard parameter set; read through $PSCmdlet.ParameterSetName.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'KeepSource', Justification = 'Read inside the regex-replace scriptblock, which the rule does not follow.')]
 [CmdletBinding(DefaultParameterSetName = 'Text')]
 param(
     [Parameter(ParameterSetName = 'Text', Position = 0, Mandatory)]
@@ -63,7 +65,7 @@ function ConvertTo-ImgTag {
 }
 
 function ConvertTo-LiveLink {
-    param([string]$MermaidSource, [string]$AltText)
+    param([string]$MermaidSource)
     Add-Type -AssemblyName System.IO.Compression
     $trimmed = $MermaidSource.Trim()
     $jsonCode = $trimmed.Replace('\','\\').Replace('"','\"').Replace("`r",'').Replace("`n",'\n')
@@ -81,15 +83,15 @@ function ConvertTo-LiveLink {
 
 switch ($PSCmdlet.ParameterSetName) {
     'Text' {
-        if ($Link) { $result = ConvertTo-LiveLink -MermaidSource $Text -AltText $Alt } else { $result = ConvertTo-ImgTag -MermaidSource $Text -AltText $Alt }
+        if ($Link) { $result = ConvertTo-LiveLink -MermaidSource $Text } else { $result = ConvertTo-ImgTag -MermaidSource $Text -AltText $Alt }
     }
     'File' {
         $source = Get-Content -Path $File -Raw -Encoding UTF8
-        if ($Link) { $result = ConvertTo-LiveLink -MermaidSource $source -AltText $Alt } else { $result = ConvertTo-ImgTag -MermaidSource $source -AltText $Alt }
+        if ($Link) { $result = ConvertTo-LiveLink -MermaidSource $source } else { $result = ConvertTo-ImgTag -MermaidSource $source -AltText $Alt }
     }
     'Clipboard' {
         $source = Get-Clipboard -Raw
-        if ($Link) { $result = ConvertTo-LiveLink -MermaidSource $source -AltText $Alt } else { $result = ConvertTo-ImgTag -MermaidSource $source -AltText $Alt }
+        if ($Link) { $result = ConvertTo-LiveLink -MermaidSource $source } else { $result = ConvertTo-ImgTag -MermaidSource $source -AltText $Alt }
     }
     'Markdown' {
         $md = Get-Content -Path $MarkdownFile -Raw -Encoding UTF8
@@ -99,7 +101,7 @@ switch ($PSCmdlet.ParameterSetName) {
             param($m)
             $count++
             $source = $m.Groups[1].Value
-            if ($Link) { $tag = ConvertTo-LiveLink -MermaidSource $source -AltText "$Alt $count" } else { $tag = ConvertTo-ImgTag -MermaidSource $source -AltText "$Alt $count" }
+            if ($Link) { $tag = ConvertTo-LiveLink -MermaidSource $source } else { $tag = ConvertTo-ImgTag -MermaidSource $source -AltText "$Alt $count" }
             if ($KeepSource) {
                 "<!-- mermaid source`n$($source.Trim())`n-->`n$tag"
             } else {

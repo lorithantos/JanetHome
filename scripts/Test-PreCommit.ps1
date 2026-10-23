@@ -3,7 +3,8 @@
     Pre-commit validation: lint, test, config check, and encoding audit.
 
 .DESCRIPTION
-    Runs PSScriptAnalyzer and the deep-nesting gate on staged .ps1 files, builds every
+    Runs PSScriptAnalyzer (failing on any Warning or Error left after the repo's
+    PSScriptAnalyzerSettings.psd1) and the deep-nesting gate on staged .ps1 files, builds every
     solution at the repo root through `janet check` when the commit stages a C# or build
     file, executes the tracked Pester test files under tests\, validates toolkit config via Test-Config.ps1, and checks
     file encoding on staged files via Test-FileEncoding.ps1. Returns exit code 0
@@ -94,10 +95,17 @@ if ($stagedPs1.Count -eq 0) {
     Write-Host '  PSScriptAnalyzer is not installed (Install-Module PSScriptAnalyzer) and .ps1 files are staged.' -ForegroundColor Red
     Write-StepResult 'PSScriptAnalyzer' $false
 } else {
+    # FAILS ON ANY WARNING OR ERROR since 2026-10-23 (thread item 40, Lori's decision). Until
+    # then it printed the whole violation table and passed unless a finding was an Error, so
+    # the evidence and the verdict sat on one screen and disagreed. The repo's settings file
+    # carries the deliberate repo-wide exclusions; anything else is fixed, or suppressed where
+    # it stands with a SuppressMessageAttribute and a justification.
     $settingsPath = Join-Path $repoRoot 'PSScriptAnalyzerSettings.psd1'
     $analyzerArgs = @{ Severity = @('Error', 'Warning') }
+    $settingsNote = 'no PSScriptAnalyzerSettings.psd1 at the repo root'
     if (Test-Path $settingsPath) {
         $analyzerArgs['Settings'] = $settingsPath
+        $settingsNote = 'settings: PSScriptAnalyzerSettings.psd1'
     }
 
     $violations = @()
@@ -109,8 +117,10 @@ if ($stagedPs1.Count -eq 0) {
         $violations | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize -Wrap
     }
 
-    $errors = @($violations | Where-Object Severity -eq 'Error')
-    Write-StepResult 'PSScriptAnalyzer' ($errors.Count -eq 0)
+    # The denominator, so a pass over one file does not read like a pass over the tree.
+    $color = if ($violations.Count -eq 0) { 'Gray' } else { 'Red' }
+    Write-Host "  $($stagedPs1.Count) staged .ps1 file(s) analysed, $($violations.Count) Warning/Error finding(s); $settingsNote." -ForegroundColor $color
+    Write-StepResult 'PSScriptAnalyzer' ($violations.Count -eq 0)
 }
 
 # ---------- 2. Deep Nesting ----------

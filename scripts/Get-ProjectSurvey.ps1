@@ -23,6 +23,7 @@
     Get-ProjectSurvey.ps1 -Path <repo-root>\SampleApp.Jobs
     Get-ProjectSurvey.ps1 -Path <repo-root>\SampleApp.Web -OutFile $env:TEMP\survey.md
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'MaxDepth', Justification = 'Public and documented but never implemented: accepted and ignored. Kept so callers passing it do not break; thread item tracks honouring or removing it.')]
 [CmdletBinding()]
 param(
     [string]$Path = '.',

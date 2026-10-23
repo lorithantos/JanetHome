@@ -76,7 +76,7 @@ if (-not (Test-Path $RootPath)) {
     return
 }
 
-# ── Data gathering ──────────────────────────────────────────────────
+# -- Data gathering --------------------------------------------------
 $repoDirs = Get-ChildItem -Path $RootPath -Directory |
     Where-Object { Test-Path (Join-Path $_.FullName '.git') }
 
@@ -178,7 +178,7 @@ foreach ($d in $repoDirs) {
 $repos = @($repos | Sort-Object @{E={$_.dirty};D=$true}, @{E={$_.name}})
 Write-Verbose ('Gathered data for ' + $repos.Count + ' repos')
 
-# ── HTML generation ─────────────────────────────────────────────────
+# -- HTML generation -------------------------------------------------
 function HtmlEnc([string]$s)        { if ($s) { [System.Net.WebUtility]::HtmlEncode($s) } else { '' } }
 function Truncate([string]$s,[int]$n) { if ($s -and $s.Length -gt $n) { $s.Substring(0, $n) + '...' } else { $s } }
 
@@ -321,7 +321,7 @@ foreach ($r in $repos) {
 
 [void]$h.AppendLine('</body></html>')
 
-# ── Write output ────────────────────────────────────────────────────
+# -- Write output ----------------------------------------------------
 $html = $h.ToString()
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($html))
 & $ntf -Path $OutFile -Base64 $b64 -Force

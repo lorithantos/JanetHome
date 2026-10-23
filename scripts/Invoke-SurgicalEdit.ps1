@@ -28,6 +28,7 @@
 .EXAMPLE
     & "$env:JanetBase\.github\scripts\Invoke-SurgicalEdit.ps1" -PlanFile plan.json -NoBuild -NoTest
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingInvokeExpression', '', Justification = 'The plan''s buildCommand and testCommand are command lines by contract, written by the operator who runs the plan.')]
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PlanFile,
@@ -100,6 +101,7 @@ function Invoke-RemoveLinesOp {
 }
 
 function Invoke-RemoveParameterOp {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'methodEsc', Justification = 'Left as the marker of a known defect: the op names methods but the replace runs over the whole file, so $methodEsc never scopes it. Fixing that changes behaviour; tracked as a thread item.')]
     param($op)
     $full = Resolve-OpPath $script:repoRoot $op.path
     $content = [System.IO.File]::ReadAllText($full)

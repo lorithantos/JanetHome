@@ -40,6 +40,7 @@
 .EXAMPLE
     .\Test-OutputContracts.ps1 -Text -Against HEAD~1
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Root', Justification = 'Every sampler is called as (Janet, Root); the thread-report one seeds a fixture and needs no root. The rule ignores a suppression on the scriptblock itself.')]
 [CmdletBinding()]
 param(
     [string]$Path = '',

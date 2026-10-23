@@ -59,6 +59,8 @@ function Invoke-External {
         $r = Invoke-External -NoThrow git status --porcelain
         if ($r.ExitCode -eq 0) { $r.StdOut | Where-Object { $_ } }
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '', Justification = 'The Kill after a timeout may race the process exiting on its own; either way it is gone, and the result already says it timed out.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'New-Result builds the result object and changes no state.')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, Position = 0)]

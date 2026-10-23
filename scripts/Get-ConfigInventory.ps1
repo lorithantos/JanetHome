@@ -92,7 +92,7 @@ foreach ($g in $dirGroups) {
 }
 [void]$sb.AppendLine()
 
-# File listing ï¿½ per-file or per-directory
+# File listing -- per-file or per-directory
 if ($ListFiles) {
     [void]$sb.AppendLine('## Files')
     [void]$sb.AppendLine()
@@ -119,10 +119,10 @@ if ($ListFiles) {
         } else {
             $lo = if ($minKb -ge 1) { "${minKb} KB" } else { "$($sizes[0]) B" }
             $hi = if ($maxKb -ge 1) { "${maxKb} KB" } else { "$($sizes[-1]) B" }
-            "${lo} ï¿½ ${hi}"
+            "${lo} - ${hi}"
         }
         $sampleNames = ($g.Group | Select-Object -First 3 -ExpandProperty Name) -join ', '
-        if ($g.Group.Count -gt 3) { $sampleNames += ", ï¿½ +$($g.Group.Count - 3)" }
+        if ($g.Group.Count -gt 3) { $sampleNames += ", ... +$($g.Group.Count - 3)" }
         [void]$sb.AppendLine("| ``$($g.Name)`` | $($g.Count) | $sizeRange | $sampleNames |")
     }
     [void]$sb.AppendLine()
@@ -161,7 +161,7 @@ if ($SampleKeys) {
             }
             $remaining = $entry.Value.Count - $MaxPatternFiles
             if ($remaining -gt 0) {
-                [void]$sb.AppendLine("- ï¿½ and $remaining more")
+                [void]$sb.AppendLine("- ... and $remaining more")
             }
             [void]$sb.AppendLine()
         }

@@ -42,6 +42,8 @@
     Pipe input does not bind to a [string] parameter, which is why the script documents
     -InputJson for exactly this.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: transcripts under TestDrive, where -WhatIf has no meaning.')]
+param()
 
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent

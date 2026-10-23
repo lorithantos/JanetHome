@@ -17,6 +17,8 @@
     tests, and the fact that array splatting binds positionally -- '-Area' arriving as the
     literal string bound to the first parameter -- was found by running it, not by a test.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: probes, manifests and project dirs under TestDrive, where -WhatIf has no meaning.')]
+param()
 
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent

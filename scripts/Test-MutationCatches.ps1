@@ -216,18 +216,18 @@ if ($findings.Count -eq 0) {
         $originalHash = Get-Sha256 $originalBytes
         $original = [System.IO.File]::ReadAllText($file)
 
-        $matches = ([regex]::Matches($original, [regex]::Escape($find))).Count
+        $matchCount = ([regex]::Matches($original, [regex]::Escape($find))).Count
 
-        if (-not $find -or $matches -eq 0) {
+        if (-not $find -or $matchCount -eq 0) {
             $findings += [pscustomobject]@{ mutation = $name; kind = 'not-found'; detail = "The text to replace does not appear in $relative." }
             continue
         }
 
-        if ($matches -gt 1 -and $occurrences -ne 'all') {
+        if ($matchCount -gt 1 -and $occurrences -ne 'all') {
             $findings += [pscustomobject]@{
                 mutation = $name
                 kind     = 'ambiguous'
-                detail   = "'find' matches $matches times in $relative. Narrow it, or set occurrences to 'all' to mean it."
+                detail   = "'find' matches $matchCount times in $relative. Narrow it, or set occurrences to 'all' to mean it."
             }
             continue
         }

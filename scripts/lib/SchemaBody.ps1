@@ -26,6 +26,7 @@ function Remove-SchemaDescription {
     # instances rather than schemas. Neither is walked as a schema, so neither loses anything.
     # Only a string value is stripped: the keyword is always a string, and anything else in
     # that slot is malformed enough that it should still count as a change.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Edits an in-memory parsed schema; changes no system state.')]
     param($Schema)
     if ($Schema -isnot [System.Collections.IDictionary]) { return }
 

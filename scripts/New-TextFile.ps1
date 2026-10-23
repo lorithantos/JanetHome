@@ -27,6 +27,7 @@
 .EXAMPLE
     & "$env:JanetBase\.github\scripts\New-TextFile.ps1" -Path "Copy.cs" -Base64 "dXNpbmcgU3lzdGVtOw0K..." -Force
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Clipboard', Justification = 'Selects the Clipboard parameter set; read through $PSCmdlet.ParameterSetName.')]
 [CmdletBinding()]
 [OutputType([void])]
 param(

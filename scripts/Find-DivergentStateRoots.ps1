@@ -60,6 +60,7 @@
 .EXAMPLE
     & "$env:JanetBase\scripts\Find-DivergentStateRoots.ps1" -Project Nav.Core -GraphId gamehub -Text
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Uri', Justification = 'Read inside Invoke-Tool from script scope, which the rule does not follow.')]
 param(
     [Parameter(Mandatory)][string]$Project,
     [Parameter(Mandatory)][string]$GraphId,

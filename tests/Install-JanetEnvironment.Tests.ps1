@@ -15,6 +15,8 @@
     so the two pure-prose skills (checking-in and graph-node-reading), which never
     resolve $janet, each reported a problem and every run exited 1.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: files under TestDrive, where -WhatIf has no meaning.')]
+param()
 
 BeforeAll {
     Set-StrictMode -Version Latest

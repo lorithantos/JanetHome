@@ -618,8 +618,9 @@ function Format-GrepAnswer {
 # feeds a search is still judged as the search.
 
 $script:ShellPrefilter = '\b(grep|egrep|fgrep|rg|ag|ack|Select-String|sls|findstr)\b'
-$script:SourcePrefilter = '(?i)\.(cs|razor|csproj|slnx?)\b'
-$script:SourceExtensions = @('.cs', '.razor', '.csproj', '.sln', '.slnx')
+# $script:SourceExtensions and $script:SourcePrefilter come from lib\ShellCommand.ps1, which
+# Invoke-ShellWriteGuard.ps1 reads too: the source a shell may not read is the source it
+# may not write.
 $script:ScriptReaders = @('sed', 'awk', 'gawk')
 $script:FileReadMembers = @('ReadAllText', 'ReadAllLines', 'ReadAllBytes', 'ReadLines', 'OpenText', 'OpenRead', 'Open')
 $script:GrepVerbs = @('grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack')
@@ -649,6 +650,7 @@ $script:GrepOptions = @{
 }
 
 function New-SearchDescriptor {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Builds an in-memory descriptor; changes no state.')]
     param([string]$Tool)
     [PSCustomObject]@{
         Tool       = $Tool
@@ -664,6 +666,7 @@ function New-SearchDescriptor {
 }
 
 function Set-GrepOption {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Sets a field on the in-memory search descriptor it is handed; changes no system state.')]
     param($Search, [string]$Name, $Value, [string]$Kind)
     if ($Name -ceq 'e' -or $Name -ceq 'regexp') { $Search.Patterns.Add($Value) }
     elseif ($Name -ceq 'f' -or $Name -ceq 'file') { $Search.Patterns.Add($null) }

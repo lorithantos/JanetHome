@@ -62,6 +62,7 @@
     & "$env:JanetBase\scripts\Find-Screenshot.ps1" -WithinHours 1 -First 3 -Text
     The one they just took.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Path', Justification = 'Read inside Get-SearchRoots from script scope, which the rule does not follow.')]
 [CmdletBinding()]
 param(
     [string]$Name,

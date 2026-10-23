@@ -19,6 +19,8 @@
     deploy that had landed was reported as DEPLOYMENT FAILED. It happened to the
     Neelam test deploys of 2026-10-03 and 2026-10-09.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: scratch repos under TestDrive, where -WhatIf has no meaning.')]
+param()
 
 BeforeAll {
     Set-StrictMode -Version Latest
@@ -58,6 +60,7 @@ BeforeAll {
     function Invoke-Probe {
         # Runs the lifted try/catch in this scope with the loop's variables set,
         # and returns what it wrote plus whether it marked the site healthy.
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'The loop variables are read by the lifted probe dot-sourced below, which the rule cannot see.')]
         param([string]$Url)
         $verifyUrl = $Url
         $attempt = 1

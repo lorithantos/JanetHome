@@ -15,6 +15,8 @@
     Added 2026-10-21: until then a hook pointing at a deleted script was invisible, and
     startup reported '0 absolute path(s) across 3 file(s) all resolve' over six of them.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: project dirs under TestDrive, where -WhatIf has no meaning.')]
+param()
 
 BeforeAll {
     $script:subject = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\Test-ConfigPaths.ps1'

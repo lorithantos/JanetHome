@@ -12,6 +12,9 @@
     against a throwaway git repo under TestDrive or are stubbed where the disk is not
     the question.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: they make rows and TestDrive files, where -WhatIf has no meaning.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 's', Justification = 'The $script:dotnet stub keeps the kind resolver''s signature; every source is dotnet. The rule ignores a suppression on the scriptblock itself.')]
+param()
 
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent

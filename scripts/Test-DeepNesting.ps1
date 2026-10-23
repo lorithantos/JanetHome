@@ -1,24 +1,24 @@
 <#
 .SYNOPSIS
-    Deep-nesting (christmas-tree) detector for PowerShell, by AST — the PS backend
+    Deep-nesting (christmas-tree) detector for PowerShell, by AST -- the PS backend
     of the style gate's nesting rule.
 
 .DESCRIPTION
     The PowerShell sibling of RazorGraph's deep_methods: reports every function (and
     top-level script body) whose control flow nests at least MinDepth levels, deepest
-    first. Depth is syntactic — how many indentation steps of control flow a reader
-    must hold to reach the deepest statement — computed from the language's own
+    first. Depth is syntactic -- how many indentation steps of control flow a reader
+    must hold to reach the deepest statement -- computed from the language's own
     parser, not regex over text.
 
     Semantics mirror RazorGraph's NestingDepth where the languages correspond:
-    an elseif chain adds no depth (free in PowerShell — elseif clauses hang off the
+    an elseif chain adds no depth (free in PowerShell -- elseif clauses hang off the
     same IfStatementAst). One deliberate divergence: script-block literals passed to
     commands (ForEach-Object { }, Where-Object { }, .SetAction handlers) count one
     level, because they indent and pipeline-style trees would otherwise vanish from
-    the report. Function definition bodies do not count — the function is the unit
+    the report. Function definition bodies do not count -- the function is the unit
     being measured, not a level inside itself.
 
-    Exit code 1 when findings exist, 0 when clean — usable directly as a gate step.
+    Exit code 1 when findings exist, 0 when clean -- usable directly as a gate step.
 
 .PARAMETER Path
     Files or directories. Directories are searched recursively for *.ps1 and *.psm1.
@@ -68,7 +68,7 @@ foreach ($p in $Path) {
 # The constructs a reader indents for. IfStatementAst covers elseif for free:
 # elseif clauses are entries in the same node's Clauses collection, so a chain
 # is one level however long it grows. An explicit `else { if ... }` is a nested
-# IfStatementAst and does count — it indents.
+# IfStatementAst and does count -- it indents.
 function Test-AddsNesting {
     param([System.Management.Automation.Language.Ast]$Node)
     return (

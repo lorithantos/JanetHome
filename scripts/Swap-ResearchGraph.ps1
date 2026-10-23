@@ -49,6 +49,8 @@
     writer trying to prove there are no writers. The checks below catch the ordinary
     case; your own shutdown is what actually establishes the precondition.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'IgnoreRecentActivity', Justification = 'Read inside the precondition function from script scope, which the rule does not follow.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'JanetCommand', Justification = 'Read inside Resolve-Janet from script scope, which the rule does not follow.')]
 [CmdletBinding()]
 param(
     [switch]$Approve,

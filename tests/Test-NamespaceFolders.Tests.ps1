@@ -12,6 +12,8 @@
     shape), a RootNamespace override, a block namespace, bin\ and obj\ skipping, a
     nested project, and a file with no namespace.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: files under TestDrive, where -WhatIf has no meaning.')]
+param()
 
 BeforeAll {
     Set-StrictMode -Version Latest

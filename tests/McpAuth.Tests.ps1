@@ -10,6 +10,8 @@
     TestDrive, and the 401 by a one-shot TcpListener on a loopback port that records the
     request it was sent. Nothing here reads or writes HKCU\Software\Janet.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: fake executables under TestDrive and a loopback listener, where -WhatIf has no meaning.')]
+param()
 
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent
@@ -27,6 +29,7 @@ BeforeAll {
     # One request, one canned 401. Returns the job (whose output is the request text) and
     # the URI to dial. The listener is created here so the port is known before the job runs.
     function Start-RefusingServer {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '', Justification = 'The job scriptblock declares $Listener and $Body as its own params, bound by -ArgumentList; $using: would be wrong.')]
         param([string]$Body)
         $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
         $listener.Start()

@@ -165,9 +165,9 @@ else {
         Write-Host "$($instances.Count) VS instances found. Use -SolutionMatch to pick one:"
         foreach ($inst in $instances) {
             $d = $inst[1]
-            $pid = ($inst[0] -split ':')[-1]
+            $instancePid = ($inst[0] -split ':')[-1]
             try { $sol = $d.Solution.FullName } catch { $sol = '(no solution)' }
-            Write-Host "  PID $pid : $sol"
+            Write-Host "  PID $instancePid : $sol"
         }
         Write-Error 'Ambiguous: multiple VS instances running. Specify -SolutionMatch.'
         return

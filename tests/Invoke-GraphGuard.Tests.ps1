@@ -28,6 +28,9 @@
     exit code is deliberate: the script fails open in every error path, so exit 0 alone
     would pass even when the guard has crashed.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Test fixture builders: canned envelopes, where -WhatIf has no meaning.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'The injected -McpCall and -EnsureServer fakes run inside the guard script''s own scope, so the call record they share with the tests has to be global.')]
+param()
 
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent

@@ -67,6 +67,7 @@
 .EXAMPLE
     & "$env:JanetBase\scripts\Get-WindowCapture.ps1" -ProcessId 1234 -OutFile shot.png -Text
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '', Justification = 'The one empty catch is the cleanup Kill in finally: a process that has already gone is the outcome wanted, and it says so in a comment.')]
 [CmdletBinding(DefaultParameterSetName = 'Launch')]
 param(
     [Parameter(ParameterSetName = 'Launch', Mandatory = $true)]
