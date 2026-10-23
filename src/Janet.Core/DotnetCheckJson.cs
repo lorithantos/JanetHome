@@ -9,11 +9,12 @@ namespace Janet.Core;
 /// Serializes a check in the format declared by contracts\dotnet-check.schema.json.
 /// </summary>
 /// <remarks>
-/// Contract 8, a tagged union on 'status' since 4. The discriminator is not decoration: a caller
+/// Contract 9, a tagged union on 'status' since 4. The discriminator is not decoration: a caller
 /// that has not read it has no business reading anything else, because the running arm carries a
 /// handle and none of the answer. 5 gave 'tests' the runner's verdict; 6 gave 'graph' the
 /// convention that answered ('via') and the server-side id ('graphId'), when the graph lives in a
-/// RazorGraph server rather than a file; 8 gave 'build' a 'diagnosis'.
+/// RazorGraph server rather than a file; 8 gave 'build' a 'diagnosis'; 9 gave 'graph' the status
+/// 'unauthorized' and a 'detail' naming the refusal.
 ///
 /// Four fields mean something specific when null, and the schema says so in prose because JSON
 /// Schema cannot: newWarnings null is NO COMPARISON HAPPENED rather than none were new, tests
@@ -221,6 +222,7 @@ public static class DotnetCheckJson
             ["status"] = graph.Status,
             ["refreshed"] = graph.Refreshed,
             ["canRefresh"] = graph.CanRefresh,
+            ["detail"] = graph.Detail,
         };
 
     // ---- the reading view ---------------------------------------------------------------
@@ -268,6 +270,14 @@ public static class DotnetCheckJson
             {
                 text.AppendLine($"  NEW {fresh.Code}: {fresh.Message} ({Location(fresh)})");
             }
+        }
+
+        // The graph is otherwise left to the JSON. A refusal is printed because it is a broken
+        // configuration, and the reading view saying nothing is how two days of "absent" went
+        // unnoticed after the bearer-token cutover.
+        if (result.Graph is { Status: "unauthorized" } refused)
+        {
+            text.AppendLine($"GRAPH UNAUTHORIZED {refused.Detail}");
         }
 
         if (result.Tests is null)

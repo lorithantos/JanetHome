@@ -12,9 +12,12 @@ namespace Janet.Tests;
 public class RazorGraphClientTests
 {
     /// <summary>Answers each JSON-RPC request from a script, recording what it was sent.</summary>
-    private sealed class ScriptedServer(Func<string, string, string?> answer) : HttpMessageHandler
+    private sealed class ScriptedServer(Func<string, string, string?> answer, HttpStatusCode? refuseWith = null) : HttpMessageHandler
     {
         public List<(string Method, string? Session)> Seen { get; } = [];
+
+        /// <summary>Each request's Authorization header as sent, null where there was none.</summary>
+        public List<string?> Authorizations { get; } = [];
 
         // The client uses HttpClient.Send, the synchronous path, so this is the override that
         // matters; the async one exists only so the handler is complete.
@@ -27,6 +30,13 @@ public class RazorGraphClientTests
             string method = JsonNode.Parse(body)?["method"]?.GetValue<string>() ?? "";
             string? session = request.Headers.TryGetValues("Mcp-Session-Id", out IEnumerable<string>? values) ? values.First() : null;
             Seen.Add((method, session));
+            Authorizations.Add(request.Headers.Authorization?.ToString());
+
+            if (refuseWith is HttpStatusCode refused)
+            {
+                // What Janet.Mcp.Security answers under --auth require: no session, a short body.
+                return new HttpResponseMessage(refused) { Content = new StringContent("missing bearer token") };
+            }
 
             string? reply = answer(method, body);
             HttpResponseMessage response = new(reply is null ? HttpStatusCode.Accepted : HttpStatusCode.OK)
@@ -58,7 +68,7 @@ public class RazorGraphClientTests
             _ => null,
         });
 
-        IReadOnlyList<ServedGraph>? served = new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server).TryListGraphs();
+        IReadOnlyList<ServedGraph>? served = new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, NoToken).TryListGraphs();
 
         ServedGraph graph = Assert.Single(served!);
         Assert.Equal("janet", graph.Id);
@@ -80,7 +90,7 @@ public class RazorGraphClientTests
             _ => null,
         });
 
-        ServedGraph graph = Assert.Single(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server).TryListGraphs()!);
+        ServedGraph graph = Assert.Single(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, NoToken).TryListGraphs()!);
 
         DateTimeOffset built = new(2026, 10, 12, 6, 0, 0, TimeSpan.Zero);
         Assert.Equal(built, graph.BuiltAt);
@@ -125,7 +135,7 @@ public class RazorGraphClientTests
             _ => null,
         });
 
-        Assert.Single(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server).TryListGraphs()!);
+        Assert.Single(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, NoToken).TryListGraphs()!);
     }
 
     [Fact]
@@ -138,7 +148,7 @@ public class RazorGraphClientTests
             _ => null,
         });
 
-        new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server).TryListGraphs();
+        new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, NoToken).TryListGraphs();
 
         Assert.Equal(["initialize", "notifications/initialized", "tools/call"], server.Seen.Select(s => s.Method));
         Assert.Null(server.Seen[0].Session);
@@ -160,7 +170,7 @@ public class RazorGraphClientTests
             return method == "initialize" ? Initialized : null;
         });
 
-        DateTimeOffset? rebuilt = new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server)
+        DateTimeOffset? rebuilt = new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, NoToken)
             .TryRebuild("janet", @"C:\repos\JanetHome\JanetHome.slnx");
 
         Assert.NotNull(rebuilt);
@@ -178,14 +188,138 @@ public class RazorGraphClientTests
             _ => null,
         });
 
-        Assert.Null(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server).TryListGraphs());
+        Assert.Null(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, NoToken).TryListGraphs());
     }
 
     [Fact]
     public void AServerThatIsNotThereIsNullNotAThrow()
     {
         // Port 1 on loopback: nothing listens, and the client must say so quietly.
-        Assert.Null(new RazorGraphClient(new Uri("http://127.0.0.1:1/")).TryListGraphs());
+        RazorGraphClient client = new(new Uri("http://127.0.0.1:1/"), readToken: NoToken);
+
+        Assert.Null(client.TryListGraphs());
+        Assert.Null(client.Refusal);
+    }
+
+    // ---- the bearer token (thread item 82) ----------------------------------------------------
+
+    /// <summary>A fake: the real store is never read by a test.</summary>
+    private const string FakeToken = "fake-token-for-razorgraph-client-tests";
+
+    private static string? WithToken(out string? error)
+    {
+        error = null;
+        return FakeToken;
+    }
+
+    private static string? NoToken(out string? error)
+    {
+        error = "no MCP token at HKCU\\Software\\Janet (test)";
+        return null;
+    }
+
+    private static ScriptedServer Answering() => new((method, _) => method switch
+    {
+        "initialize" => Initialized,
+        "tools/call" => ToolResult(Graphs),
+        _ => null,
+    });
+
+    [Fact]
+    public void EveryRequestCarriesTheTokenJanetReads()
+    {
+        // 2026-10-21 onward both servers run --auth require, and this client sent nothing: every
+        // janet check was refused and its graph read "absent".
+        ScriptedServer server = Answering();
+
+        Assert.Single(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, WithToken).TryListGraphs()!);
+
+        Assert.Equal(3, server.Authorizations.Count);
+        Assert.All(server.Authorizations, sent => Assert.Equal($"Bearer {FakeToken}", sent));
+    }
+
+    [Fact]
+    public void WithNoTokenNoHeaderIsSentAndAnOpenServerStillAnswers()
+    {
+        ScriptedServer server = Answering();
+
+        Assert.Single(new RazorGraphClient(new Uri("http://127.0.0.1:1/"), server, NoToken).TryListGraphs()!);
+        Assert.All(server.Authorizations, Assert.Null);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "401")]
+    [InlineData(HttpStatusCode.Forbidden, "403")]
+    public void ARefusalIsNamedAndNeverCarriesTheToken(HttpStatusCode status, string code)
+    {
+        ScriptedServer server = new((_, _) => null, refuseWith: status);
+        RazorGraphClient client = new(new Uri("http://127.0.0.1:1/"), server, WithToken);
+
+        Assert.Null(client.TryListGraphs());
+        Assert.NotNull(client.Refusal);
+        Assert.Contains(code, client.Refusal);
+        Assert.Contains("was sent and refused", client.Refusal);
+        Assert.DoesNotContain(FakeToken, client.Refusal);
+    }
+
+    [Fact]
+    public void ARefusalWithNoTokenSaysNoneWasSentAndWhy()
+    {
+        ScriptedServer server = new((_, _) => null, refuseWith: HttpStatusCode.Unauthorized);
+        RazorGraphClient client = new(new Uri("http://127.0.0.1:1/"), server, NoToken);
+
+        Assert.Null(client.TryListGraphs());
+        Assert.Contains("No Authorization header was sent (no MCP token at HKCU\\Software\\Janet (test))", client.Refusal);
+        Assert.Contains("janet mcp-token --ensure", client.Refusal);
+    }
+
+    [Fact]
+    public void ARefusedGraphReadsUnauthorizedNotAbsent()
+    {
+        DirectoryInfo repository = Directory.CreateTempSubdirectory("janet-rgc-");
+        try
+        {
+            ScriptedServer server = new((_, _) => null, refuseWith: HttpStatusCode.Unauthorized);
+            RazorGraphClient client = new(new Uri("http://127.0.0.1:1/"), server, WithToken);
+
+            GraphState state = CodeGraph.ReadServed(client, repository.FullName, null);
+
+            Assert.Equal("unauthorized", state.Status);
+            Assert.Equal(client.Refusal, state.Detail);
+            Assert.False(state.CanRefresh);
+            Assert.Null(state.GraphId);
+
+            string envelope = DotnetCheckJson.Serialize(new CheckResult(
+                @"D:\Repos\Sample\App.slnx", "Debug", true,
+                new BuildReport(true, 0.1, [], [], 0, null, null, null, null), null, state));
+            Assert.Contains("\"status\":\"unauthorized\"", envelope);
+            Assert.DoesNotContain(FakeToken, envelope);
+        }
+        finally
+        {
+            repository.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AnAnsweringServerStillReadsAbsentWhenItHoldsNoGraphHere()
+    {
+        // The other side of the line: 'absent' keeps its meaning -- the server answered and holds
+        // nothing under this repository -- and carries no detail.
+        DirectoryInfo repository = Directory.CreateTempSubdirectory("janet-rgc-");
+        try
+        {
+            RazorGraphClient client = new(new Uri("http://127.0.0.1:1/"), Answering(), WithToken);
+
+            GraphState state = CodeGraph.ReadServed(client, repository.FullName, null);
+
+            Assert.Equal("absent", state.Status);
+            Assert.Null(state.Detail);
+        }
+        finally
+        {
+            repository.Delete(recursive: true);
+        }
     }
 
     [Fact]

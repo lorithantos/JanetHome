@@ -19,9 +19,20 @@ public sealed record GraphState
 
     public string? BuiltAt { get; set; }
     public string? NewestSourceAt { get; init; }
+    /// <summary>
+    /// current, stale, absent, failed, or unauthorized (contract 9): the razorgraph server is
+    /// there and refused janet's token, so whether a graph exists is unknown -- not absent.
+    /// </summary>
     public string Status { get; set; } = "absent";
+
     public bool Refreshed { get; set; }
     public bool CanRefresh { get; init; }
+
+    /// <summary>
+    /// What the status alone cannot say: with "unauthorized", the refusal and what to do about
+    /// it. Null otherwise. Never carries the token.
+    /// </summary>
+    public string? Detail { get; set; }
 }
 
 /// <summary>
@@ -128,18 +139,38 @@ public static class CodeGraph
     /// for one; only a graph that exists and has been outrun is rebuilt. A server that does not
     /// answer reads the same way -- absent, not refreshable -- rather than as an error, because a
     /// graph is a convenience the check must not fail over.
+    ///
+    /// A server that answers 401 or 403 is the exception (contract 9): it is there, and refusing
+    /// janet, so whether it holds a graph is unknown. Reporting that as "absent" -- no graph --
+    /// is what every check did for two days after the bearer-token cutover, so it reads
+    /// "unauthorized" with the refusal in detail. Still not a failed check.
     /// </remarks>
     private static GraphState? ReadServed(string repositoryRoot, string? target)
     {
         RazorGraphClient? client = RazorGraphClient.FromRepository(repositoryRoot);
-        if (client is null)
-        {
-            return null;
-        }
 
+        return client is null ? null : ReadServed(client, repositoryRoot, target);
+    }
+
+    /// <summary>The served convention against a given client: the seam the tests script.</summary>
+    internal static GraphState ReadServed(RazorGraphClient client, string repositoryRoot, string? target)
+    {
         DateTime? newest = NewestSourceWrite(repositoryRoot);
 
-        ServedGraph? mine = client.TryListGraphs()?
+        IReadOnlyList<ServedGraph>? served = client.TryListGraphs();
+        if (served is null && client.Refusal is not null)
+        {
+            return new GraphState
+            {
+                Via = "razorgraph",
+                NewestSourceAt = newest?.ToString("o"),
+                Status = "unauthorized",
+                CanRefresh = false,
+                Detail = client.Refusal,
+            };
+        }
+
+        ServedGraph? mine = served?
             .Where(g => IsUnder(g.Source, repositoryRoot))
             .OrderByDescending(g => target is not null && PathsEqual(g.Source, target))
             .ThenByDescending(g => g.Stamp)
@@ -304,7 +335,10 @@ public static class CodeGraph
         DateTimeOffset? rebuilt = client.TryRebuild(state.GraphId, state.Path);
         if (rebuilt is null)
         {
-            state.Status = "failed";
+            // A refusal between the list and the rebuild (a token rotated mid-check) is named
+            // the same way the read names it, rather than as a rebuild that broke.
+            state.Status = client.Refusal is null ? "failed" : "unauthorized";
+            state.Detail = client.Refusal;
             return;
         }
 

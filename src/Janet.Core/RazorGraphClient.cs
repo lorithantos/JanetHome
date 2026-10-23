@@ -29,6 +29,15 @@ public sealed record ServedGraph(string Id, string Source, DateTimeOffset Loaded
 /// Every failure is a null answer, never an exception: this runs inside a build check, and a
 /// graph is a convenience the check must not fail over. Callers report "absent" or "failed" and
 /// move on, which is what the code-graph refresh has always done for its script convention.
+///
+/// ONE FAILURE IS NAMED, since the bearer token (2026-10-21): a 401 or 403. Every request carries
+/// <c>Authorization: Bearer</c> whenever janet's own token store holds one, read through the same
+/// <see cref="TokenReader"/> seam <see cref="ServerLink"/> uses. Before this, every janet check
+/// after the cutover was refused by a razorgraph under --auth require and reported the refusal
+/// as "absent" -- no graph -- which was confidently wrong about the repository and silent about
+/// the configuration. A refusal is still a null answer, so the check still does not fail over
+/// it, but <see cref="Refusal"/> says what happened, and the code graph reports "unauthorized"
+/// rather than "absent". The token itself is never put in it.
 /// </remarks>
 public sealed class RazorGraphClient
 {
@@ -37,20 +46,35 @@ public sealed class RazorGraphClient
 
     private readonly Uri _endpoint;
     private readonly HttpMessageHandler? _handler;
+    private readonly TokenReader _readToken;
 
-    public RazorGraphClient(Uri endpoint, HttpMessageHandler? handler = null)
+    /// <param name="endpoint">The server's MCP endpoint.</param>
+    /// <param name="handler">The transport; tests script one.</param>
+    /// <param name="readToken">
+    /// Where the bearer token comes from; <see cref="McpAuth.TryReadToken"/> (HKCU\Software\Janet)
+    /// when null. Tests pass their own. With no token the requests go without an Authorization
+    /// header, which a server under --auth report or off still answers.
+    /// </param>
+    public RazorGraphClient(Uri endpoint, HttpMessageHandler? handler = null, TokenReader? readToken = null)
     {
         _endpoint = endpoint;
         _handler = handler;
+        _readToken = readToken ?? McpAuth.TryReadToken;
     }
+
+    /// <summary>
+    /// Why the last call's server refused it (401 or 403), or null when it did not. Names the
+    /// status, the endpoint and whether a token was sent; never the token.
+    /// </summary>
+    public string? Refusal { get; private set; }
 
     /// <summary>
     /// Null when the repository's .mcp.json declares no razorgraph server -- the convention is
     /// then simply not in force there.
     /// </summary>
-    public static RazorGraphClient? FromRepository(string repositoryRoot) =>
+    public static RazorGraphClient? FromRepository(string repositoryRoot, TokenReader? readToken = null) =>
         McpConfig.TryReadUrl(repositoryRoot, ServerName, out Uri? url) && url is not null
-            ? new RazorGraphClient(url)
+            ? new RazorGraphClient(url, readToken: readToken)
             : null;
 
     /// <summary>Whether a graph's source is something build_solution or build_graph can rebuild.</summary>
@@ -122,6 +146,13 @@ public sealed class RazorGraphClient
     /// <summary>The tool's own JSON answer, or null for any failure at any layer.</summary>
     private JsonNode? TryCall(string tool, JsonObject arguments, TimeSpan budget)
     {
+        Refusal = null;
+
+        // Read once per call, not per request: the three requests of one exchange carry the same
+        // token, and a rotated one is picked up by the next call.
+        string? token = _readToken(out string? tokenError);
+        Credential credential = new(token, tokenError);
+
         try
         {
             using HttpClient client = _handler is null
@@ -136,7 +167,7 @@ public sealed class RazorGraphClient
                 ["clientInfo"] = new JsonObject { ["name"] = "janet", ["version"] = "1" },
             });
 
-            (JsonNode? ready, string? session) = Post(client, initialize, null);
+            (JsonNode? ready, string? session) = Post(client, initialize, null, credential);
             if (ready is null)
             {
                 return null;
@@ -147,7 +178,7 @@ public sealed class RazorGraphClient
                 ["jsonrpc"] = "2.0",
                 ["method"] = "notifications/initialized",
             };
-            Post(client, initialized, session);
+            Post(client, initialized, session, credential);
 
             JsonObject call = Request(2, "tools/call", new JsonObject
             {
@@ -155,7 +186,7 @@ public sealed class RazorGraphClient
                 ["arguments"] = arguments,
             });
 
-            (JsonNode? answer, _) = Post(client, call, session);
+            (JsonNode? answer, _) = Post(client, call, session, credential);
             if (answer is null || answer["isError"]?.GetValue<bool>() == true)
             {
                 return null;
@@ -180,7 +211,10 @@ public sealed class RazorGraphClient
         ["params"] = parameters,
     };
 
-    private (JsonNode? Result, string? Session) Post(HttpClient client, JsonObject body, string? session)
+    /// <summary>The token for one exchange, or why there is none. Never rendered.</summary>
+    private readonly record struct Credential(string? Token, string? Error);
+
+    private (JsonNode? Result, string? Session) Post(HttpClient client, JsonObject body, string? session, Credential credential)
     {
         using HttpRequestMessage request = new(HttpMethod.Post, _endpoint)
         {
@@ -189,6 +223,11 @@ public sealed class RazorGraphClient
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+
+        if (credential.Token is not null)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
+        }
 
         if (session is not null)
         {
@@ -201,6 +240,13 @@ public sealed class RazorGraphClient
             ? values.FirstOrDefault()
             : session;
 
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+        {
+            // Recorded on the first refusal and kept: the exchange stops at initialize anyway,
+            // and a later notification's refusal would only repeat it.
+            Refusal ??= DescribeRefusal((int)response.StatusCode, response.ReasonPhrase, credential);
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             return (null, sessionOut);
@@ -209,6 +255,20 @@ public sealed class RazorGraphClient
         string content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
 
         return (ParseEnvelope(content)?["result"], sessionOut);
+    }
+
+    /// <summary>
+    /// One sentence naming a refusal and what to do about it. Built from the status, the endpoint
+    /// and the token store's own error -- never from the token, and not from the response body,
+    /// so nothing the server echoes can carry a credential into the envelope.
+    /// </summary>
+    private string DescribeRefusal(int status, string? reason, Credential credential)
+    {
+        string what = $"razorgraph at {_endpoint} refused janet with {status} {reason}".TrimEnd() + ". ";
+
+        return what + (credential.Token is null
+            ? $"No Authorization header was sent ({credential.Error ?? "no token"}). Run `janet mcp-token --ensure` to create the token; the server reads it within 30 seconds."
+            : "The token from HKCU\\Software\\Janet\\McpToken was sent and refused: the server holds a different one, or has none. Check GET /health's 'auth', and restart the server if the token was rotated while it could not read it.");
     }
 
     /// <summary>

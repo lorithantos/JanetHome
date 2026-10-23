@@ -45,4 +45,34 @@ public class DotnetCheckRenderTests
         Assert.Contains("  error CS0103: The name does not exist (src/App/Broken.cs:7)", text);
         Assert.Contains("  NEW CS8618: Non-nullable property (src/App/Program.cs:12)", text);
     }
+
+    [Fact]
+    public void AnUnauthorizedGraphIsPrintedWithItsDetail()
+    {
+        // The reading view says nothing about the graph otherwise, which is how two days of
+        // refused list_graphs calls read as "absent" without anyone seeing them.
+        CheckResult result = new(
+            @"D:\Repos\Sample\App.slnx",
+            "Debug",
+            true,
+            new BuildReport(true, 0.3, [], [], 0, null, null, null, null),
+            null,
+            new GraphState { Via = "razorgraph", Status = "unauthorized", Detail = "razorgraph refused janet with 401." });
+
+        Assert.Contains("GRAPH UNAUTHORIZED razorgraph refused janet with 401.", DotnetCheckJson.Render(result));
+    }
+
+    [Fact]
+    public void AGraphThatAnsweredIsNotPrinted()
+    {
+        CheckResult result = new(
+            @"D:\Repos\Sample\App.slnx",
+            "Debug",
+            true,
+            new BuildReport(true, 0.3, [], [], 0, null, null, null, null),
+            null,
+            new GraphState { Via = "razorgraph", Status = "absent" });
+
+        Assert.DoesNotContain("GRAPH", DotnetCheckJson.Render(result));
+    }
 }

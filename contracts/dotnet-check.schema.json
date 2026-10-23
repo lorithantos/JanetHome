@@ -5,7 +5,7 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
-    "contract": 8,
+    "contract": 9,
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
@@ -22,7 +22,7 @@
       "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
       "properties": {
         "status": { "const": "complete" },
-        "contract": { "const": 8 },
+        "contract": { "const": 9 },
         "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
         "configuration": { "type": "string" },
         "succeeded": {
@@ -220,7 +220,7 @@
           "type": ["object", "null"],
           "description": "NULL MEANS NOT APPLICABLE -- this repository carries no graph convention: no .graph directory or scripts\\graph.ps1, and no razorgraph server declared in its .mcp.json. Most repositories carry neither. It does not mean a graph is missing; that is status 'absent'.",
           "additionalProperties": false,
-          "required": ["via", "graphId", "path", "builtAt", "newestSourceAt", "status", "refreshed", "canRefresh"],
+          "required": ["via", "graphId", "path", "builtAt", "newestSourceAt", "status", "refreshed", "canRefresh", "detail"],
           "properties": {
             "via": {
               "enum": ["script", "razorgraph"],
@@ -236,11 +236,18 @@
             },
             "builtAt": { "type": ["string", "null"] },
             "newestSourceAt": { "type": ["string", "null"] },
-            "status": { "enum": ["current", "stale", "absent", "failed"] },
+            "status": {
+              "enum": ["current", "stale", "absent", "failed", "unauthorized"],
+              "description": "'unauthorized' (contract 9): the razorgraph server answered 401 or 403 -- it is there and refused janet's bearer token, so whether it holds a graph of this repository is UNKNOWN, not absent. detail names the refusal and what to do. Before contract 9 the client sent no token and every check after the 2026-10-21 cutover reported this as 'absent'. Never fails the check."
+            },
             "refreshed": { "type": "boolean" },
             "canRefresh": {
               "type": "boolean",
               "description": "False with status 'stale' means the repo has a graph and no way to rebuild it here. Staleness is reported even where it cannot be fixed. Under razorgraph, false with 'absent' means the server holds no graph of this repository or did not answer: nothing is built that nobody asked for, so build one with build_solution when you want it."
+            },
+            "detail": {
+              "type": ["string", "null"],
+              "description": "NULL UNLESS status is 'unauthorized' (contract 9). Then one sentence: the endpoint, the status, whether a token was sent, and what to run. Built from the token store's error and never from the token or the server's response body."
             }
           }
         }
@@ -254,7 +261,7 @@
       "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
       "properties": {
         "status": { "const": "running" },
-        "contract": { "const": 8 },
+        "contract": { "const": 9 },
         "target": { "type": "string" },
         "configuration": { "type": "string" },
         "handle": {

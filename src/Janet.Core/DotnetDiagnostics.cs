@@ -87,8 +87,14 @@ public static class DotnetDiagnostics
     /// provenance: what the tool passed, what it removed from the environment, what the target
     /// declares, and that restore never ran, so errors[] is not a census.
     /// </para>
+    /// <para>
+    /// 9 adds graph status "unauthorized" and graph.detail (2026-10-23). After the bearer-token
+    /// cutover on 2026-10-21 razorgraph refused every check's unauthenticated list_graphs, and
+    /// the envelope reported "absent" -- no graph -- for a repository whose graph was sitting in
+    /// the server. The client now sends janet's token, and a refusal is named as one.
+    /// </para>
     /// </summary>
-    public const int Contract = 8;
+    public const int Contract = 9;
 
     /// <summary>
     /// The baseline file's own format, deliberately NOT the envelope's.
