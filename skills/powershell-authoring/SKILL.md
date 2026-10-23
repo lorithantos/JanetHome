@@ -58,6 +58,19 @@ Each entry below cost a real session something. Dates are when it was seen.
    on a source file) routes around every hook; a PowerShell or Bash file search is denied.
    Text search is `mcp__razorgraph__grep`, which also covers .ps1, .md and .json.
 
+7. **An `[ordered]` dictionary indexed with an int is positional.** `$o[20]` on
+   `[ordered]@{ 20 = 'a' }` asks for the 21st entry and returns `$null`, silently; a plain
+   `@{}` hashtable looks the key up. A loop over `$o.Keys` that indexes with each key
+   therefore reads nothing, or a neighbour's value when the position happens to exist.
+   Seen 2026-10-23: two scripts wrote 16 thread notes this way, 15 empty and one carrying
+   another item's text, and both printed success. Use `@{}`, string keys, or
+   `$o.GetEnumerator()` and read `.Key` / `.Value`.
+
+8. **A write that reports success can still have written the wrong thing.** After a
+   scripted batch of writes, read one back (`janet thread show --topic ... --full`,
+   `janet research query --id ...`) before reporting it done. Rule 7's 16 bad notes
+   survived a day because every write said it succeeded.
+
 ## Delegating PowerShell work
 
 Quote the rules above into the prompt -- an agent inherits the tools, none of the habits.
