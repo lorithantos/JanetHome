@@ -46,7 +46,8 @@ public static class CheckTools
         "test passed.\n\n" +
         "PER-ASSEMBLY 'status' IS THREE-VALUED and only one of them is bad news. \"complete\" " +
         "ran. \"empty\" ran nothing -- a testFilter that matched nothing in that assembly -- and " +
-        "does NOT fail the run. \"aborted\" is a crashed host's leftovers, whose counters are " +
+        "does NOT fail the run while another assembly matched; a testFilter that matched no test " +
+        "in ANY assembly fails it, with 'unmatchedFilter' naming the filter. \"aborted\" is a crashed host's leftovers, whose counters are " +
         "what it lived to write rather than a result, and DOES fail the run. An ordinary failing " +
         "test is \"complete\" with a failure in 'failures', never \"aborted\", and 'abort' stays " +
         "null: it carries a crashed host's banner and nothing else.\n\n" +
@@ -70,7 +71,7 @@ public static class CheckTools
         string configuration = "Debug",
         [Description("Build only. 'tests' comes back null.")]
         bool noTests = false,
-        [Description("Passed to dotnet test --filter. The counters then describe the filtered run, not the whole suite, and any assembly the filter matched nothing in comes back status \"empty\" rather than failing the run.")]
+        [Description("Passed to dotnet test --filter. The counters then describe the filtered run, not the whole suite, and any assembly the filter matched nothing in comes back status \"empty\" rather than failing the run -- unless it matched nothing in every assembly, which fails the run and sets tests.unmatchedFilter.")]
         string? testFilter = null,
         [Description("Diff the warning census against the previous run of this kind. Forces a full rebuild, because a diff against an incremental census reports every later full build as all-new.")]
         bool @new = false,

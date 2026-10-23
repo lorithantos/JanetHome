@@ -915,7 +915,9 @@ static int Usage()
         Each test assembly reports status complete, empty or aborted, and only aborted is
         bad news: empty is an assembly --test-filter matched nothing in and does not fail
         the run, while aborted is a crashed host whose counters are leftovers rather than a
-        result. An ordinary failing test is complete with an entry in failures. Tests also
+        result. A --test-filter that matched no test in ANY assembly does fail the run, and
+        tests.unmatchedFilter names it: zero tests run is not a pass. An ordinary failing
+        test is complete with an entry in failures. Tests also
         report two times, because they answer different questions: durationSeconds is wall
         clock and testTimeSeconds is every test's own duration summed, which exceeds it
         whenever collections ran in parallel. slowest names the costliest test CLASSES --

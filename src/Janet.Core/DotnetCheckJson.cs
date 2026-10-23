@@ -9,12 +9,13 @@ namespace Janet.Core;
 /// Serializes a check in the format declared by contracts\dotnet-check.schema.json.
 /// </summary>
 /// <remarks>
-/// Contract 9, a tagged union on 'status' since 4. The discriminator is not decoration: a caller
+/// Contract 10, a tagged union on 'status' since 4. The discriminator is not decoration: a caller
 /// that has not read it has no business reading anything else, because the running arm carries a
 /// handle and none of the answer. 5 gave 'tests' the runner's verdict; 6 gave 'graph' the
 /// convention that answered ('via') and the server-side id ('graphId'), when the graph lives in a
 /// RazorGraph server rather than a file; 8 gave 'build' a 'diagnosis'; 9 gave 'graph' the status
-/// 'unauthorized' and a 'detail' naming the refusal.
+/// 'unauthorized' and a 'detail' naming the refusal; 10 gave 'tests' an 'unmatchedFilter', because
+/// a supplied filter that matched no test anywhere now fails the run.
 ///
 /// Four fields mean something specific when null, and the schema says so in prose because JSON
 /// Schema cannot: newWarnings null is NO COMPARISON HAPPENED rather than none were new, tests
@@ -207,6 +208,7 @@ public static class DotnetCheckJson
             ["assemblies"] = assemblies,
             ["slowest"] = slowest,
             ["resultsDirectory"] = tests.ResultsDirectory,
+            ["unmatchedFilter"] = tests.UnmatchedFilter,
         };
     }
 
@@ -314,9 +316,19 @@ public static class DotnetCheckJson
             text.AppendLine($"  ABORTED {assembly.Name}: partial results ({assembly.Passed}/{assembly.Total})");
         }
 
-        foreach (TestAssembly assembly in tests.Assemblies.Where(a => a.Status == "empty"))
+        // A filter that matched nothing ANYWHERE fails the run and says so in capitals; one that
+        // matched nothing in some assemblies while another ran is a narrow filter, and keeps its
+        // quiet per-assembly line.
+        if (tests.UnmatchedFilter is not null)
         {
-            text.AppendLine($"  empty {assembly.Name}: no test matched the filter");
+            text.AppendLine($"  FILTER MATCHED NO TEST: --test-filter \"{tests.UnmatchedFilter}\" ran nothing in any assembly -- the run FAILS rather than pass on zero tests");
+        }
+        else
+        {
+            foreach (TestAssembly assembly in tests.Assemblies.Where(a => a.Status == "empty"))
+            {
+                text.AppendLine($"  empty {assembly.Name}: no test matched the filter");
+            }
         }
 
         foreach (TestFailure failure in tests.Failures)

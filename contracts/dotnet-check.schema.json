@@ -5,7 +5,7 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
-    "contract": 9,
+    "contract": 10,
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
@@ -22,7 +22,7 @@
       "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
       "properties": {
         "status": { "const": "complete" },
-        "contract": { "const": 9 },
+        "contract": { "const": 10 },
         "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
         "configuration": { "type": "string" },
         "succeeded": {
@@ -118,11 +118,15 @@
           "type": ["object", "null"],
           "description": "NULL MEANS NOT RUN -- -NoTests, or the build failed. Which one is visible from build.succeeded. It does not mean a suite with no tests.",
           "additionalProperties": false,
-          "required": ["succeeded", "runnerExitCode", "abort", "total", "passed", "failed", "skipped", "durationSeconds", "testTimeSeconds", "failures", "assemblies", "slowest", "resultsDirectory"],
+          "required": ["succeeded", "runnerExitCode", "abort", "total", "passed", "failed", "skipped", "durationSeconds", "testTimeSeconds", "failures", "assemblies", "slowest", "resultsDirectory", "unmatchedFilter"],
           "properties": {
             "succeeded": {
               "type": "boolean",
-              "description": "False when any test failed, when dotnet test exited non-zero, or when any assembly's results are partial. The counters alone cannot say this: a crashed test host reports fewer tests, not failed ones."
+              "description": "False when any test failed, when dotnet test exited non-zero, when any assembly's results are partial, or (contract 10) when a supplied filter matched no test in any assembly -- unmatchedFilter then names it. The counters alone cannot say this: a crashed test host reports fewer tests, not failed ones."
+            },
+            "unmatchedFilter": {
+              "type": ["string", "null"],
+              "description": "NULL UNLESS a test filter was supplied and matched no test in ANY assembly (contract 10). Then the filter expression verbatim, and succeeded is false: a typo in a test name used to run zero tests and pass with exit 0, which reads exactly like the test passing. An assembly empty while another matched is a narrow filter and does not set this. With no filter, a run of zero tests does not set it either."
             },
             "runnerExitCode": {
               "type": "integer",
@@ -176,7 +180,7 @@
                   "skipped": { "type": "integer", "minimum": 0 },
                   "status": {
                     "enum": ["complete", "empty", "aborted"],
-                    "description": "'aborted' is a crashed run's leftovers and FAILS the run: its counters are what the host lived to write, not a result. 'empty' ran nothing and does NOT fail the run -- a filter matching nothing in an assembly writes a TRX with no definitions and zero counters, which is the same shape a half-written crash file has. They are told apart by whether the runner closed the file out (ResultSummary outcome Completed/Failed) and by whether a run-level RunInfo Error actually reads as an abort banner. Absence of a name or of counters is NOT evidence of a crash; treating it as such reported a narrow filter over six assemblies as five crashes."
+                    "description": "'aborted' is a crashed run's leftovers and FAILS the run: its counters are what the host lived to write, not a result. 'empty' ran nothing and does NOT by itself fail the run -- unless every assembly is empty under a supplied filter, which fails it with tests.unmatchedFilter set (contract 10). A filter matching nothing in an assembly writes a TRX with no definitions and zero counters, which is the same shape a half-written crash file has. They are told apart by whether the runner closed the file out (ResultSummary outcome Completed/Failed) and by whether a run-level RunInfo Error actually reads as an abort banner. Absence of a name or of counters is NOT evidence of a crash; treating it as such reported a narrow filter over six assemblies as five crashes."
                   },
                   "durationSeconds": {
                     "type": "number",
@@ -261,7 +265,7 @@
       "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
       "properties": {
         "status": { "const": "running" },
-        "contract": { "const": 9 },
+        "contract": { "const": 10 },
         "target": { "type": "string" },
         "configuration": { "type": "string" },
         "handle": {

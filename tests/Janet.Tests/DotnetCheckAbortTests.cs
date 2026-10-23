@@ -202,6 +202,73 @@ public class DotnetCheckAbortTests
         Assert.Contains(run.Assemblies, a => a.Status == "empty");
     }
 
+    // ---- a supplied filter that matched nothing anywhere (thread item 20) --------------------
+
+    private const string Typo = "FullyQualifiedName~ZzNoSuchTestQq";
+
+    private static TestRun AllEmpty() => new(
+        true, 0, 0, 0, 0, [],
+        [new TestAssembly("A.Tests", 0, 0, 0, 0, "empty"), new TestAssembly("B.Tests", 0, 0, 0, 0, "empty")]);
+
+    [Fact]
+    public void AFilterThatMatchedNothingAnywhereFailsTheRunAndIsNamed()
+    {
+        // The reported shape: every assembly empty, runner exit 0, succeeded true -- a typo in
+        // a test name read exactly like that test passing.
+        TestRun verdict = DotnetTests.WithFilterVerdict(AllEmpty(), Typo);
+
+        Assert.False(verdict.Succeeded);
+        Assert.Equal(Typo, verdict.UnmatchedFilter);
+        Assert.All(verdict.Assemblies, a => Assert.Equal("empty", a.Status));
+    }
+
+    [Fact]
+    public void AnEmptyAssemblyBesideOneThatMatchedStillDoesNotFailTheRun()
+    {
+        // Contract 7's rule, kept: a narrow filter over several assemblies is not a failure.
+        TestRun verdict = DotnetTests.WithFilterVerdict(ReadNoMatch(), "FullyQualifiedName~Something");
+
+        Assert.True(verdict.Succeeded);
+        Assert.Null(verdict.UnmatchedFilter);
+        Assert.Contains(verdict.Assemblies, a => a.Status == "empty");
+    }
+
+    [Fact]
+    public void ZeroTestsWithNoFilterIsLeftAlone()
+    {
+        TestRun verdict = DotnetTests.WithFilterVerdict(AllEmpty(), null);
+
+        Assert.True(verdict.Succeeded);
+        Assert.Null(verdict.UnmatchedFilter);
+    }
+
+    [Fact]
+    public void AnAbortedRunIsNotCalledAnUnmatchedFilter()
+    {
+        // One assembly ran nothing and the other crashed before writing a result: the crash is
+        // the news, and the abort rule already fails the run.
+        TestRun crashed = new(false, 0, 0, 0, 0, [],
+            [new TestAssembly("A.Tests", 0, 0, 0, 0, "empty"), new TestAssembly("B.Tests", 0, 0, 0, 0, "aborted")]);
+
+        Assert.Null(DotnetTests.WithFilterVerdict(crashed, Typo).UnmatchedFilter);
+    }
+
+    [Fact]
+    public void AnUnmatchedFilterFailsTheWholeCheckAndTheReadingViewSaysSoLoudly()
+    {
+        TestRun tests = DotnetTests.WithFilterVerdict(AllEmpty(), Typo);
+        CheckResult result = new(
+            @"D:\Repos\Sample\App.slnx", "Debug", tests.Succeeded,
+            new BuildReport(true, 0.3, [], [], 0, null, null, null, null), tests, null);
+
+        string text = DotnetCheckJson.Render(result);
+
+        Assert.StartsWith("FAIL", text);
+        Assert.Contains($"FILTER MATCHED NO TEST: --test-filter \"{Typo}\"", text);
+        Assert.DoesNotContain("  empty ", text);
+        Assert.Contains($"\"unmatchedFilter\":\"{Typo}\"", DotnetCheckJson.Serialize(result));
+    }
+
     [Fact]
     public void AnEmptyAssemblyIsNamedFromTheRunInfoRatherThanItsTrxFilename()
     {

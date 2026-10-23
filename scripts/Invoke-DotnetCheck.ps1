@@ -18,7 +18,7 @@
     failures carry their payload up front and are read from TRX files rather than scraped.
     The exit code means exactly one thing: 0 when the build succeeded and every test passed.
 
-    THE CONTRACT IS NOW 9. Contract 4 added the 'status' discriminator, because the MCP tool
+    THE CONTRACT IS NOW 10. Contract 4 added the 'status' discriminator, because the MCP tool
     can answer "running" with a handle when a rebuild outlasts the client's call timeout;
     this script only ever produces "complete" -- every invocation is a fresh process, so
     there is nobody to poll -- but the field is present. Contract 5 makes 'tests' carry the
@@ -66,6 +66,11 @@
     graph the server held. The client now sends janet's own token, and a 401 or 403 reads
     "unauthorized" with 'detail' naming the refusal and what to run. It never fails the check,
     and 'detail' never carries the token.
+
+    Contract 10 adds 'tests.unmatchedFilter' (string or null). A -TestFilter that matched no
+    test in ANY assembly used to come back succeeded, every assembly "empty", exit 0 -- so a
+    typo in a test name read exactly like that test passing. It now fails the run and names the
+    filter. An assembly that is empty while another matched still does not fail (contract 7).
     The declared format is contracts\dotnet-check.schema.json.
 
     Baselines written under contract 3 are still read. The baseline file's format did not

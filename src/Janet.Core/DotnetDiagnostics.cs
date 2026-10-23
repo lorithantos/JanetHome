@@ -93,8 +93,14 @@ public static class DotnetDiagnostics
     /// the envelope reported "absent" -- no graph -- for a repository whose graph was sitting in
     /// the server. The client now sends janet's token, and a refusal is named as one.
     /// </para>
+    /// <para>
+    /// 10 adds tests.unmatchedFilter (2026-10-23, thread item 20). A supplied --test-filter that
+    /// matched no test in any assembly used to come back succeeded with every assembly "empty"
+    /// -- a typo in a test name read as that test passing. It now fails the run and names the
+    /// filter. An assembly empty while another matched still does not fail (contract 7's rule).
+    /// </para>
     /// </summary>
-    public const int Contract = 9;
+    public const int Contract = 10;
 
     /// <summary>
     /// The baseline file's own format, deliberately NOT the envelope's.

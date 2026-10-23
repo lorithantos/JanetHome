@@ -71,6 +71,13 @@ public sealed record TestRun(
     /// <summary>Where the TRX files are, so a session can open one instead of re-running the
     /// suite with a narrower filter to see what this envelope already read.</summary>
     public string? ResultsDirectory { get; init; }
+
+    /// <summary>
+    /// The --test-filter expression when one was supplied and matched no test in ANY assembly,
+    /// which fails the run (contract 10); null otherwise. An assembly that is empty while
+    /// another matched is a narrow filter, not this.
+    /// </summary>
+    public string? UnmatchedFilter { get; init; }
 }
 
 /// <summary>
@@ -259,6 +266,29 @@ public static class DotnetTests
             // The console banner is the fallback for an abort that never reached a TRX at all.
             Abort = run.Abort ?? ReadAbort(lines),
         };
+
+    /// <summary>
+    /// Fails a run whose supplied filter matched no test anywhere, and names the filter.
+    /// </summary>
+    /// <remarks>
+    /// Decided 2026-10-23 (thread item 20). Contract 7 made an "empty" assembly not fail the run,
+    /// because a filter that matches nothing in four of six assemblies is a narrow filter, not
+    /// four crashes -- and that stays. But the same rule passed a filter that matched NOTHING in
+    /// every assembly: a typo in a test name ran zero tests and came back succeeded, exit 0,
+    /// which reads exactly like the test passing. A filter the caller supplied is a claim that
+    /// something should run, so zero results everywhere is a failure with its reason named.
+    /// An aborted assembly is left to the abort rule rather than called an unmatched filter.
+    /// With no filter, a run of zero tests is unchanged: that is a suite question, not this one.
+    /// </remarks>
+    public static TestRun WithFilterVerdict(TestRun run, string? filter)
+    {
+        bool matchedNothing = !string.IsNullOrEmpty(filter)
+            && run.Assemblies.All(a => a.Status == "empty");
+
+        return matchedNothing
+            ? run with { Succeeded = false, UnmatchedFilter = filter }
+            : run;
+    }
 
     /// <summary>
     /// The abort banner out of the runner's console output, or null when none is there.

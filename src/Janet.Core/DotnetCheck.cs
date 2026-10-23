@@ -273,7 +273,10 @@ public static class DotnetCheck
         // The runner's verdict travels with the counters. Discarding it here is how a
         // crashed test host once summed to 423/423 passing and exit 0 -- the TRX files
         // held only the results the host lived to write.
-        return DotnetTests.WithRunnerVerdict(DotnetTests.ReadDirectory(results), exitCode, lines);
+        // And a filter that matched nothing anywhere fails the run rather than passing on zero.
+        return DotnetTests.WithFilterVerdict(
+            DotnetTests.WithRunnerVerdict(DotnetTests.ReadDirectory(results), exitCode, lines),
+            request.TestFilter);
     }
 
     /// <summary>
