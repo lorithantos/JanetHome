@@ -4,8 +4,9 @@
 
 .DESCRIPTION
     Enforces the subset of notes\powershell-house-rules.md that a machine can verify:
-    the 'return @()' unroll trap, $null comparison order, and truncating file
-    creation. Every file is also parsed, which catches syntax errors that make a whole
+    the 'return @()' unroll trap, $null comparison order, truncating file creation, and
+    an [ordered] dictionary keyed by integer literals (OrderedIntKey, read off the AST).
+    Every file is also parsed, which catches syntax errors that make a whole
     script unloadable rather than just one line wrong.
 
     Rules that need judgment -- probe optional properties, catch in startup paths --
@@ -119,6 +120,44 @@ $activeRules = @(
         }
 )
 
+# Whether a match (1-based columns Start..End) lies wholly inside one string or comment
+# span. A function rather than inline so the script body stays under the pre-commit
+# nesting gate, which it was already at when the AST rule below was added.
+function Test-InsideSpan {
+    param($Spans, [int]$Start, [int]$End)
+    foreach ($span in $Spans) {
+        if ($Start -ge $span.start -and $End -le $span.end) { return $true }
+    }
+    return $false
+}
+
+# OrderedIntKey: every [ordered] hashtable literal key that is an integer literal (the
+# parser reads -1 as one constant), one finding per key, on the key's own line.
+function Get-OrderedIntKeyFinding {
+    param($Ast, [string]$Relative, [string[]]$Lines)
+    $integer = @('SByte', 'Byte', 'Int16', 'UInt16', 'Int32', 'UInt32', 'Int64', 'UInt64')
+    $tables = $Ast.FindAll({
+            param($node)
+            # [ordered] on anything but a hashtable literal does not parse, so a file
+            # that reaches here has only hashtable children under the cast.
+            $node -is [System.Management.Automation.Language.ConvertExpressionAst] -and
+            $node.Type.TypeName.Name -eq 'ordered'
+        }, $true)
+    foreach ($table in $tables) {
+        foreach ($pair in $table.Child.KeyValuePairs) {
+            $key = $pair.Item1
+            if ($key -isnot [System.Management.Automation.Language.ConstantExpressionAst]) { continue }
+            if ($integer -notcontains [System.Type]::GetTypeCode($key.Value.GetType()).ToString()) { continue }
+            $lineNo = $pair.Item1.Extent.StartLineNumber
+            [PSCustomObject]@{
+                file = $Relative; line = $lineNo
+                rule = 'OrderedIntKey'; text = $Lines[$lineNo - 1].Trim()
+                message = 'An [ordered] dictionary keyed by an integer literal: indexing it with an int is POSITIONAL (the Nth entry, $null when out of range, no error), not a key lookup. Use @{} or string keys, or read it with GetEnumerator().'
+            }
+        }
+    }
+}
+
 # ---- Collect files ---------------------------------------------------------
 
 $files = @()
@@ -220,11 +259,7 @@ foreach ($file in $files) {
                 $matchStart = $m.Index + 1
                 $matchEnd = $m.Index + $m.Length
 
-                $inString = $false
-                foreach ($span in $spans) {
-                    if ($matchStart -ge $span.start -and $matchEnd -le $span.end) { $inString = $true; break }
-                }
-                if ($inString) { continue }
+                if (Test-InsideSpan -Spans $spans -Start $matchStart -End $matchEnd) { continue }
 
                 $findings += [PSCustomObject]@{
                     file = $relative; line = $lineNo
@@ -233,6 +268,18 @@ foreach ($file in $files) {
                 }
             }
         }
+    }
+
+    # ---- AST rules: shapes a line regex cannot see ----
+    #
+    # OrderedIntKey. An int index on an OrderedDictionary is POSITIONAL, so
+    # [ordered]@{ 20 = 'a' } read back with $o[20] asks for the 21st entry and gets
+    # $null without an error. On 2026-10-23 a script wrote 16 thread notes from such a
+    # table, indexed by each key: 15 went in empty and one carried another item's text,
+    # every write reporting success. The AST is used because the key can sit lines away
+    # from the [ordered], and because it never matches inside a string or a comment.
+    if ($ExcludeRule -notcontains 'OrderedIntKey') {
+        $findings += @(Get-OrderedIntKeyFinding -Ast $ast -Relative $relative -Lines $lines)
     }
 }
 

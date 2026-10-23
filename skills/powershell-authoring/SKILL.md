@@ -64,7 +64,8 @@ Each entry below cost a real session something. Dates are when it was seen.
    therefore reads nothing, or a neighbour's value when the position happens to exist.
    Seen 2026-10-23: two scripts wrote 16 thread notes this way, 15 empty and one carrying
    another item's text, and both printed success. Use `@{}`, string keys, or
-   `$o.GetEnumerator()` and read `.Key` / `.Value`.
+   `$o.GetEnumerator()` and read `.Key` / `.Value`. `Test-PowerShellRules.ps1` now flags
+   an `[ordered]` literal with an integer key (rule OrderedIntKey, house rules section 9).
 
 8. **A write that reports success can still have written the wrong thing.** After a
    scripted batch of writes, read one back (`janet thread show --topic ... --full`,

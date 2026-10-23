@@ -5,10 +5,11 @@ The checkable subset is enforced by `scripts\Test-PowerShellRules.ps1` -- prefer
 a check there over adding a paragraph here. A style guide nobody runs degrades quietly,
 which is the exact failure mode DESIGN-NOTES section 1 argues against.
 
-**Target: PowerShell 7 (pwsh).** Installed 2026-07-27; 7.6.4. Sections 1-7 below are
-edition-independent -- 7 does not rescue you from any of them. Section 8 is
+**Target: PowerShell 7 (pwsh).** Installed 2026-07-27; 7.6.4. Sections 1-7 and 9 below
+are edition-independent -- 7 does not rescue you from any of them. Section 8 is
 backward-compatibility only, for scripts that may land on a machine with just the
-shipped-in-Windows 5.1.
+shipped-in-Windows 5.1. (Section 9 was added after 8 and sits with Part 1; the numbers
+are kept because other files cite "section 8".)
 
 ---
 
@@ -109,6 +110,30 @@ only by accident -- the same name at script scope later will not.
 Worth adding to `Test-PowerShellRules.ps1`: flag any assignment to a variable whose name
 matches a `param()` entry of a different type. Cheap AST check, and this class of bug is
 invisible on review. Full write-up in `notes\startup-brief-budget.md`.
+
+### 9. Never key an `[ordered]` dictionary with integers
+
+`[ordered]@{}` builds an `OrderedDictionary`, and its indexer takes an int as a
+**position**, not a key. `$o[20]` on `[ordered]@{ 20 = 'a'; 7 = 'b' }` asks for the 21st
+entry and returns `$null` -- no error, under StrictMode or not. A plain `@{}` hashtable
+looks the key up. So a loop over `$o.Keys` that indexes with each key reads nothing, or a
+neighbour's value whenever that position happens to exist.
+
+Not hypothetical: on 2026-10-23 two scripts wrote 16 thread notes from such a table,
+indexed by each item number. 15 went in empty and one carried another item's text, and
+every write reported success.
+
+```powershell
+$notes = @{ 20 = 'a'; 7 = 'b' }                 # plain hashtable: $notes[20] is 'a'
+$notes = [ordered]@{ '20' = 'a'; '7' = 'b' }    # string keys, if the order matters
+foreach ($entry in $notes.GetEnumerator()) { $entry.Key; $entry.Value }
+```
+
+**Enforced:** `Test-PowerShellRules.ps1` rule `OrderedIntKey` flags every integer-literal
+key in an `[ordered]` hashtable literal, read off the AST, so it fires on the key's own
+line and never inside a string or comment. It is a violation like every other rule (the
+linter has no warning tier; a finding exits 1), because the failure it prevents reports
+success while writing the wrong data.
 
 ---
 
