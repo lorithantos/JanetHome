@@ -19,12 +19,19 @@
     word, redirections set aside, heredoc bodies skipped as data. Not a shell: enough to
     say which command each word belongs to.
 
-    Dot-source this file. It defines functions and two script-scope tables
-    ($script:CommandPrefixes, $script:LocationVerbs) in the caller's script scope.
+    Dot-source this file. It defines functions and four script-scope tables
+    ($script:CommandPrefixes, $script:LocationVerbs, $script:SourceExtensions and
+    $script:SourcePrefilter) in the caller's script scope.
 #>
 
 $script:CommandPrefixes = @('sudo', 'command', 'builtin', 'time', 'nice', 'nohup', 'exec', 'if', 'then', 'else', 'elif', 'do', 'while', 'until', '!')
 $script:LocationVerbs = @('cd', 'chdir', 'pushd', 'Set-Location', 'sl', 'Push-Location')
+
+# C# source, as both hooks mean it: Invoke-GraphGuard.ps1 denies a shell READ of these
+# inside a repo, Invoke-ShellWriteGuard.ps1 a shell WRITE. One list, so the two cannot
+# disagree about what source is. SourcePrefilter is the same set as a regex over text.
+$script:SourceExtensions = @('.cs', '.razor', '.csproj', '.sln', '.slnx')
+$script:SourcePrefilter = '(?i)\.(' + (@($script:SourceExtensions | ForEach-Object { [regex]::Escape($_.Substring(1)) }) -join '|') + ')\b'
 
 function Resolve-FullPath {
     param([string]$Path, [string]$BaseDir)
@@ -42,6 +49,7 @@ function Test-InsideGitWorkTree {
 # subexpression), so it cannot be resolved here. Bare is false when it starts quoted,
 # so it cannot be an option. Items holds a PowerShell array argument's elements.
 function New-ShellWord {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Builds an in-memory object; changes no system state.')]
     param([string]$Text, [bool]$Literal = $true, [bool]$Bare = $true, [string[]]$Items)
     $elements = if ($null -ne $Items -and $Items.Count -gt 0) { $Items } else { @($Text) }
     [PSCustomObject]@{ Text = $Text; Literal = $Literal; Bare = $Bare; Items = $elements; Value = $null }
@@ -49,6 +57,8 @@ function New-ShellWord {
 
 # InputFiles: files fed in with <. OutputFiles: targets of >, >> and their kin.
 function New-ShellSegment {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Builds an in-memory object; changes no system state.')]
+    param()
     [PSCustomObject]@{
         Words       = New-Object System.Collections.Generic.List[object]
         InputFiles  = New-Object System.Collections.Generic.List[object]
@@ -151,6 +161,8 @@ function Get-FileMemberCall {
 }
 
 function New-BashState {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Builds an in-memory object; changes no system state.')]
+    param()
     [PSCustomObject]@{
         Pipelines = New-Object System.Collections.Generic.List[object]
         Segments  = New-Object System.Collections.Generic.List[object]

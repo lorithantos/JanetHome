@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     PreToolUse hook: refuses a Bash or PowerShell command that writes a file the
-    Write|Edit hooks govern, inside a git working tree, and says to use Edit or Write.
+    Write|Edit hooks govern, or C# source, inside a git working tree, and says to use
+    Edit or Write.
 
 .DESCRIPTION
     Every hook that guards an edit here matches the Write and Edit tools and nothing
@@ -11,7 +12,8 @@
     so the hole was being pointed at, not merely open. Lori decided the same day: a
     hook denies them (thread item 7).
 
-    THE GUARDED SET IS DERIVED FROM THE HOOKS IT PROTECTS, not chosen here:
+    THE GUARDED SET IS DERIVED FROM THE HOOKS IT PROTECTS, not chosen here -- except C#
+    source, which was decided rather than derived:
 
       research.json, research.candidate.json,   Invoke-EditGuard.ps1 denies Write and
       research.previous.json,                    Edit of these leaf names (its
@@ -21,24 +23,41 @@
                                                  Invoke-ResearchGuard.ps1 gates Write of
                                                  a NEW .ps1 into a scripts directory
                                                  (a subset of *.ps1).
+      *.cs, *.razor, *.csproj, *.sln, *.slnx     No hook governs an Edit of these; the
+                                                 reason is the edit itself (2026-10-23,
+                                                 thread item 84, Lori: deny shell writes
+                                                 to C# source too). An Edit or Write
+                                                 shows the exact change in the session,
+                                                 where it can be reviewed, and the code
+                                                 graph is rebuilt from that source; a
+                                                 sed -i or Set-Content rewrite leaves no
+                                                 reviewable change behind. The list is
+                                                 $script:SourceExtensions in
+                                                 lib\ShellCommand.ps1, the same one the
+                                                 graph guard denies shell READS of.
 
     A shell write to one of those, inside a git working tree, is denied. What counts as
     a write: an output redirection (>, >>, &>, PowerShell's > and 2>), sed -i and
     perl -i, tee and Tee-Object, Set-Content, Add-Content, Clear-Content, Out-File,
     New-Item, cp, mv, copy, move, Copy-Item and Move-Item onto
-    the file or into a directory as it, and the [IO.File] writers (WriteAll*, AppendAll*,
+    the file or into a directory as it, Rename-Item (ren, rni) onto it, and the [IO.File]
+    writers (WriteAll*, AppendAll*,
     AppendText, Create, CreateText, OpenWrite, and the destination of Copy, Move and
     Replace). `(Get-Content f) -replace 'a','b' | Set-Content f` is a Set-Content.
     Commands nested in pwsh -Command, bash -c and cmd /c are judged too, and cd is
     followed.
 
     What passes: git, dotnet and janet -- what they write themselves (git checkout,
-    janet research update, which is the sanctioned way to change research.json), though
-    a shell redirect of their output onto a guarded file is still the shell writing it;
-    every read; and any write whose target lies outside a git working tree, such as a
-    scratchpad. A target this cannot resolve (a variable, an expression) whose text
-    still names a guarded file lets the command run with one line of additionalContext;
-    one that names nothing guarded passes silently.
+    git mv, janet research update, which is the sanctioned way to change research.json),
+    though a shell redirect of their output onto a guarded file is still the shell
+    writing it; every read; and any write whose target lies outside a git working tree,
+    such as a scratchpad. dotnet passes whole, `dotnet new`, `dotnet format`,
+    `dotnet add package` and `dotnet sln add` included: each writes .cs, .csproj or
+    .sln files by its own rules, as a project tool and not as a text rewrite, and what
+    it changes shows up in git diff like any other edit -- denying them would forbid the
+    tools that own those files. A target this cannot resolve (a variable, an expression)
+    whose text still names a guarded file lets the command run with one line of
+    additionalContext; one that names nothing guarded passes silently.
 
     A separate hook rather than a verdict inside Invoke-GraphGuard.ps1, although both
     read shell commands through scripts\lib\ShellCommand.ps1: the graph guard's rule is
@@ -76,10 +95,12 @@ Set-StrictMode -Version Latest
 
 $script:ResearchLeaves = @('research.json', 'research.candidate.json', 'research.previous.json', 'research.candidate.base.json')
 $script:RecordLeaves = @('research.previous.json', 'research.candidate.base.json')
-$script:Prefilter = '(?i)research|\.ps1'
-$script:GuardedText = '(?i)research[\w.]*\.json|\.ps1\b'
+# SourcePrefilter and SourceExtensions (C# source) come from lib\ShellCommand.ps1.
+$script:Prefilter = "(?i)research|\.ps1|$script:SourcePrefilter"
+$script:GuardedText = "(?i)research[\w.]*\.json|\.ps1\b|$script:SourcePrefilter"
 $script:ContentWriters = @('Set-Content', 'Add-Content', 'Clear-Content', 'Out-File', 'ac', 'clc')
 $script:PsCopiers = @('Copy-Item', 'Move-Item', 'cpi', 'mi')
+$script:Renamers = @('Rename-Item', 'ren', 'rni')
 $script:AnyCopiers = @('cp', 'mv', 'copy', 'move')
 $script:PsValued = @('Path', 'LiteralPath', 'FilePath', 'PSPath', 'LP', 'Value', 'Encoding', 'Stream', 'Filter', 'Include', 'Exclude',
     'Credential', 'Delimiter', 'Width', 'InputObject', 'ItemType', 'Name', 'Destination', 'ToSession', 'FromSession', 'Variable', 'Target')
@@ -130,21 +151,22 @@ function Format-OneLine {
 # One write the command makes: the tool that makes it, the word naming the file, and for
 # a copy or move the source word, since a destination directory takes the source's name.
 function New-WriteTarget {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Builds an in-memory object; changes no system state.')]
     param([string]$Tool, $Word, $Source = $null)
     [PSCustomObject]@{ Tool = $Tool; Word = $Word; Source = $Source }
 }
 
 # PowerShell-style arguments: named parameters (resolved by unique prefix against the
-# writers' parameter names) and positionals.
+# writers' parameter names, or the Valued list a caller passes) and positionals.
 function Read-PsArgument {
-    param($Words)
+    param($Words, [string[]]$Valued = $script:PsValued)
     $parsed = [PSCustomObject]@{ Named = @{}; Positional = (New-Object System.Collections.Generic.List[object]) }
     for ($at = 0; $at -lt $Words.Count; $at++) {
         $word = $Words[$at]
         if (-not ($word.Bare -and $word.Text -match '^-([A-Za-z]\w*)$')) { $parsed.Positional.Add($word); continue }
         $typed = $Matches[1]
-        $name = @($script:PsValued | Where-Object { $_ -eq $typed })
-        if ($name.Count -eq 0) { $name = @($script:PsValued | Where-Object { $_.StartsWith($typed, [StringComparison]::OrdinalIgnoreCase) }) }
+        $name = @($Valued | Where-Object { $_ -eq $typed })
+        if ($name.Count -eq 0) { $name = @($Valued | Where-Object { $_.StartsWith($typed, [StringComparison]::OrdinalIgnoreCase) }) }
         if ($name.Count -ne 1) { continue }
         $value = $word.Value
         if ($null -eq $value -and $at + 1 -lt $Words.Count) { $at++; $value = $Words[$at] }
@@ -160,7 +182,7 @@ function Read-PsArgument {
 function Read-PosixArgument {
     param($Words, [string]$Valued = '', [string[]]$ValuedLong = @())
     $parsed = [PSCustomObject]@{
-        Named      = [System.Collections.Hashtable]::new([StringComparer]::Ordinal)
+        Named      = [System.Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
         Positional = (New-Object System.Collections.Generic.List[object])
     }
     $done = $false
@@ -244,12 +266,36 @@ function Get-CopyTarget {
     return ,$found
 }
 
+# Rename-Item, ren and rni: the new name, which lands in the directory of -Path unless it
+# is a path of its own. -NewName is positional after -Path, so it is the first positional
+# when -Path was named and the second when it was not. A -Path the shell would expand
+# leaves the directory unknown, so the new name is judged as unresolvable.
+function Get-RenameTarget {
+    param([string]$Verb, $Words)
+    $found = New-Object System.Collections.Generic.List[object]
+    $parsed = Read-PsArgument -Words $Words -Valued ($script:PsValued + 'NewName')
+    $path = Get-NamedPath $parsed
+    $nameAt = if (@($script:PathNames | Where-Object { $parsed.Named.ContainsKey($_) }).Count -gt 0) { 0 } else { 1 }
+    $newName = if ($parsed.Named.ContainsKey('NewName')) { $parsed.Named['NewName'] } elseif ($parsed.Positional.Count -gt $nameAt) { $parsed.Positional[$nameAt] } else { $null }
+    if ($null -eq $newName) { return ,$found }
+    $word = $newName
+    $rooted = [System.IO.Path]::IsPathRooted((ConvertFrom-BashPath $newName.Text))
+    if ($null -ne $path -and -not $rooted) {
+        $parent = Split-Path -Parent $path.Text
+        if (-not $path.Literal) { $word = New-ShellWord -Text $newName.Text -Literal $false }
+        elseif ($parent) { $word = New-ShellWord -Text (Join-Path $parent $newName.Text) -Literal $newName.Literal }
+    }
+    $found.Add((New-WriteTarget -Tool $Verb -Word $word))
+    return ,$found
+}
+
 # The files one command writes by its own verb (redirections are handled by the caller).
 function Get-VerbTarget {
     param([string]$Verb, $Words, [string]$Shell)
     $found = New-Object System.Collections.Generic.List[object]
     if ($Verb -in 'sed', 'perl') { return (Get-InPlaceTarget -Verb $Verb -Words $Words) }
     if ($script:PsCopiers -contains $Verb -or $script:AnyCopiers -contains $Verb) { return (Get-CopyTarget -Verb $Verb -Words $Words -Shell $Shell) }
+    if ($script:Renamers -contains $Verb) { return (Get-RenameTarget -Verb $Verb -Words $Words) }
     if ($Verb -eq 'tee') {
         $parsed = Read-PosixArgument -Words $Words
         foreach ($word in $parsed.Positional) { $found.Add((New-WriteTarget -Tool 'tee' -Word $word)) }
@@ -303,7 +349,12 @@ function Resolve-WritePath {
 
 function Test-GuardedLeaf {
     param([string]$Leaf)
-    return ($script:ResearchLeaves -contains $Leaf -or $Leaf -like '*.ps1')
+    return ($script:ResearchLeaves -contains $Leaf -or $Leaf -like '*.ps1' -or (Test-SourceLeaf $Leaf))
+}
+
+function Test-SourceLeaf {
+    param([string]$Leaf)
+    return ($script:SourceExtensions -contains [System.IO.Path]::GetExtension($Leaf))
 }
 
 function Test-PathInRepo {
@@ -410,22 +461,27 @@ function Get-WriteReason {
     $leaf = Split-Path -Leaf $Write.Path
     $shown = Format-OneLine $Command 140
 
+    $why = "Every hook that governs that file matches the Write and Edit tools only, so a shell write routes around all of them -- which is why it is refused here."
     $instead = if ($script:RecordLeaves -contains $leaf) {
         "$leaf is the record the research cutover swap reasons from, and it has no write path at all: Edit and Write are refused on it too. If the live catalog needs a change, change research.json through 'janet research update' or 'janet research add'."
     }
     elseif ($script:ResearchLeaves -contains $leaf) {
         "Change the catalog through 'janet research add' or 'janet research update' (research_add / research_update over MCP, or scripts\Add-ResearchNode.ps1 / Update-ResearchNode.ps1), which validate ids and links and splice into the file's text. Edit and Write are refused on $leaf as well."
     }
+    elseif (Test-SourceLeaf $leaf) {
+        $why = 'C# source is changed through the Edit and Write tools here, never by a shell rewrite.'
+        "Make the change with the Edit or Write tool instead: the edit is then visible in the session as the exact change made, where it can be reviewed, and the code graph razorgraph answers from is rebuilt from that source. A sed, Set-Content or redirect rewrite of C# leaves nothing to review. To rename or move a file, git mv passes; dotnet (new, format, add, sln) passes too."
+    }
     else {
         "Make the change with the Edit or Write tool instead, so the hooks fire: the lint hook checks every .ps1 after Write or Edit against notes\powershell-house-rules.md, and the research guard asks the catalog before a NEW script is created."
     }
 
     return @"
-Shell write guard: $ToolName command '$shown' writes $($Write.Path) through $($Write.Tool). Every hook that governs that file matches the Write and Edit tools only, so a shell write routes around all of them -- which is why it is refused here.
+Shell write guard: $ToolName command '$shown' writes $($Write.Path) through $($Write.Tool). $why
 
 $instead
 
-Only shell writes to guarded files inside a git working tree are refused: research.json and its candidate, previous and base copies, and *.ps1. git, dotnet and the janet CLI pass, as do reads and any write outside a repo (a scratchpad file, for one). If the harness suggested editing with sed or a heredoc, that advice does not hold here.
+Only shell writes to guarded files inside a git working tree are refused: research.json and its candidate, previous and base copies, *.ps1, and C# source (.cs, .razor, .csproj, .sln, .slnx). git, dotnet and the janet CLI pass, as do reads and any write outside a repo (a scratchpad file, for one). If the harness suggested editing with sed or a heredoc, that advice does not hold here.
 "@
 }
 
@@ -452,7 +508,7 @@ try {
     }
     elseif ($verdict.Unsure.Count -gt 0) {
         $unsure = Format-OneLine ((@($verdict.Unsure) | Select-Object -Unique) -join ', ') 120
-        Write-PassContext "Shell write guard could not resolve where this $toolName command writes ($unsure), so it ran. A shell write to research.json or a .ps1 inside a repo is refused: use the Edit or Write tool, or janet research for the catalog."
+        Write-PassContext "Shell write guard could not resolve where this $toolName command writes ($unsure), so it ran. A shell write to research.json, a .ps1 or C# source inside a repo is refused: use the Edit or Write tool, or janet research for the catalog."
     }
 }
 catch {

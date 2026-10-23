@@ -24,9 +24,15 @@ BeforeAll {
     New-Item -ItemType Directory -Path (Join-Path $script:repo 'scripts') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $script:repo 'scripts\Foo.ps1') -Value 'Write-Output 1' -Encoding utf8
     Set-Content -LiteralPath (Join-Path $script:repo 'research.json') -Value '{}' -Encoding utf8
+    # C# source, and plain files to rename onto it.
+    New-Item -ItemType Directory -Path (Join-Path $script:repo 'src') -Force | Out-Null
+    foreach ($leaf in 'src\Foo.cs', 'src\Index.razor', 'src\App.csproj', 'App.sln', 'App.slnx', 'src\notes.txt', 'scripts\notes.txt') {
+        Set-Content -LiteralPath (Join-Path $script:repo $leaf) -Value 'x' -Encoding utf8
+    }
     & git -C $script:repo init -q
     $script:plainDir = Join-Path $TestDrive 'plain'
     New-Item -ItemType Directory -Path $script:plainDir | Out-Null
+    Set-Content -LiteralPath (Join-Path $script:plainDir 'a.txt') -Value 'x' -Encoding utf8
 
     function Invoke-GuardRaw {
         # The parsed hookSpecificOutput, or $null for silence.
@@ -95,7 +101,90 @@ Describe 'Invoke-ShellWriteGuard' {
         }
     }
 
+    Context 'a shell write to C# source in a repo is refused (thread item 84)' {
+        It 'refuses <name>' -ForEach @(
+            @{ name = 'sed -i on a .cs'; tool = 'Bash'; command = 'sed -i s/1/2/ src/Foo.cs' }
+            @{ name = 'perl -pi -e on a .razor'; tool = 'Bash'; command = 'perl -pi -e s/1/2/ src/Index.razor' }
+            @{ name = 'a heredoc onto a NEW .cs'; tool = 'Bash'; command = "cat > src/New.cs <<'EOF'`nclass X {}`nEOF" }
+            @{ name = 'a > redirect onto a .csproj'; tool = 'Bash'; command = 'echo x > src/App.csproj' }
+            @{ name = 'tee onto a .slnx'; tool = 'Bash'; command = 'echo x | tee App.slnx' }
+            @{ name = 'cp of a .cs into the source directory'; tool = 'Bash'; command = 'cp /c/temp/x.cs src/' }
+            @{ name = 'mv onto a .sln'; tool = 'Bash'; command = 'mv notes.txt App.sln' }
+            @{ name = 'a write nested in bash -c'; tool = 'Bash'; command = 'bash -c "sed -i s/1/2/ src/Foo.cs"' }
+            @{ name = 'a redirect of dotnet output onto a .cs'; tool = 'Bash'; command = 'dotnet --info > src/Foo.cs' }
+            @{ name = 'Set-Content on a .cs'; tool = 'PowerShell'; command = 'Set-Content src\Foo.cs -Value x' }
+            @{ name = '-replace piped into Set-Content on a .cs'; tool = 'PowerShell'; command = "(Get-Content src\Foo.cs) -replace 'a','b' | Set-Content src\Foo.cs" }
+            @{ name = 'Add-Content on a .razor'; tool = 'PowerShell'; command = 'Add-Content -Path src\Index.razor -Value x' }
+            @{ name = 'Clear-Content on a .csproj'; tool = 'PowerShell'; command = 'Clear-Content src\App.csproj' }
+            @{ name = 'Out-File onto a .cs'; tool = 'PowerShell'; command = "'x' | Out-File src\Foo.cs" }
+            @{ name = 'Tee-Object onto a .cs'; tool = 'PowerShell'; command = "'x' | Tee-Object src\Foo.cs" }
+            @{ name = 'New-Item -Name of a .cs'; tool = 'PowerShell'; command = 'New-Item -Path src -Name New.cs -Value x' }
+            @{ name = 'Copy-Item onto a .cs'; tool = 'PowerShell'; command = 'Copy-Item C:\temp\a.txt src\Foo.cs' }
+            @{ name = 'Move-Item onto a .slnx'; tool = 'PowerShell'; command = 'Move-Item x.txt App.slnx' }
+            @{ name = '[IO.File]::WriteAllText onto a .cs'; tool = 'PowerShell'; command = "[IO.File]::WriteAllText('src\Foo.cs', 'x')" }
+            @{ name = '[IO.File]::AppendAllLines onto a .razor'; tool = 'PowerShell'; command = "[System.IO.File]::AppendAllLines('src\Index.razor', [string[]]'x')" }
+            @{ name = 'a > redirect onto a .cs'; tool = 'PowerShell'; command = '"x" > src\Foo.cs' }
+            @{ name = 'an upper-case extension'; tool = 'PowerShell'; command = 'Set-Content src\FOO.CS -Value x' }
+        ) {
+            Invoke-Guard -ToolName $tool -Command $command | Should -Be 'deny'
+        }
+    }
+
+    Context 'Rename-Item onto a guarded name is a write' {
+        It 'refuses <name>' -ForEach @(
+            @{ name = 'Rename-Item, positional'; command = 'Rename-Item src\notes.txt Foo.cs' }
+            @{ name = 'Rename-Item -Path then a positional new name'; command = 'Rename-Item -Path src\notes.txt Bar.cs' }
+            @{ name = 'Rename-Item -NewName before -Path'; command = 'Rename-Item -NewName Bar.ps1 -Path scripts\notes.txt' }
+            @{ name = 'rni -LiteralPath with -NewName:value'; command = 'rni -LiteralPath scripts\notes.txt -NewName:Bar.ps1' }
+            @{ name = 'ren onto research.json'; command = 'ren notes.txt research.json' }
+        ) {
+            Invoke-Guard -ToolName 'PowerShell' -Command $command | Should -Be 'deny'
+        }
+
+        It 'refuses a full path as the new name' {
+            # -ForEach data is built at discovery, before BeforeAll has made the repo.
+            $command = "Rename-Item '{0}' '{1}'" -f (Join-Path $script:repo 'src\notes.txt'), (Join-Path $script:repo 'src\Bar.cs')
+            Invoke-Guard -ToolName 'PowerShell' -Command $command -Cwd $script:plainDir | Should -Be 'deny'
+        }
+
+        It 'judges a full-path new name as given, not under the directory of -Path' {
+            # Joined under the repo directory this would read as a write inside the repo.
+            $command = "Rename-Item '{0}' '{1}'" -f (Join-Path $script:repo 'src\notes.txt'), (Join-Path $script:plainDir 'Bar.cs')
+            Invoke-GuardRaw -ToolName 'PowerShell' -Command $command | Should -BeNullOrEmpty
+        }
+
+        It 'judges the new name in the directory of -Path, not the cwd' {
+            # From outside any repo, a rename inside the repo is still refused...
+            $inRepo = Join-Path $script:repo 'src\notes.txt'
+            Invoke-Guard -ToolName 'PowerShell' -Command "Rename-Item '$inRepo' Bar.cs" -Cwd $script:plainDir | Should -Be 'deny'
+            # ...and from inside one, a rename outside it passes.
+            $outside = Join-Path $script:plainDir 'a.txt'
+            Invoke-GuardRaw -ToolName 'PowerShell' -Command "Rename-Item '$outside' Bar.cs" | Should -BeNullOrEmpty
+        }
+
+        It 'lets a rename away from a guarded name through, as it does mv: the destination is judged' {
+            Invoke-GuardRaw -ToolName 'PowerShell' -Command 'Rename-Item src\Foo.cs Foo.txt' | Should -BeNullOrEmpty
+        }
+
+        It 'runs a rename whose directory it cannot resolve, and says so' {
+            $output = Invoke-GuardRaw -ToolName 'PowerShell' -Command 'Rename-Item $f Foo.cs'
+            $output.PSObject.Properties.Name | Should -Not -Contain 'permissionDecision'
+            $output.additionalContext | Should -Match 'could not resolve'
+        }
+    }
+
     Context 'the denial says what to use instead' {
+        It 'sends a C# write to Edit or Write and says why, not the .ps1 hooks' {
+            $output = Invoke-GuardRaw -Command 'sed -i s/1/2/ src/Foo.cs'
+            $reason = $output.permissionDecisionReason
+            $reason | Should -Match ([regex]::Escape((Join-Path $script:repo 'src\Foo.cs')))
+            $reason | Should -Match 'Edit or Write tool'
+            $reason | Should -Match 'reviewed'
+            $reason | Should -Match 'graph'
+            $reason | Should -Match 'git mv'
+            $reason | Should -Not -Match 'lint hook'
+        }
+
         It 'sends a .ps1 write to Edit or Write, naming the hooks it routed around' {
             $output = Invoke-GuardRaw -Command 'sed -i s/1/2/ scripts/Foo.ps1'
             $output.permissionDecisionReason | Should -Match ([regex]::Escape((Join-Path $script:repo 'scripts\Foo.ps1')))
@@ -132,6 +221,16 @@ Describe 'Invoke-ShellWriteGuard' {
             @{ name = 'a new directory named like a script'; tool = 'PowerShell'; command = 'New-Item -ItemType Directory -Path scripts\Foo.ps1.d' }
             @{ name = 'Tee-Object into a variable'; tool = 'PowerShell'; command = 'Get-Content scripts\Foo.ps1 | Tee-Object -Variable v' }
             @{ name = 'a write to an unguarded file in the repo'; tool = 'PowerShell'; command = 'Set-Content scripts\notes.txt -Value x' }
+            @{ name = 'a .csv, which is not .cs'; tool = 'PowerShell'; command = 'Set-Content src\data.csv -Value x' }
+            @{ name = 'dotnet new writing source'; tool = 'Bash'; command = 'dotnet new classlib -o src/Lib -n Lib' }
+            @{ name = 'dotnet format rewriting source'; tool = 'Bash'; command = 'dotnet format App.slnx' }
+            @{ name = 'dotnet add package writing a .csproj'; tool = 'PowerShell'; command = 'dotnet add src\App.csproj package Foo' }
+            @{ name = 'dotnet sln add writing a .slnx'; tool = 'Bash'; command = 'dotnet sln App.slnx add src/App.csproj' }
+            @{ name = 'dotnet test with its log teed out'; tool = 'Bash'; command = 'dotnet test App.slnx 2>&1 | tee test.log' }
+            @{ name = 'janet check on a solution'; tool = 'PowerShell'; command = 'janet check --target App.slnx > check.json' }
+            @{ name = 'git checkout of C# source'; tool = 'Bash'; command = 'git checkout -- src/Foo.cs src/App.csproj' }
+            @{ name = 'git mv of C# source'; tool = 'PowerShell'; command = 'git mv src\Foo.cs src\Bar.cs' }
+            @{ name = 'a read of C# source (the graph guard judges reads)'; tool = 'Bash'; command = 'cat src/Foo.cs > /dev/null' }
         ) {
             Invoke-GuardRaw -ToolName $tool -Command $command | Should -BeNullOrEmpty
         }
@@ -139,6 +238,8 @@ Describe 'Invoke-ShellWriteGuard' {
         It 'lets a write to a guarded name outside any repo through: <tool>' -ForEach @(
             @{ tool = 'Bash'; target = 'Fix.ps1'; form = 'sed -i s/1/2/ {0}' }
             @{ tool = 'PowerShell'; target = 'research.json'; form = 'Set-Content -Path ''{0}'' -Value x' }
+            @{ tool = 'Bash'; target = 'Foo.cs'; form = 'sed -i s/1/2/ {0}' }
+            @{ tool = 'PowerShell'; target = 'App.csproj'; form = 'Set-Content -Path ''{0}'' -Value x' }
         ) {
             $path = Join-Path $script:plainDir $target
             $shown = if ($tool -eq 'Bash') { $path -replace '\\', '/' } else { $path }
@@ -167,6 +268,13 @@ Describe 'Invoke-ShellWriteGuard' {
             $output.PSObject.Properties.Name | Should -Not -Contain 'permissionDecision'
             $output.additionalContext | Should -Match 'could not resolve'
             $output.additionalContext | Should -Match ([regex]::Escape('$dir\Foo.ps1'))
+        }
+
+        It 'runs an unresolvable write that names C# source, and says so' {
+            $output = Invoke-GuardRaw -ToolName 'PowerShell' -Command 'Set-Content -Path "$dir\Foo.cs" -Value x'
+            $output.PSObject.Properties.Name | Should -Not -Contain 'permissionDecision'
+            $output.additionalContext | Should -Match ([regex]::Escape('$dir\Foo.cs'))
+            $output.additionalContext | Should -Match 'C# source'
         }
 
         It 'stays silent on an unresolvable write that names nothing guarded' {
