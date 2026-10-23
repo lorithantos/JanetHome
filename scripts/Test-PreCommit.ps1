@@ -5,7 +5,7 @@
 .DESCRIPTION
     Runs PSScriptAnalyzer and the deep-nesting gate on staged .ps1 files, builds every
     solution at the repo root through `janet check` when the commit stages a C# or build
-    file, executes the Pester test suite, validates toolkit config via Test-Config.ps1, and checks
+    file, executes the tracked Pester test files under tests\, validates toolkit config via Test-Config.ps1, and checks
     file encoding on staged files via Test-FileEncoding.ps1. Returns exit code 0
     only when every step passes.
 
@@ -19,6 +19,7 @@
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\Invoke-External.ps1"
+. "$PSScriptRoot\lib\TrackedTests.ps1"
 
 # git is the source of truth for what is staged; without it every step would
 # see an empty staged list and pass while checking nothing -- the exact quiet
@@ -214,7 +215,7 @@ Write-StepHeader 'Pester Tests'
 # back afterwards because the encoding audit's staged list ('git diff --cached') must read
 # the index the commit is made from; without it a '--only' commit would be audited against
 # whatever else sits staged in .git\index.
-function Invoke-PesterWithoutGitEnv ([string]$Path) {
+function Invoke-PesterWithoutGitEnv ([string[]]$Path) {
     $saved = @(Get-ChildItem Env: | Where-Object Name -like 'GIT_*')
     foreach ($variable in $saved) { Remove-Item -LiteralPath "Env:\$($variable.Name)" }
     try {
@@ -226,9 +227,22 @@ function Invoke-PesterWithoutGitEnv ([string]$Path) {
 
 # Keyed to the presence of test files, not a tests directory: a repo whose
 # tests\ holds fixtures for some other language must not conscript Pester.
-$testsDir = Join-Path $repoRoot 'tests'
-$pesterFiles = if (Test-Path $testsDir) { @(Get-ChildItem $testsDir -Recurse -Filter '*.Tests.ps1' -File) } else { @() }
-if ($pesterFiles.Count -gt 0) {
+#
+# TRACKED files only, since 2026-10-23 (thread item 58). Running every *.Tests.ps1 on disk
+# let another session's in-flight, untracked test file fail this session's commit. ls-files
+# runs here, BEFORE the GIT_* lift, so it reads the index the commit is written from: a test
+# staged new in this commit is listed and runs, an untracked one is named and skipped.
+$trackedTests = Invoke-External -NoThrow -WorkingDirectory $repoRoot $git ls-files -- tests
+$pesterFiles = Select-TrackedTestFile -TrackedPath @($trackedTests.StdOut | Where-Object { $_ }) -RepoRoot $repoRoot
+$untrackedTests = @((Invoke-External -NoThrow -WorkingDirectory $repoRoot $git ls-files --others --exclude-standard -- tests).StdOut |
+    Where-Object { $_ -like '*.Tests.ps1' })
+foreach ($untracked in $untrackedTests) {
+    Write-Host "  Skipping untracked $untracked -- not part of this commit." -ForegroundColor Yellow
+}
+if (-not $trackedTests.Success) {
+    Write-Host "  git ls-files failed (exit $($trackedTests.ExitCode)): $($trackedTests.StdErr -join ' ')" -ForegroundColor Red
+    Write-StepResult 'Pester Tests' $false
+} elseif ($pesterFiles.Count -gt 0) {
     # -Output/-PassThru as used here are Pester 5 syntax; the 3.4.0 that ships
     # in Windows throws on them. Same failure philosophy as the analyzer guard.
     $pester = Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1
@@ -237,11 +251,12 @@ if ($pesterFiles.Count -gt 0) {
         Write-Host "  Pester 5+ required to run the tests directory (found: $found). Install-Module Pester -Force." -ForegroundColor Red
         Write-StepResult 'Pester Tests' $false
     } else {
-        $pesterResult = Invoke-PesterWithoutGitEnv $testsDir
+        Write-Host "  $($pesterFiles.Count) tracked test file(s)."
+        $pesterResult = Invoke-PesterWithoutGitEnv $pesterFiles
         Write-StepResult 'Pester Tests' ($pesterResult.FailedCount -eq 0)
     }
 } else {
-    Write-Host '  No *.Tests.ps1 files found -- skipping.'
+    Write-Host '  No tracked *.Tests.ps1 files under tests\ -- skipping.'
     $stepResults['Pester Tests'] = $true
 }
 
