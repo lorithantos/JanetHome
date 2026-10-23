@@ -41,6 +41,13 @@
                       command run with one line of additionalContext. The denial
                       carries a paste-ready mcp__razorgraph__grep call. Shell searches
                       are never executed here.
+      Bash/PowerShell also denied, since 2026-10-23 (thread item 55), when a command
+      read            READS a source file -- .cs, .razor, .csproj, .sln, .slnx --
+                      inside a git working tree: cat, type, head, tail, less, more,
+                      tac, Get-Content, gc, sed without -i, awk, or an [IO.File]
+                      reader. The denial points at the Read tool and razorgraph's
+                      find_nodes. Every other file type passes; git show and dotnet
+                      are not readers.
       anything else   passes.
 
     WHEN RAZORGRAPH CANNOT ANSWER. Unreachable (connection refused or timed out): run
@@ -587,7 +594,7 @@ function Format-GrepAnswer {
 # command that mentioned git exempted wholesale.
 #
 # The command is split into pipelines and commands -- PowerShell by its own parser, Bash
-# by the small tokenizer below -- and each search command is asked one question: what
+# by the small tokenizer in lib\ShellCommand.ps1 -- and each search command is asked one question: what
 # does it read? Its file operands; a file fed in with <; the files the nearest upstream
 # cat, head or Get-Content reads (for Select-String, also Get-ChildItem's items); the
 # paths a find hands to -exec or xargs; or, for a search that recurses when given no
@@ -602,8 +609,19 @@ function Format-GrepAnswer {
 # operand it cannot resolve -- a variable, an expression -- is not guessed at: when that
 # is all that stands between a command and a denial, the command runs with one line of
 # additionalContext saying so.
+#
+# READS OF SOURCE, 2026-10-23 (thread item 55, Lori: deny, source only). A command that
+# reads a .cs, .razor, .csproj, .sln or .slnx inside a git working tree -- cat, type,
+# head, tail, less, more, tac, Get-Content, gc, sed without -i, awk, or an [IO.File]
+# reader -- is denied and pointed at the Read tool or razorgraph. Every other file type
+# passes, and so do git show and dotnet, which are not readers. A reader that only
+# feeds a search is still judged as the search.
 
 $script:ShellPrefilter = '\b(grep|egrep|fgrep|rg|ag|ack|Select-String|sls|findstr)\b'
+$script:SourcePrefilter = '(?i)\.(cs|razor|csproj|slnx?)\b'
+$script:SourceExtensions = @('.cs', '.razor', '.csproj', '.sln', '.slnx')
+$script:ScriptReaders = @('sed', 'awk', 'gawk')
+$script:FileReadMembers = @('ReadAllText', 'ReadAllLines', 'ReadAllBytes', 'ReadLines', 'OpenText', 'OpenRead', 'Open')
 $script:GrepVerbs = @('grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack')
 $script:ContentReaders = @('cat', 'type', 'Get-Content', 'gc', 'head', 'tail', 'less', 'more', 'tac')
 $script:ItemListers = @('Get-ChildItem', 'gci', 'ls', 'dir', 'Get-Item', 'gi')
@@ -1002,11 +1020,78 @@ function Test-ShellTargetInRepo {
     return $script:WorkTrees[$Target.Probe]
 }
 
+# sed and awk: every word that is not an option or an option's value. The script or
+# program is among them, and is harmless: it never ends in a source extension. InPlace is
+# set for sed -i, which rewrites a file rather than reading it and is not judged here.
+function Get-ScriptReaderOperands {
+    param([string]$Verb, $Words)
+    $found = [PSCustomObject]@{ Words = (New-Object System.Collections.Generic.List[object]); InPlace = $false }
+    $valued = if ($Verb -eq 'sed') { 'efl' } else { 'fvF' }
+    for ($at = 0; $at -lt $Words.Count; $at++) {
+        $word = $Words[$at]
+        $text = $word.Text
+        if (-not $word.Bare -or $text -notmatch '^-.') { $found.Words.Add($word); continue }
+        if ($Verb -eq 'sed' -and [regex]::Match($text, '^(-[^-efl]*i|--in-place)').Success) { $found.InPlace = $true; return $found }
+        $flag = [regex]::Match($text, '^-[^-' + $valued + ']*[' + $valued + ']$')
+        if ($flag.Success) { $at++ }
+    }
+    return $found
+}
+
+# The first source file (.cs, .razor, .csproj, .sln, .slnx) among Words that lies inside a
+# git working tree, as { Tool, Path }, or $null. An operand that cannot be resolved but
+# still names source goes to Unsure.
+function Find-SourceOperand {
+    param([string]$Tool, $Words, [string]$BaseDir, $Unsure)
+    foreach ($word in $Words) {
+        if (-not $word.Literal) {
+            if ($word.Text -match $script:SourcePrefilter) { $Unsure.Add($word.Text) }
+            continue
+        }
+        foreach ($item in @($word.Items)) {
+            if ($script:SourceExtensions -notcontains [System.IO.Path]::GetExtension($item)) { continue }
+            $target = Resolve-ShellTarget -Text $item -BaseDir $BaseDir
+            if ($null -eq $target) { $Unsure.Add($item); continue }
+            if (-not (Test-ShellTargetInRepo $target)) { continue }
+            $full = $item
+            try { $full = Resolve-FullPath -Path (ConvertFrom-BashPath $item) -BaseDir $BaseDir } catch { $full = $item }
+            return [PSCustomObject]@{ Tool = $Tool; Path = $full }
+        }
+    }
+    return $null
+}
+
+# What one reader command reads of source: cat, type, head, tail, less, more, tac,
+# Get-Content and gc by their operands; sed (without -i) and awk past their script.
+function Find-SourceRead {
+    param([string]$Verb, $Words, [string]$BaseDir, $Unsure)
+    if ($script:ContentReaders -contains $Verb) { $operands = (Get-ReaderOperands -Words $Words -Verb $Verb).Words }
+    elseif ($script:ScriptReaders -contains $Verb) {
+        $parsed = Get-ScriptReaderOperands -Verb $Verb -Words $Words
+        if ($parsed.InPlace) { return $null }
+        $operands = $parsed.Words
+    }
+    else { return $null }
+    return (Find-SourceOperand -Tool $Verb -Words $operands -BaseDir $BaseDir -Unsure $Unsure)
+}
+
+# [IO.File]::ReadAllText('x.cs') and the other static readers, in a PowerShell command.
+function Find-SourceMemberRead {
+    param([string]$Command, [string]$BaseDir, $Unsure)
+    foreach ($call in (Get-FileMemberCall $Command)) {
+        if ($script:FileReadMembers -notcontains $call.Member -or $call.Arguments.Count -eq 0) { continue }
+        $read = Find-SourceOperand -Tool "[IO.File]::$($call.Member)" -Words @($call.Arguments[0]) -BaseDir $BaseDir -Unsure $Unsure
+        if ($null -ne $read) { return $read }
+    }
+    return $null
+}
+
 # Search is set (with Target and Glob) when some search reads files inside a git working
-# tree; Unsure names the operands that could not be resolved.
+# tree; Read is set ({ Tool, Path }) when some command reads a source file inside one;
+# Unsure names the operands that could not be resolved.
 function Get-ShellVerdict {
     param([string]$Command, [string]$Shell, [string]$BaseDir, [int]$Depth = 0)
-    $verdict = [PSCustomObject]@{ Search = $null; Target = $null; Glob = $null; Unsure = (New-Object System.Collections.Generic.List[string]) }
+    $verdict = [PSCustomObject]@{ Search = $null; Target = $null; Glob = $null; Read = $null; Unsure = (New-Object System.Collections.Generic.List[string]) }
     $pipelines = if ($Shell -eq 'PowerShell') { Split-PowerShellCommand $Command } else { Split-BashCommand $Command }
     $location = $BaseDir
 
@@ -1031,13 +1116,17 @@ function Get-ShellVerdict {
                 if ($Depth -lt 3) {
                     $nested = Get-ShellVerdict -Command $inner.Text -Shell $inner.Shell -BaseDir $location -Depth ($Depth + 1)
                     if ($null -ne $nested.Search) { return $nested }
+                    if ($null -eq $verdict.Read) { $verdict.Read = $nested.Read }
                     $verdict.Unsure.AddRange($nested.Unsure)
                 }
                 continue
             }
 
             $search = Read-SearchSegment -Verb $verb -Words $rest -BaseDir $location
-            if ($null -eq $search) { continue }
+            if ($null -eq $search) {
+                if ($null -eq $verdict.Read) { $verdict.Read = Find-SourceRead -Verb $verb -Words $rest -BaseDir $location -Unsure $verdict.Unsure }
+                continue
+            }
             if ($search.Unsure) { $verdict.Unsure.Add($search.Unsure); continue }
 
             $sources = Get-SearchSources -Search $search -Segments $segments -Index $index
@@ -1063,6 +1152,7 @@ function Get-ShellVerdict {
             }
         }
     }
+    if ($Shell -eq 'PowerShell' -and $null -eq $verdict.Read) { $verdict.Read = Find-SourceMemberRead -Command $Command -BaseDir $BaseDir -Unsure $verdict.Unsure }
     return $verdict
 }
 
@@ -1104,6 +1194,24 @@ ToolSearch("select:mcp__razorgraph__grep")
 $(Format-Call -Arguments $arguments -Offset 0 -DiskOffset 0)$fill
 
 The Grep tool is also available: inside a repo it is answered through razorgraph's grep in the same step. A search that reads only another command's output (git diff | grep, dotnet test | Select-String) passes, and so does one whose files all lie outside any git working tree.
+"@
+}
+
+function Get-ReadReason {
+    param([string]$ToolName, [string]$Command, $Read)
+
+    $shown = $Command -replace '\s+', ' '
+    if ($shown.Length -gt 140) { $shown = $shown.Substring(0, 140) + '...' }
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension($Read.Path)
+    $find = @{ nameContains = $stem } | ConvertTo-Json -Compress
+
+    return @"
+Graph guard: $ToolName command '$shown' reads $($Read.Path) with $($Read.Tool), and Bash and PowerShell do not read source files (.cs, .razor, .csproj, .sln, .slnx) inside a git working tree here. Read it with the Read tool -- the span you need, with offset and limit -- or ask the graph for its structure instead of its text:
+
+ToolSearch("select:mcp__razorgraph__find_nodes,mcp__razorgraph__get_node,mcp__razorgraph__grep")
+mcp__razorgraph__find_nodes $find
+
+Every other file type passes (.json, .md, .ps1 and the rest), as do files outside any git working tree and git show of a committed version.
 "@
 }
 
@@ -1162,15 +1270,18 @@ try {
 
     if ($toolName -eq 'Bash' -or $toolName -eq 'PowerShell') {
         $command = [string](Get-Prop $toolInput 'command')
-        if (-not $command -or $command -notmatch $script:ShellPrefilter) { exit 0 }
+        if (-not $command -or ($command -notmatch $script:ShellPrefilter -and $command -notmatch $script:SourcePrefilter)) { exit 0 }
 
         $verdict = Get-ShellVerdict -Command $command -Shell $toolName -BaseDir $cwd
         if ($null -ne $verdict.Search) {
             Write-Deny (Get-ShellReason -ToolName $toolName -Command $command -Verdict $verdict)
         }
+        elseif ($null -ne $verdict.Read) {
+            Write-Deny (Get-ReadReason -ToolName $toolName -Command $command -Read $verdict.Read)
+        }
         elseif ($verdict.Unsure.Count -gt 0) {
             $unsure = Format-OneLine ((@($verdict.Unsure) | Select-Object -Unique) -join ', ') 120
-            Write-PassContext "Graph guard could not tell which files this $toolName search reads ($unsure), so it ran. Bash and PowerShell searches of files inside a repo are denied: search with mcp__razorgraph__grep, or with the Grep tool, which is answered through razorgraph."
+            Write-PassContext "Graph guard could not tell which files this $toolName command reads ($unsure), so it ran. Bash and PowerShell searches of files, and reads of C# source, inside a repo are denied: search with mcp__razorgraph__grep or the Grep tool, and read source with the Read tool."
         }
     }
 }

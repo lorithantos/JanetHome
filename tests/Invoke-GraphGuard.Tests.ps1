@@ -703,4 +703,77 @@ Describe 'Invoke-GraphGuard' {
             $output.additionalContext | Should -Match ([regex]::Escape('$file'))
         }
     }
+
+    Context 'a shell read of source in a repo is denied, 2026-10-23' {
+        # Thread item 55, decided "deny, source only": cat, head, sed -n and Get-Content
+        # of a .cs all passed live probes, because a reader counted only when it fed a
+        # search. Source is .cs, .razor, .csproj, .sln and .slnx; nothing else is.
+
+        BeforeAll {
+            Set-Content -LiteralPath (Join-Path $script:projectDir 'src\Page.razor') -Value '<h1>Hi</h1>' -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $script:projectDir 'App.csproj') -Value '<Project />' -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $script:projectDir 'App.sln') -Value '' -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $script:projectDir 'notes.md') -Value '# notes' -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $script:projectDir 'Tool.ps1') -Value 'Write-Output 1' -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $script:plainDir 'Outside.cs') -Value 'class Outside { }' -Encoding utf8
+        }
+
+        It 'refuses <name>' -ForEach @(
+            @{ name = 'cat'; tool = 'Bash'; command = 'cat src/Foo.cs' }
+            @{ name = 'head -n'; tool = 'Bash'; command = 'head -n 40 src/Foo.cs' }
+            @{ name = 'tail'; tool = 'Bash'; command = 'tail -5 src/Foo.cs' }
+            @{ name = 'less'; tool = 'Bash'; command = 'less src/Foo.cs' }
+            @{ name = 'more'; tool = 'Bash'; command = 'more src/Foo.cs' }
+            @{ name = 'tac'; tool = 'Bash'; command = 'tac src/Foo.cs' }
+            @{ name = 'sed -n with the script first'; tool = 'Bash'; command = 'sed -n 1,80p src/Foo.cs' }
+            @{ name = 'sed -n -e'; tool = 'Bash'; command = "sed -n -e '1,80p' src/Foo.cs" }
+            @{ name = 'awk with a program'; tool = 'Bash'; command = "awk 'NR<40' src/Foo.cs" }
+            @{ name = 'awk -v then a program'; tool = 'Bash'; command = "awk -v n=40 'NR<n' src/Foo.cs" }
+            @{ name = 'a .razor'; tool = 'Bash'; command = 'cat src/Page.razor' }
+            @{ name = 'a .csproj'; tool = 'Bash'; command = 'cat App.csproj' }
+            @{ name = 'a .sln'; tool = 'Bash'; command = 'cat App.sln' }
+            @{ name = 'a .slnx'; tool = 'Bash'; command = 'cat Stub.slnx' }
+            @{ name = 'a read after cd'; tool = 'Bash'; command = 'cd src && head Foo.cs' }
+            @{ name = 'Get-Content -TotalCount'; tool = 'PowerShell'; command = 'Get-Content src\Foo.cs -TotalCount 40' }
+            @{ name = 'gc'; tool = 'PowerShell'; command = 'gc src\Foo.cs' }
+            @{ name = 'type, the PowerShell alias'; tool = 'PowerShell'; command = 'type src\Foo.cs' }
+            @{ name = 'Get-Content inside an assignment'; tool = 'PowerShell'; command = '$text = Get-Content -Raw -Path src\Foo.cs' }
+            @{ name = '[IO.File]::ReadAllText'; tool = 'PowerShell'; command = "[IO.File]::ReadAllText('src\Foo.cs')" }
+            @{ name = '[System.IO.File]::ReadAllLines'; tool = 'PowerShell'; command = "[System.IO.File]::ReadAllLines('src\Foo.cs').Count" }
+            @{ name = 'a read inside pwsh -Command'; tool = 'Bash'; command = 'pwsh -NoProfile -Command "Get-Content src\Foo.cs"' }
+        ) {
+            Invoke-Guard -ToolName $tool -Command $command | Should -Be 'deny'
+        }
+
+        It 'points the denial at Read and razorgraph, naming the file' {
+            $reason = Get-GuardReason -ToolName 'Bash' -Command 'sed -n 1,80p src/Foo.cs'
+            $reason | Should -Match ([regex]::Escape((Join-Path $script:projectDir 'src\Foo.cs')))
+            $reason | Should -Match 'with sed'
+            $reason | Should -Match 'Read tool'
+            $reason | Should -Match ([regex]::Escape('mcp__razorgraph__find_nodes {"nameContains":"Foo"}'))
+        }
+
+        It 'lets <name> through' -ForEach @(
+            @{ name = 'a .json'; tool = 'Bash'; command = 'cat config/settings.json' }
+            @{ name = 'a .md'; tool = 'Bash'; command = 'head -n 5 notes.md' }
+            @{ name = 'a .ps1'; tool = 'PowerShell'; command = 'Get-Content Tool.ps1 -TotalCount 5' }
+            @{ name = 'git show of a .cs'; tool = 'Bash'; command = 'git show HEAD:src/Foo.cs' }
+            @{ name = 'git show of a .cs piped into head'; tool = 'Bash'; command = 'git show HEAD:src/Foo.cs | head -40' }
+            @{ name = 'dotnet naming a .csproj'; tool = 'Bash'; command = 'dotnet build App.csproj' }
+            @{ name = 'sed -i, which rewrites rather than reads'; tool = 'Bash'; command = 'sed -i s/a/b/ src/Foo.cs' }
+            @{ name = 'awk reading a .md, given a .cs path as a -v value'; tool = 'Bash'; command = 'awk -v target=src/Foo.cs -f find.awk notes.md' }        ) {
+            Invoke-GuardRaw -ToolName $tool -Command $command | Should -BeNullOrEmpty
+        }
+
+        It 'lets a read of a .cs outside any repo through' {
+            $outside = (Join-Path $script:plainDir 'Outside.cs') -replace '\\', '/'
+            Invoke-GuardRaw -ToolName 'Bash' -Command "cat '$outside'" | Should -BeNullOrEmpty
+        }
+
+        It 'runs a read of source it cannot resolve, and says so without allowing' {
+            $output = Invoke-GuardRaw -Command 'Get-Content "$dir\Foo.cs"'
+            Assert-FailedOpen -Output $output -Mentions 'could not tell which files'
+            $output.additionalContext | Should -Match ([regex]::Escape('$dir\Foo.cs'))
+        }
+    }
 }
