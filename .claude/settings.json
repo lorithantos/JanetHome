@@ -64,6 +64,18 @@
             "statusMessage": "Answering the search through razorgraph grep..."
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$d = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }; $s = Join-Path $d 'scripts\\Invoke-ShellWriteGuard.ps1'; if (Test-Path $s) { & $s }",
+            "timeout": 15,
+            "statusMessage": "Checking for a shell write to a guarded file..."
+          }
+        ]
       }
     ],
     "PostToolUse": [

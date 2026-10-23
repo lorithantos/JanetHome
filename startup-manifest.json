@@ -98,6 +98,11 @@
       "enforcedBy": "scripts\\Invoke-LintHook.ps1"
     },
     {
+      "text": "ENFORCED: change a .ps1 or research.json in a repo with Edit/Write (the catalog with janet research), never a shell write -- sed -i, a redirect or heredoc, tee, Set-Content, cp or mv onto it.",
+      "why": "Every hook that guards an edit -- the edit guard, the lint hook, the research guard -- matches the Write and Edit tools only, so until 2026-10-23 a shell write passed all of them, and the harness's auto mode tells the model to make small edits with sed and heredocs. Lori decided that day that a hook denies them (thread item 7). A PreToolUse hook on Bash and PowerShell now refuses a command that writes research.json, its candidate, previous or base copy, or any .ps1, inside a git working tree; the guarded set is the one those Write|Edit hooks govern, read off their code. git, dotnet and the janet CLI pass, as do reads and writes outside any repo.",
+      "enforcedBy": "scripts\\Invoke-ShellWriteGuard.ps1"
+    },
+    {
       "text": "ENFORCED: startup fails if any manifest entry does not resolve.",
       "why": "A broken contract stops the session rather than degrading it quietly."
     },
