@@ -108,8 +108,25 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 # clients so they agree about what "no token" means.
 . (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
 
+function Test-PortListening {
+    # Whether anything accepts a TCP connection on 127.0.0.1:<port>. This, not the connection
+    # table, decides "is something listening": on 2026-10-31 this machine's table
+    # (Get-NetTCPConnection and netstat alike) listed 7 loopback sockets and omitted both MCP
+    # servers while they answered /health, so this script launched duplicates that could not
+    # bind (start-failed) and, under -NoStart, never dialled at all. Never throws.
+    param([int]$TcpPort, [int]$TimeoutMs = 1000)
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        return $client.ConnectAsync([System.Net.IPAddress]::Loopback, $TcpPort).Wait($TimeoutMs)
+    }
+    catch { return $false }
+    finally { $client.Dispose() }
+}
+
 function Get-ListenerPid {
-    # $null when nothing holds the port. Get-NetTCPConnection is Windows-only and throws
+    # The pid holding the port, or $null when the connection table does not say. Only the
+    # pid comes from here: the table can omit a live listener (see Test-PortListening), so
+    # $null means "unknown", never "free". Get-NetTCPConnection is Windows-only and throws
     # rather than returning empty when there is no match, so both are caught here.
     param([int]$TcpPort)
     try {
@@ -306,8 +323,9 @@ try {
     $result.serverPath = $ServerPath
 
     $listenerPid = Get-ListenerPid -TcpPort $Port
+    $listening = ($null -ne $listenerPid) -or (Test-PortListening -TcpPort $Port)
 
-    if ($null -eq $listenerPid -and -not $NoStart) {
+    if (-not $listening -and -not $NoStart) {
         if (-not $ServerPath -or -not (Test-Path -LiteralPath $ServerPath -PathType Leaf)) {
             $result.state = 'no-server-binary'
             $result.note = "No $Name binary found under $BinDir or on PATH. Build one with " +
@@ -358,11 +376,12 @@ try {
             while ((Get-Date) -lt $deadline) {
                 Start-Sleep -Milliseconds 200
                 $listenerPid = Get-ListenerPid -TcpPort $Port
-                if ($null -ne $listenerPid) { break }
+                $listening = ($null -ne $listenerPid) -or (Test-PortListening -TcpPort $Port -TimeoutMs 200)
+                if ($listening) { break }
                 if ($started.HasExited) { break }
             }
 
-            if ($null -eq $listenerPid) {
+            if (-not $listening) {
                 $result.state = 'start-failed'
                 $result.note = "Started $ServerPath but nothing was listening on $Port within " +
                                "$TimeoutSeconds s. See $logDir\$Name.err.log"
@@ -372,7 +391,7 @@ try {
             }
         }
     }
-    elseif ($null -eq $listenerPid) {
+    elseif (-not $listening) {
         $result.state = 'not-running'
         $result.note = "Nothing listening on $Port and -NoStart was given."
     }
@@ -381,8 +400,11 @@ try {
     }
 
     $result.pid = $listenerPid
+    # How the notes name the holder: the table can omit a live listener, so say so rather
+    # than print an empty pid.
+    $holder = if ($null -ne $listenerPid) { "pid $listenerPid" } else { 'pid unknown: the connection table does not list it' }
 
-    if ($null -ne $listenerPid) {
+    if ($listening) {
         # The header from `janet mcp-headers`, once for this run, through the helper the other
         # MCP clients share. None is not an error: the probe goes without, and a server that
         # requires one answers 401, reported below.
@@ -399,7 +421,7 @@ try {
             $result.ok = $false
             $result.state = 'unauthorized'
             $result.toolsServed = 0
-            $result.note = "Port $Port (pid $listenerPid) refused tools/list with 401: $($script:probeRefusal) " +
+            $result.note = "Port $Port ($holder) refused tools/list with 401: $($script:probeRefusal) " +
                            $(if ($authHeader.Count -eq 0) {
                                "No Authorization header was sent ($($auth.Reason)). " +
                                'Run `janet mcp-token --ensure` to create the token.'
@@ -414,7 +436,7 @@ try {
             $result.ok = $false
             $result.state = 'not-answering'
             $result.toolsServed = 0
-            $result.note = "Port $Port is held by pid $listenerPid but it did not answer " +
+            $result.note = "Port $Port is held ($holder) but it did not answer " +
                            "tools/list. Something other than $Name may own the port."
         }
         else {
@@ -432,7 +454,7 @@ try {
                                  } else { '' })
             }
             elseif (-not $result.note) {
-                $result.note = "$($servedNames.Count) tools served on $Port by pid $listenerPid."
+                $result.note = "$($servedNames.Count) tools served on $Port ($holder)."
             }
         }
     }

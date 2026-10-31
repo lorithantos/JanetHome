@@ -26,8 +26,13 @@ BeforeAll {
         return $path
     }
 
-    # One request, one canned 401. Returns the job (whose output is the request text) and
-    # the URI to dial. The listener is created here so the port is known before the job runs.
+    # One request, one canned 401. Returns the job (whose output is the request text), the
+    # listener and the URI to dial. The listener is created here so the port is known before
+    # the job runs. A connection that closes without sending a request -- Ensure-McpServer's
+    # is-anything-listening probe -- is skipped, up to five of them. Always end with
+    # Stop-RefusingServer: a script that never dials leaves the job blocked in
+    # AcceptTcpClient, which Remove-Job -Force cannot interrupt, and the gate then hung for
+    # 50 minutes (2026-10-31). Stopping the listener is what releases the accept.
     function Start-RefusingServer {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '', Justification = 'The job scriptblock declares $Listener and $Body as its own params, bound by -ArgumentList; $using: would be wrong.')]
         param([string]$Body)
@@ -37,15 +42,19 @@ BeforeAll {
         $job = Start-ThreadJob -ArgumentList $listener, $Body -ScriptBlock {
             param($Listener, $Body)
             try {
-                $client = $Listener.AcceptTcpClient()
-                $stream = $client.GetStream()
-                $buffer = [byte[]]::new(65536)
                 $request = ''
-                while ($request -notmatch "`r`n`r`n") {
-                    $read = $stream.Read($buffer, 0, $buffer.Length)
-                    if ($read -le 0) { break }
-                    $request += [System.Text.Encoding]::ASCII.GetString($buffer, 0, $read)
+                $buffer = [byte[]]::new(65536)
+                for ($attempt = 0; $attempt -lt 5 -and -not $request; $attempt++) {
+                    $client = $Listener.AcceptTcpClient()
+                    $stream = $client.GetStream()
+                    while ($request -notmatch "`r`n`r`n") {
+                        $read = $stream.Read($buffer, 0, $buffer.Length)
+                        if ($read -le 0) { break }
+                        $request += [System.Text.Encoding]::ASCII.GetString($buffer, 0, $read)
+                    }
+                    if (-not $request) { $client.Close() }
                 }
+                if (-not $request) { return }
                 # Drain the body so the client is not reset mid-send.
                 $headEnd = $request.IndexOf("`r`n`r`n") + 4
                 $length = 0
@@ -66,9 +75,26 @@ BeforeAll {
                 $client.Close()
                 $request
             }
+            catch [System.Net.Sockets.SocketException] {
+                # Stop-RefusingServer stopped the listener while it waited: nobody dialled.
+                return
+            }
             finally { $Listener.Stop() }
         }
-        return [pscustomobject]@{ Job = $job; Uri = "http://127.0.0.1:$port/" }
+        return [pscustomobject]@{ Job = $job; Listener = $listener; Uri = "http://127.0.0.1:$port/" }
+    }
+
+    # Waits for the job, then stops the listener BEFORE removing the job, so an accept that
+    # nobody satisfied is released rather than waited on forever. Returns the request text,
+    # or nothing when the server was never dialled.
+    function Stop-RefusingServer {
+        param($Server)
+        $null = $Server.Job | Wait-Job -Timeout 15
+        $Server.Listener.Stop()
+        $null = $Server.Job | Wait-Job -Timeout 5
+        $request = $Server.Job | Receive-Job -ErrorAction SilentlyContinue
+        $Server.Job | Remove-Job -Force
+        return $request
     }
 }
 
@@ -110,8 +136,7 @@ Describe 'Invoke-McpTool against a server that answers 401' {
         $out = & $script:mcpTool -Tool 'graph_summary' -Uri $server.Uri -TimeoutSec 10 `
             -AuthHeader @{ Authorization = "Bearer $script:fakeToken" }
         $code = $LASTEXITCODE
-        $request = $server.Job | Wait-Job -Timeout 15 | Receive-Job
-        $server.Job | Remove-Job -Force
+        $request = Stop-RefusingServer $server
 
         $code | Should -Be 1
         $request | Should -Match "(?im)^Authorization: Bearer $script:fakeToken"
@@ -133,8 +158,7 @@ Describe 'Invoke-McpTool against a server that answers 401' {
         $port = ([uri]$server.Uri).Port
         $out = & (Join-Path $script:repoRoot 'scripts\Ensure-McpServer.ps1') -Port $port -NoStart `
             -TimeoutSeconds 10 -SourceDir (Join-Path $TestDrive 'no-source')
-        $null = $server.Job | Wait-Job -Timeout 15
-        $server.Job | Remove-Job -Force
+        $null = Stop-RefusingServer $server
 
         $result = ($out -join "`n") | ConvertFrom-Json
         $result.ok | Should -BeFalse
@@ -143,11 +167,52 @@ Describe 'Invoke-McpTool against a server that answers 401' {
         $result.note | Should -Match 'janet mcp-token --ensure|janet mcp-headers'
     }
 
+    It 'Ensure-McpServer finds a listener the connection table does not list (NoStart: <NoStart>)' -TestCases @(
+        @{ NoStart = $true }
+        @{ NoStart = $false }
+    ) {
+        # On 2026-10-31 this machine's TCP table (Get-NetTCPConnection and netstat alike) listed
+        # 7 loopback sockets and omitted janet-mcp and razorgraph while both answered /health.
+        # The table is not evidence that a port is free. The mock makes that the case on every
+        # machine. A wrong "nothing listening" without -NoStart would launch a duplicate server,
+        # and the probe afterwards overwrites the state, so the start is caught by what it
+        # leaves behind: the fake server writes a marker, and the fake janet's --ensure answer
+        # would land in 'token'. The fake janet also keeps the real HKCU token out of reach,
+        # and -Name keeps the start's log files away from the real server's.
+        Mock Get-NetTCPConnection { throw 'No matching MSFT_NetTCPConnection objects found' }
+        $marker = Join-Path $TestDrive 'fake-server-started.txt'
+        $fakeServer = New-FakeJanet -Name 'fake-mcp' -Lines @("echo started> `"$marker`"")
+        $fakeBin = Join-Path $TestDrive 'fakebin'
+        $null = New-Item -ItemType Directory -Path $fakeBin -Force
+        Set-Content -LiteralPath (Join-Path $fakeBin 'janet.cmd') -Encoding ascii -Value @(
+            '@echo off', "echo {`"Authorization`":`"Bearer $script:fakeToken`"}")
+        $savedPath = $env:PATH
+        $server = Start-RefusingServer -Body 'Refused: this server requires a bearer token.'
+        try {
+            $env:PATH = "$fakeBin;$savedPath"
+            $port = ([uri]$server.Uri).Port
+            $out = & (Join-Path $script:repoRoot 'scripts\Ensure-McpServer.ps1') -Port $port -NoStart:$NoStart `
+                -TimeoutSeconds 5 -SourceDir (Join-Path $TestDrive 'no-source') `
+                -Name 'fake-mcp' -ServerPath $fakeServer
+        }
+        finally {
+            $env:PATH = $savedPath
+            $request = Stop-RefusingServer $server
+        }
+
+        $result = ($out -join "`n") | ConvertFrom-Json
+        $result.state | Should -Be 'unauthorized'
+        $result.pid | Should -BeNullOrEmpty
+        $result.note | Should -Match 'pid unknown'
+        $result.token | Should -BeNullOrEmpty
+        Test-Path -LiteralPath $marker | Should -BeFalse
+        $request | Should -Match '(?m)^POST / HTTP/1\.1'
+    }
+
     It 'says no header was sent when it had none' {
         $server = Start-RefusingServer -Body 'Refused: no Authorization header.'
         $out = & $script:mcpTool -Tool 'graph_summary' -Uri $server.Uri -TimeoutSec 10 -AuthHeader @{}
-        $request = $server.Job | Wait-Job -Timeout 15 | Receive-Job
-        $server.Job | Remove-Job -Force
+        $request = Stop-RefusingServer $server
 
         $request | Should -Not -Match '(?im)^Authorization:'
         $envelope = ($out -join "`n") | ConvertFrom-Json
