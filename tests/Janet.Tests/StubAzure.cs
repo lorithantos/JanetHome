@@ -37,7 +37,7 @@ internal sealed class StubAzure : HttpMessageHandler
 
     public List<TimeSpan> Slept { get; } = [];
 
-    public sealed record Recorded(HttpMethod Method, string Url, string? Body, string? Authorization);
+    public sealed record Recorded(HttpMethod Method, string Url, string? Body, string? Authorization, IReadOnlyDictionary<string, string> Headers);
 
     /// <summary>Answers requests with this method whose URL contains the text, in order; the last answer repeats.</summary>
     public StubAzure On(HttpMethod method, string urlContains, params Func<HttpResponseMessage>[] answers)
@@ -62,7 +62,13 @@ internal sealed class StubAzure : HttpMessageHandler
     {
         string url = request.RequestUri!.OriginalString;
         string? body = request.Content is null ? null : new StreamReader(request.Content.ReadAsStream(cancellationToken)).ReadToEnd();
-        Requests.Add(new Recorded(request.Method, url, body, request.Headers.Authorization?.ToString()));
+        Dictionary<string, string> headers = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string name, IEnumerable<string> values) in request.Headers.Concat(request.Content?.Headers ?? Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>()))
+        {
+            headers[name] = string.Join(",", values);
+        }
+
+        Requests.Add(new Recorded(request.Method, url, body, request.Headers.Authorization?.ToString(), headers));
 
         foreach ((HttpMethod method, string contains, Queue<Func<HttpResponseMessage>> answers) in _routes)
         {
