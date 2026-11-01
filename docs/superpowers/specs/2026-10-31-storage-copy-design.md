@@ -61,7 +61,7 @@ Paths relative to `C:\repos\neelam-aesthetics`.
 - In the client container: `drafts/{id:N}/{stamp}.json`, `templates/{id:N}/{stamp}.json`,
   `proofread/{id:N}/{stamp}.json`, `proofread/images/{sha256}.json`, `catalog/`, `policy/`,
   `baseline/`, `ladders/` (each `{stamp}.json`), `images/{escaped name}`.
-- The client's look lives in the shared `settings` container under `settings/{client}/`.
+- The client's look lives in the shared `settings` container, in blobs named `{client}/{stamp}.json`.
   The same container holds operator data (`_standard-baseline/`, `_standard-ladders/`,
   `_starts/`) that belongs to no client and is never touched.
 - Tables: `knownItems` (PK client, RK item id), `approvals` (PK client, RK
@@ -77,7 +77,7 @@ Paths relative to `C:\repos\neelam-aesthetics`.
   a wipe on the target is final. The developer holds Blob and Table Data Contributor on both
   test accounts (`storage.bicep:165-183`).
 - Staging's managed identity is scoped per container and per table, so the copy must RENAME
-  the client: container, `settings/` prefix, and table PartitionKey.
+  the client: container, the `settings` blob prefix, and table PartitionKey.
 
 ## 4. The spec format (lives in neelam)
 
@@ -101,8 +101,8 @@ Paths relative to `C:\repos\neelam-aesthetics`.
         { "match": "ladders/{stamp}.json",         "dropIfMetadata": "undone" },
         { "match": "images/{name}" }
       ] },
-    { "name": "settings", "prefix": "settings/{client}/",
-      "rules": [ { "match": "settings/{client}/{stamp}.json", "dropIfMetadata": "undone" } ] }
+    { "name": "settings", "prefix": "{client}/",
+      "rules": [ { "match": "{client}/{stamp}.json", "dropIfMetadata": "undone" } ] }
   ],
   "tables": [
     { "name": "knownItems", "partitionKey": "{client}" },
@@ -228,7 +228,7 @@ extended to record request headers:
 - ETag change between plan and apply -> `stale`, zero writes.
 - Copy fidelity: copy-source authorization, every `x-ms-meta-*`, content type; PartitionKey
   rewritten, typed properties round-trip, `Timestamp`/ETag stripped.
-- Wipe scope: a target blob outside `settings/{client}/` is never deleted.
+- Wipe scope: a target blob in the `settings` container outside `{client}/` is never deleted.
 - Failure: stop at first error with partial counts; a `429` is retried then succeeds.
 
 House gates: schema key-set, description and contract-version theories in
@@ -255,3 +255,6 @@ carries Blocks, Label, Preheader, Subject, TemplateId, TemplateName and Template
 `CampaignTemplate` carries Name and Blocks (graph `neelam`, built 2026-10-31 20:40Z). The
 client exists only as the container name, so the rename in section 4 is complete. A salon name
 typed into a block's text is her content and is copied as written.
+
+2026-11-01: the settings container's blobs are client-first ({client}/{stamp}.json); section 4
+had them container-prefixed. Found in the Task 6 review against neelam's DocumentStore.

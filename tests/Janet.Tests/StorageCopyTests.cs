@@ -91,14 +91,14 @@ public sealed class StorageCopyTests : IDisposable
     public void TheTargetWipeStaysInScope()
     {
         StorageCopyWorld world = StorageCopyWorld.Neelam()
-            .Blob(Side.Target, "settings", $"settings/{Tgt}/s.json")
+            .Blob(Side.Target, "settings", $"{Tgt}/s.json")
             .Blob(Side.Target, "settings", "_standard-baseline/b.json");
 
-        StorageCopyPlanResult plan = Plan(world, rule: "settings/{client}/{stamp}.json");
+        StorageCopyPlanResult plan = Plan(world, rule: "{client}/{stamp}.json");
 
-        Assert.Equal([new RuleCount("settings/{client}/{stamp}.json", 1)], plan.DeleteByRule);
+        Assert.Equal([new RuleCount("{client}/{stamp}.json", 1)], plan.DeleteByRule);
         Assert.Equal(1, plan.DeleteBlobs);
-        Assert.Equal([$"settings/{Tgt}/s.json"], plan.Names!.Delete);
+        Assert.Equal([$"{Tgt}/s.json"], plan.Names!.Delete);
     }
 
     [Fact]
@@ -158,11 +158,11 @@ public sealed class StorageCopyTests : IDisposable
     [Fact]
     public void TheSettingsCopyIsRenamedToTheTargetClient()
     {
-        StorageCopyWorld world = StorageCopyWorld.Neelam().Blob(Side.Source, "settings", $"settings/{Src}/s.json");
+        StorageCopyWorld world = StorageCopyWorld.Neelam().Blob(Side.Source, "settings", $"{Src}/s.json");
 
-        StorageCopyPlanResult plan = Plan(world, rule: "settings/{client}/{stamp}.json");
+        StorageCopyPlanResult plan = Plan(world, rule: "{client}/{stamp}.json");
 
-        Assert.Equal([$"settings/{Tgt}/s.json"], plan.Names!.Copy);
+        Assert.Equal([$"{Tgt}/s.json"], plan.Names!.Copy);
     }
 
     [Fact]

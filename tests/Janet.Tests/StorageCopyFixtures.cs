@@ -23,8 +23,8 @@ internal static class StorageCopyFixtures
                 { "match": "ladders/{stamp}.json",         "dropIfMetadata": "undone" },
                 { "match": "images/{name}" }
               ] },
-            { "name": "settings", "prefix": "settings/{client}/",
-              "rules": [ { "match": "settings/{client}/{stamp}.json", "dropIfMetadata": "undone" } ] }
+            { "name": "settings", "prefix": "{client}/",
+              "rules": [ { "match": "{client}/{stamp}.json", "dropIfMetadata": "undone" } ] }
           ],
           "tables": [
             { "name": "knownItems", "partitionKey": "{client}" },

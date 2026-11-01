@@ -21,17 +21,17 @@ public class StorageCopySpecTests
     [Fact]
     public void ClientPlaceholderMatchesOnlyTheGivenClient()
     {
-        var p = StoragePattern.Parse("settings/{client}/{stamp}.json");
-        Assert.NotNull(p.Match("settings/test-salon-one/x.json", "test-salon-one"));
-        Assert.Null(p.Match("settings/test-salon-one/x.json", "staging-salon"));
+        var p = StoragePattern.Parse("{client}/{stamp}.json");
+        Assert.NotNull(p.Match("test-salon-one/x.json", "test-salon-one"));
+        Assert.Null(p.Match("test-salon-one/x.json", "staging-salon"));
     }
 
     [Fact]
     public void ExpandWritesTheTargetClient()
     {
-        var p = StoragePattern.Parse("settings/{client}/{stamp}.json");
+        var p = StoragePattern.Parse("{client}/{stamp}.json");
         var captures = new Dictionary<string, string> { ["stamp"] = "x" };
-        Assert.Equal("settings/staging-salon/x.json", p.Expand(captures, "staging-salon"));
+        Assert.Equal("staging-salon/x.json", p.Expand(captures, "staging-salon"));
     }
 
     [Fact]
