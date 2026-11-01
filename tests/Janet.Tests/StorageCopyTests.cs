@@ -19,10 +19,10 @@ public sealed class StorageCopyTests : IDisposable
 
     public void Dispose() => File.Delete(_spec);
 
-    private StorageCopyPlanResult Plan(StorageCopyWorld world, string mode = "refresh", string? rule = null, string pair = "priya-to-staging") =>
+    private StorageCopyPlanResult Plan(StorageCopyWorld world, string mode = "refresh", string? rule = null, string pair = "priya-to-staging", string? spec = null) =>
         world.Copier().Plan(new StorageCopyRequest
         {
-            Spec = _spec,
+            Spec = spec ?? _spec,
             Pair = pair,
             Mode = mode,
             Rule = rule,
@@ -99,6 +99,60 @@ public sealed class StorageCopyTests : IDisposable
         Assert.Equal([new RuleCount("settings/{client}/{stamp}.json", 1)], plan.DeleteByRule);
         Assert.Equal(1, plan.DeleteBlobs);
         Assert.Equal([$"settings/{Tgt}/s.json"], plan.Names!.Delete);
+    }
+
+    [Fact]
+    public void ATargetBlobNoRuleMatchesIsNeverWiped()
+    {
+        StorageCopyWorld world = StorageCopyWorld.Neelam()
+            .Blob(Side.Target, Tgt, "stray/x.json")
+            .Blob(Side.Target, Tgt, "images/old.png");
+
+        StorageCopyPlanResult plan = Plan(world);
+
+        Assert.Equal(1, plan.DeleteBlobs);
+        Assert.Equal([new RuleCount("images/{name}", 1)], plan.DeleteByRule);
+        Assert.Empty(Plan(world, rule: "images/{name}").Names!.Copy);
+        Assert.DoesNotContain("stray/x.json", Plan(world, rule: "images/{name}").Names!.Delete);
+    }
+
+    [Fact]
+    public void ACopyFalseRuleNeitherCopiesNorWipes()
+    {
+        const string spec = """
+            {
+              "pairs": [ { "name": "p", "source": { "account": "src", "client": "test-salon-one" },
+                           "target": { "account": "tgt", "client": "staging-salon" } } ],
+              "containers": [ { "name": "{client}", "rules": [
+                  { "match": "keep/{n}.json" },
+                  { "match": "skip/{n}.json", "copy": false } ] } ],
+              "tables": []
+            }
+            """;
+        string path = Path.Combine(Path.GetTempPath(), $"janet-storage-copy-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, spec);
+        try
+        {
+            StorageCopyWorld world = new StorageCopyWorld().Container(Side.Source, Src).Container(Side.Target, Tgt)
+                .Blob(Side.Source, Src, "keep/a.json")
+                .Blob(Side.Source, Src, "skip/b.json")
+                .Blob(Side.Target, Tgt, "keep/old.json")
+                .Blob(Side.Target, Tgt, "skip/c.json");
+
+            StorageCopyPlanResult plan = Plan(world, pair: "p", spec: path);
+
+            Assert.Equal(1, plan.CopyBlobs);
+            Assert.Equal([new RuleCopy("keep/{n}.json", 1, 10)], plan.CopyByRule);
+            Assert.Equal(1, plan.DeleteBlobs);
+            Assert.Equal([new RuleCount("keep/{n}.json", 1)], plan.DeleteByRule);
+            Assert.Equal(0, plan.DroppedCount);
+            Assert.Equal(0, plan.UnmatchedCount);
+            Assert.True(plan.ReadyToApply);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]
