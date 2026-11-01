@@ -150,19 +150,16 @@ internal sealed class StorageCopyWorld
     }
 
     /// <summary>
-    /// Every write not scripted by <see cref="OnWrite"/> succeeds, on BOTH accounts, so a write sent to
-    /// the source is recorded for the test to catch rather than blowing up the stub. Call it AFTER the
+    /// Every write not scripted by <see cref="OnWrite"/> succeeds on the TARGET account only, so a write
+    /// sent to the source finds no route and throws from the stub, failing the test. Call it AFTER the
     /// scripted answers: the first matching route wins.
     /// </summary>
     public StorageCopyWorld AcceptWrites()
     {
-        foreach (string account in new[] { "tgt", "src" })
-        {
-            Stub.On(HttpMethod.Put, $"{account}.blob.", StubAzure.Empty(201))
-                .On(HttpMethod.Put, $"{account}.table.", StubAzure.Empty(204))
-                .On(HttpMethod.Delete, $"{account}.blob.", StubAzure.Empty(202))
-                .On(HttpMethod.Delete, $"{account}.table.", StubAzure.Empty(204));
-        }
+        Stub.On(HttpMethod.Put, "tgt.blob.", StubAzure.Empty(201))
+            .On(HttpMethod.Put, "tgt.table.", StubAzure.Empty(204))
+            .On(HttpMethod.Delete, "tgt.blob.", StubAzure.Empty(202))
+            .On(HttpMethod.Delete, "tgt.table.", StubAzure.Empty(204));
 
         return this;
     }

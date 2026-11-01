@@ -6,20 +6,20 @@ namespace Janet.Core;
 public sealed record StorageCopyFailure(string Item, string Operation, AzureError Error);
 
 /// <summary>The exact storage_copy_apply call, in clear mode, that removes what a refresh copied.</summary>
-public sealed record StorageCopyClearCall(string Tool, string Spec, string Pair, string Mode);
+public sealed record StorageCopyClearCall(string Tool, string Spec, string Pair, string Mode, string? Subscription, string? ResourceGroup);
 
 public sealed record StorageCopyApplyResult
 {
     /// <summary>Format version. See contracts\storage-copy-apply.schema.json.</summary>
-    public const int ContractVersion = 1;
+    public const int ContractVersion = 2;
 
     public int Contract => ContractVersion;
 
     /// <summary>applied | cleared | stale | blocked | failed.</summary>
     public required string Outcome { get; init; }
 
-    /// <summary>The hash recomputed now, which differs from the one asked for when the outcome is stale.</summary>
-    public required string PlanHash { get; init; }
+    /// <summary>The hash of the plan applied; null when stale, because nobody was shown the recomputed one.</summary>
+    public required string? PlanHash { get; init; }
 
     public required int DeletedBlobs { get; init; }
 

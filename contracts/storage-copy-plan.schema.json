@@ -152,7 +152,7 @@
     },
     "planHash": {
       "type": "string",
-      "description": "SHA-256 (lower-case hex) over the sorted operation list plus every item's ETag on both sides. storage_copy_apply must be given this value and recomputes it; any change in between makes apply stale."
+      "description": "SHA-256 (lower-case hex) over the mode, the pair, both ends and every operation with its ETag, so any change that alters what apply would do makes apply stale. storage_copy_apply must be given this value and recomputes it; any change in between makes apply stale."
     }
   },
 

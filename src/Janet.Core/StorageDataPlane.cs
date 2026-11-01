@@ -46,7 +46,7 @@ public sealed class StorageDataPlane(AzureHttp http)
                 url += "&marker=" + Uri.EscapeDataString(marker);
             }
 
-            AzureResponse response = http.Send(HttpMethod.Get, url, "storage", headers: BlobHeaders);
+            AzureResponse response = Read(url, BlobHeaders, $"container '{container}'");
             if (response.Status == 404)
             {
                 return null;
@@ -105,7 +105,7 @@ public sealed class StorageDataPlane(AzureHttp http)
                 }
             }
 
-            AzureResponse response = http.Send(HttpMethod.Get, url, "storage", headers: headers);
+            AzureResponse response = Read(url, headers, $"table '{table}'");
             if (response.Status == 404)
             {
                 return null;
@@ -140,7 +140,8 @@ public sealed class StorageDataPlane(AzureHttp http)
         string name,
         string sourceUrl,
         string? contentType,
-        IReadOnlyDictionary<string, string> metadata)
+        IReadOnlyDictionary<string, string> metadata,
+        string? sourceETag = null)
     {
         Dictionary<string, string> headers = new()
         {
@@ -149,6 +150,12 @@ public sealed class StorageDataPlane(AzureHttp http)
             ["x-ms-copy-source"] = sourceUrl,
             ["x-ms-copy-source-authorization"] = "Bearer " + http.Token("storage"),
         };
+
+        if (!string.IsNullOrEmpty(sourceETag))
+        {
+            // The list XML gives the ETag unquoted; the service compares the quoted form.
+            headers["x-ms-source-if-match"] = sourceETag.StartsWith('"') ? sourceETag : "\"" + sourceETag + "\"";
+        }
 
         if (contentType is not null)
         {
@@ -218,6 +225,19 @@ public sealed class StorageDataPlane(AzureHttp http)
 
     /// <summary>OData doubles a quote inside a key; the whole thing is then percent-encoded.</summary>
     private static string Key(string key) => Uri.EscapeDataString(key.Replace("'", "''"));
+
+    /// <summary>A read GET; a network failure becomes a GraphException naming the host and what was read.</summary>
+    private AzureResponse Read(string url, IReadOnlyDictionary<string, string> headers, string what)
+    {
+        try
+        {
+            return http.Send(HttpMethod.Get, url, "storage", headers: headers);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            throw new GraphException($"Could not reach {new Uri(url).Host} to read {what}: {ex.Message}");
+        }
+    }
 
     private static void Require(AzureResponse response, string what)
     {

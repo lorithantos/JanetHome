@@ -115,10 +115,51 @@ public class StorageDataPlaneTests
     }
 
     [Fact]
-    public void BlobUrlEscapesEachSegment() =>
+    public void PutBlobFromUrlPinsTheSourceToTheQuotedETag()
+    {
+        StubAzure stub = new StubAzure().On(HttpMethod.Put, "/c/", StubAzure.Empty(201), StubAzure.Empty(201));
+        StorageDataPlane plane = new(stub.Http());
+        Dictionary<string, string> none = [];
+
+        plane.PutBlobFromUrl(Blob, "c", "a.png", "https://live.blob.core.windows.net/c/a.png", null, none, "0x1");
+        plane.PutBlobFromUrl(Blob, "c", "b.png", "https://live.blob.core.windows.net/c/b.png", null, none, "\"0x2\"");
+
+        Assert.Equal("\"0x1\"", stub.Requests[0].Headers["x-ms-source-if-match"]);
+        Assert.Equal("\"0x2\"", stub.Requests[1].Headers["x-ms-source-if-match"]);
+    }
+
+    [Fact]
+    public void ListBlobsWrapsANetworkFailureNamingTheHost()
+    {
+        StubAzure stub = new StubAzure().On(HttpMethod.Get, "comp=list", StubAzure.Throws(new HttpRequestException("no route")));
+
+        GraphException ex = Assert.Throws<GraphException>(() => new StorageDataPlane(stub.Http()).ListBlobs(Blob, "c", null));
+
+        Assert.Contains("acct.blob.core.windows.net", ex.Message);
+        Assert.Contains("'c'", ex.Message);
+    }
+
+    [Fact]
+    public void QueryPartitionWrapsANetworkFailureNamingTheHost()
+    {
+        StubAzure stub = new StubAzure().On(HttpMethod.Get, "()?", StubAzure.Throws(new HttpRequestException("no route")));
+
+        GraphException ex = Assert.Throws<GraphException>(() => new StorageDataPlane(stub.Http()).QueryPartition(Table, "t", "p"));
+
+        Assert.Contains("acct.table.core.windows.net", ex.Message);
+        Assert.Contains("'t'", ex.Message);
+    }
+
+    [Fact]
+    public void BlobUrlEscapesEachSegment()
+    {
         Assert.Equal(
             "https://a.blob.core.windows.net/c/images/Spring%20Offer%20%231.png",
             StorageDataPlane.BlobUrl("https://a.blob.core.windows.net/", "c", "images/Spring Offer #1.png"));
+        Assert.Equal(
+            "https://a.blob.core.windows.net/c/images/100%2525%20off.png",
+            StorageDataPlane.BlobUrl("https://a.blob.core.windows.net/", "c", "images/100%25 off.png"));
+    }
 
     [Fact]
     public void DeleteBlobSendsADelete()

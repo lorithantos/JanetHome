@@ -199,8 +199,8 @@ public static class AzureTools
         "over the data plane; refresh copies only live items (dropIfMetadata, keepIfLive), clear " +
         "touches only the target. Returns counts by rule, dropped items by reason, unmatched " +
         "source blobs (which block apply), blockers, and planHash, which storage_copy_apply " +
-        "requires. Blob names appear only with rule=<match text or table name>; metadata values " +
-        "never. A pair whose target is a source anywhere is refused before any request.")]
+        "requires. Blob names appear in unmatched.names (up to 100) and, with rule=<match text or " +
+        "table name>, in names; metadata values never. A pair whose target is a source anywhere is refused before any request.")]
     public static string StorageCopyPlan(
         [Description("Absolute path of the storage copy spec (JSON).")]
         string spec,

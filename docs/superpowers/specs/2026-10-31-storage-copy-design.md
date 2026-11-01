@@ -166,7 +166,7 @@ PartitionKey with continuation) and returns, contract 1,
 - `names`: null unless `rule` is given; then that rule's delete and copy names
 - `readyToApply` and `blockers[]`: unmatched source blobs; a target container or table that
   does not exist (Janet never creates them; they belong to Bicep and its role scopes)
-- `planHash`: SHA-256 over the sorted operation list plus every item's ETag on both sides
+- `planHash`: SHA-256 over the mode, the pair, both ends and every operation with its ETag, so any change that alters what apply would do makes apply stale
 
 Blob names are safe to return (neelam CLAUDE.md: customer data does not live in blob
 names). Metadata VALUES are never returned: `title` carries a campaign title.

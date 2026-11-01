@@ -207,7 +207,7 @@ public sealed class StorageCopy(AzureHttp http)
 
         if (!string.Equals(inventory.Result.PlanHash, request.PlanHash, StringComparison.OrdinalIgnoreCase))
         {
-            return nothing;
+            return nothing with { PlanHash = null };
         }
 
         if (!inventory.Result.ReadyToApply)
@@ -218,7 +218,7 @@ public sealed class StorageCopy(AzureHttp http)
         StorageCopyApplyResult progress = nothing with
         {
             Outcome = refresh ? "applied" : "cleared",
-            Clear = refresh ? new StorageCopyClearCall("storage_copy_apply", request.Spec, request.Pair, "clear") : null,
+            Clear = refresh ? new StorageCopyClearCall("storage_copy_apply", request.Spec, request.Pair, "clear", request.Subscription, request.ResourceGroup) : null,
         };
 
         foreach (StorageCopyOp op in inventory.Operations)
@@ -293,7 +293,8 @@ public sealed class StorageCopy(AzureHttp http)
             op.Name,
             op.SourceUrl!,
             op.ContentType,
-            op.Metadata ?? new Dictionary<string, string>()),
+            op.Metadata ?? new Dictionary<string, string>(),
+            op.ETag),
         _ => _plane.UpsertEntity(inventory.TargetTableEndpoint, op.Container, StorageDataPlane.ForTarget(op.Entity!, op.PartitionKey!)),
     };
 
@@ -641,6 +642,8 @@ public sealed class StorageCopy(AzureHttp http)
                     return new Verdict(VerdictKind.Excluded, rule, captures);
                 }
 
+                // Janet drops on the PRESENCE of the dropIfMetadata key; neelam's UndoMark.Read treats an
+                // unparseable value as no mark. Janet's choice fails safe: it drops.
                 if (rule.DropIfMetadata is not null && blob.Metadata.ContainsKey(rule.DropIfMetadata))
                 {
                     return new Verdict(VerdictKind.Dropped, rule, captures, rule.DropIfMetadata);

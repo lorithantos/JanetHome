@@ -290,6 +290,7 @@ public sealed class StorageCopyTests : IDisposable
             Pair = "priya-to-staging",
             Mode = mode,
             Subscription = StubAzure.Sub,
+            ResourceGroup = "rg-test",
             PlanHash = hash,
         });
 
@@ -328,7 +329,7 @@ public sealed class StorageCopyTests : IDisposable
         StorageCopyApplyResult result = Apply(world, old);
 
         Assert.Equal("stale", result.Outcome);
-        Assert.NotEqual(old, result.PlanHash);
+        Assert.Null(result.PlanHash);
         Assert.Empty(Writes(world));
         Assert.Equal(0, result.DeletedBlobs + result.CopiedBlobs + result.DeletedEntities + result.CopiedEntities);
     }
@@ -377,7 +378,40 @@ public sealed class StorageCopyTests : IDisposable
         Assert.Null(result.Failure);
         Assert.NotNull(result.CopiedAt);
         Assert.True(DateTime.TryParse(result.CopiedAt, out _));
-        Assert.Equal(new StorageCopyClearCall("storage_copy_apply", _spec, "priya-to-staging", "clear"), result.Clear);
+        Assert.Equal(new StorageCopyClearCall("storage_copy_apply", _spec, "priya-to-staging", "clear", StubAzure.Sub, "rg-test"), result.Clear);
+        System.Text.Json.Nodes.JsonNode clear = System.Text.Json.Nodes.JsonNode.Parse(AzureJson.Serialize(result))!["clear"]!;
+        Assert.Equal(StubAzure.Sub, clear["subscription"]!.GetValue<string>());
+        Assert.Equal("rg-test", clear["resourceGroup"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void EachBlobCopyIsPinnedToTheETagThePlanHashed()
+    {
+        StorageCopyWorld world = StorageCopyWorld.Neelam()
+            .Blob(Side.Source, Src, "drafts/A/s1.json", etag: "\"0xPINNED\"")
+            .AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world).PlanHash);
+
+        Assert.Equal("applied", result.Outcome);
+        StubAzure.Recorded put = Assert.Single(world.Stub.Sent(HttpMethod.Put, "/staging-salon/drafts/A/s1.json"));
+        Assert.Equal("\"0xPINNED\"", put.Headers["x-ms-source-if-match"]);
+    }
+
+    [Fact]
+    public void ASourceThatChangedAfterThePlanIsAFailureNotARetry()
+    {
+        StorageCopyWorld world = StorageCopyWorld.Neelam()
+            .Blob(Side.Source, Src, "drafts/A/s1.json")
+            .OnWrite(HttpMethod.Put, "tgt.blob.", StubAzure.Xml(412, "<Error><Code>SourceConditionNotMet</Code><Message>changed</Message></Error>", ("x-ms-error-code", "SourceConditionNotMet")))
+            .AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world).PlanHash);
+
+        Assert.Equal("failed", result.Outcome);
+        Assert.Equal("SourceConditionNotMet", result.Failure!.Error.Code);
+        Assert.Equal("copyBlob", result.Failure.Operation);
+        Assert.Single(world.Stub.Sent(HttpMethod.Put, "tgt.blob."));
     }
 
     [Fact]
@@ -527,6 +561,7 @@ public sealed class StorageCopyTests : IDisposable
         StorageCopyPlanResult plan = Plan(world, rule: "drafts/{id}/{stamp}.json");
         StorageCopyApplyResult applied = Apply(world, Plan(world).PlanHash);
 
+        Assert.Equal("applied", applied.Outcome);
         Assert.Contains("drafts/B/s2.json", AzureJson.Serialize(plan), StringComparison.Ordinal);
         Assert.DoesNotContain(secret, AzureJson.Serialize(plan), StringComparison.Ordinal);
         Assert.DoesNotContain(secret, AzureJson.Serialize(applied), StringComparison.Ordinal);

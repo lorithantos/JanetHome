@@ -278,6 +278,8 @@ public static class AzureJson
                     ["spec"] = result.Clear.Spec,
                     ["pair"] = result.Clear.Pair,
                     ["mode"] = result.Clear.Mode,
+                    ["subscription"] = result.Clear.Subscription,
+                    ["resourceGroup"] = result.Clear.ResourceGroup,
                 },
         };
 
