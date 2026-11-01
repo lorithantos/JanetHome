@@ -282,4 +282,221 @@ public sealed class StorageCopyTests : IDisposable
         Assert.Contains("images/{name}", ex.Message);
         Assert.Contains("approvals", ex.Message);
     }
+
+    private StorageCopyApplyResult Apply(StorageCopyWorld world, string? hash, string mode = "refresh") =>
+        world.Copier().Apply(new StorageCopyRequest
+        {
+            Spec = _spec,
+            Pair = "priya-to-staging",
+            Mode = mode,
+            Subscription = StubAzure.Sub,
+            PlanHash = hash,
+        });
+
+    /// <summary>Source and target each hold blobs and rows, so a refresh deletes and copies both kinds.</summary>
+    private static StorageCopyWorld Populated() => StorageCopyWorld.Neelam()
+        .Blob(Side.Source, Src, "drafts/A/s1.json", length: 5, metadata: new Dictionary<string, string> { ["title"] = "Spring" })
+        .Blob(Side.Source, Src, "images/logo.png", length: 7, contentType: "image/png")
+        .Blob(Side.Source, Src, "images/z.png", length: 11, contentType: "image/png")
+        .Entity(Side.Source, "knownItems", Src, "k1")
+        .Blob(Side.Target, Tgt, "drafts/old/s0.json")
+        .Entity(Side.Target, "knownItems", Tgt, "k0");
+
+    private static IEnumerable<StubAzure.Recorded> Writes(StorageCopyWorld world) =>
+        world.Stub.Requests.Where(r => r.Method != HttpMethod.Get);
+
+    [Fact]
+    public void TheSourceIsNeverWritten()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+
+        Assert.Equal("applied", Apply(world, Plan(world).PlanHash).Outcome);
+        Assert.Equal("cleared", Apply(world, Plan(world, "clear").PlanHash, "clear").Outcome);
+
+        List<StubAzure.Recorded> writes = [.. Writes(world)];
+        Assert.NotEmpty(writes);
+        Assert.All(writes, w => Assert.StartsWith("tgt.", new Uri(w.Url).Host, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AStaleHashWritesNothing()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+        string old = Plan(world).PlanHash;
+        world.SetETag(Side.Source, Src, "drafts/A/s1.json", "\"0xCHANGED\"");
+
+        StorageCopyApplyResult result = Apply(world, old);
+
+        Assert.Equal("stale", result.Outcome);
+        Assert.NotEqual(old, result.PlanHash);
+        Assert.Empty(Writes(world));
+        Assert.Equal(0, result.DeletedBlobs + result.CopiedBlobs + result.DeletedEntities + result.CopiedEntities);
+    }
+
+    [Fact]
+    public void ABlockedPlanWritesNothing()
+    {
+        StorageCopyWorld world = Populated().Blob(Side.Source, Src, "weird/x.bin").AcceptWrites();
+        StorageCopyPlanResult plan = Plan(world);
+        Assert.False(plan.ReadyToApply);
+
+        StorageCopyApplyResult result = Apply(world, plan.PlanHash);
+
+        Assert.Equal("blocked", result.Outcome);
+        Assert.Empty(Writes(world));
+    }
+
+    [Fact]
+    public void ApplyWithoutAHashIsRefused()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+
+        Assert.Throws<GraphException>(() => Apply(world, null));
+        Assert.Throws<GraphException>(() => Apply(world, ""));
+
+        Assert.Empty(world.Stub.Requests);
+    }
+
+    [Fact]
+    public void RefreshDeletesThenCopies()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+        StorageCopyPlanResult plan = Plan(world);
+
+        StorageCopyApplyResult result = Apply(world, plan.PlanHash);
+
+        List<StubAzure.Recorded> writes = [.. Writes(world)];
+        Assert.Equal(HttpMethod.Delete, writes[0].Method);
+        int firstPut = writes.FindIndex(w => w.Method == HttpMethod.Put);
+        Assert.DoesNotContain(writes.Skip(firstPut), w => w.Method == HttpMethod.Delete);
+        Assert.Equal("applied", result.Outcome);
+        Assert.Equal(plan.PlanHash, result.PlanHash);
+        Assert.Equal((plan.DeleteBlobs, plan.DeleteEntities), (result.DeletedBlobs, result.DeletedEntities));
+        Assert.Equal((plan.CopyBlobs, plan.CopyBytes, plan.CopyEntities), (result.CopiedBlobs, result.CopiedBytes, result.CopiedEntities));
+        Assert.Equal((1, 1, 3, 23L, 1), (result.DeletedBlobs, result.DeletedEntities, result.CopiedBlobs, result.CopiedBytes, result.CopiedEntities));
+        Assert.Null(result.Failure);
+        Assert.NotNull(result.CopiedAt);
+        Assert.True(DateTime.TryParse(result.CopiedAt, out _));
+        Assert.Equal(new StorageCopyClearCall("storage_copy_apply", _spec, "priya-to-staging", "clear"), result.Clear);
+    }
+
+    [Fact]
+    public void CopiedBlobsCarryMetadataAndContentType()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+
+        Apply(world, Plan(world).PlanHash);
+
+        StubAzure.Recorded put = Assert.Single(world.Stub.Sent(HttpMethod.Put, "/staging-salon/drafts/A/s1.json"));
+        Assert.Equal("Spring", put.Headers["x-ms-meta-title"]);
+        Assert.Equal("application/json", put.Headers["x-ms-blob-content-type"]);
+        Assert.Contains("src.blob.core.windows.net/test-salon-one/drafts/A/s1.json", put.Headers["x-ms-copy-source"], StringComparison.Ordinal);
+        Assert.StartsWith("https://tgt.blob.core.windows.net/staging-salon/", put.Url, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CopiedEntitiesLandInTheTargetPartition()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+
+        Apply(world, Plan(world).PlanHash);
+
+        StubAzure.Recorded put = Assert.Single(world.Stub.Sent(HttpMethod.Put, "tgt.table."));
+        Assert.Equal(Tgt, System.Text.Json.Nodes.JsonNode.Parse(put.Body!)!["PartitionKey"]!.GetValue<string>());
+        Assert.Equal("k1", System.Text.Json.Nodes.JsonNode.Parse(put.Body!)!["RowKey"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void ClearOnlyDeletes()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world, "clear").PlanHash, "clear");
+
+        Assert.Equal("cleared", result.Outcome);
+        Assert.Equal((1, 1, 0, 0), (result.DeletedBlobs, result.DeletedEntities, result.CopiedBlobs, result.CopiedEntities));
+        Assert.DoesNotContain(Writes(world), w => w.Method == HttpMethod.Put);
+        Assert.Null(result.Clear);
+        Assert.Null(result.CopiedAt);
+    }
+
+    [Fact]
+    public void AThrottledCopyIsRetried()
+    {
+        StorageCopyWorld world = Populated()
+            .OnWrite(HttpMethod.Put, "/staging-salon/drafts/A/s1.json", StubAzure.Empty(429, ("Retry-After", "120")), StubAzure.Empty(201))
+            .AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world).PlanHash);
+
+        Assert.Equal("applied", result.Outcome);
+        Assert.Equal([TimeSpan.FromSeconds(30)], world.Stub.Slept);
+        Assert.Equal(2, world.Stub.Sent(HttpMethod.Put, "/staging-salon/drafts/A/s1.json").Count());
+    }
+
+    [Fact]
+    public void ThrottlingThreeTimesIsTheFailure()
+    {
+        StorageCopyWorld world = Populated()
+            .OnWrite(HttpMethod.Put, "/staging-salon/drafts/A/s1.json", StubAzure.Empty(503))
+            .AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world).PlanHash);
+
+        Assert.Equal("failed", result.Outcome);
+        Assert.Equal("copyBlob", result.Failure!.Operation);
+        Assert.Equal("staging-salon/drafts/A/s1.json", result.Failure.Item);
+        Assert.Equal([TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)], world.Stub.Slept);
+        Assert.Equal(3, world.Stub.Requests.Count(r => r.Method == HttpMethod.Put));
+        Assert.Equal(0, result.CopiedBlobs);
+    }
+
+    [Fact]
+    public void TheFirstFailureStops()
+    {
+        StorageCopyWorld world = Populated()
+            .OnWrite(HttpMethod.Put, "/staging-salon/images/logo.png", StubAzure.Xml(403, "<Error><Code>AuthorizationPermissionMismatch</Code><Message>no</Message></Error>", ("x-ms-error-code", "AuthorizationPermissionMismatch")))
+            .AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world).PlanHash);
+
+        Assert.Equal("failed", result.Outcome);
+        Assert.Equal(1, result.CopiedBlobs);
+        Assert.Equal(5, result.CopiedBytes);
+        Assert.Equal("AuthorizationPermissionMismatch", result.Failure!.Error.Code);
+        Assert.Equal("staging-salon/images/logo.png", result.Failure.Item);
+        Assert.Equal(2, world.Stub.Requests.Count(r => r.Method == HttpMethod.Put));
+        Assert.Empty(world.Stub.Sent(HttpMethod.Put, "tgt.table."));
+        Assert.Empty(world.Stub.Slept);
+        Assert.NotNull(result.CopiedAt);
+    }
+
+    [Fact]
+    public void ADeleteThatFindsNothingIsNotAFailure()
+    {
+        StorageCopyWorld world = Populated()
+            .OnWrite(HttpMethod.Delete, "tgt.blob.", StubAzure.Xml(404, "<Error><Code>BlobNotFound</Code><Message>gone</Message></Error>"))
+            .AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world).PlanHash);
+
+        Assert.Equal("applied", result.Outcome);
+        Assert.Equal(1, result.DeletedBlobs);
+        Assert.Null(result.Failure);
+    }
+
+    [Fact]
+    public void AnUnreachableTargetIsAFailureField()
+    {
+        StorageCopyWorld world = Populated()
+            .OnWrite(HttpMethod.Put, "tgt.blob.", StubAzure.Throws(new HttpRequestException("no route to host")))
+            .AcceptWrites();
+
+        StorageCopyApplyResult result = Apply(world, Plan(world).PlanHash);
+
+        Assert.Equal("failed", result.Outcome);
+        Assert.Equal("unreachable", result.Failure!.Error.Code);
+        Assert.Contains("no route to host", result.Failure.Error.Message, StringComparison.Ordinal);
+        Assert.Equal("copyBlob", result.Failure.Operation);
+    }
 }

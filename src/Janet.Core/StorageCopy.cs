@@ -166,6 +166,145 @@ public sealed class StorageCopy(AzureHttp http)
 
     public StorageCopyPlanResult Plan(StorageCopyRequest request) => Inventory(request).Result;
 
+    /// <summary>
+    /// Recomputes the plan and, only if its hash is the one asked for and nothing blocks, replays its
+    /// operation list against the TARGET: every delete, then every copy. Stops at the first failure.
+    /// </summary>
+    /// <remarks>
+    /// Once a write has been sent nothing is thrown: a refused or unreachable write is the result's
+    /// Failure, with the counts so far, because the caller needs to know how far it got.
+    /// </remarks>
+    public StorageCopyApplyResult Apply(StorageCopyRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.PlanHash))
+        {
+            throw new GraphException("storage_copy_apply needs the planHash that storage_copy_plan returned.");
+        }
+
+        StorageCopyInventory inventory = Inventory(new StorageCopyRequest
+        {
+            Spec = request.Spec,
+            Pair = request.Pair,
+            Mode = request.Mode,
+            Subscription = request.Subscription,
+            ResourceGroup = request.ResourceGroup,
+        });
+
+        bool refresh = request.Mode == "refresh";
+        StorageCopyApplyResult nothing = new()
+        {
+            Outcome = "stale",
+            PlanHash = inventory.Result.PlanHash,
+            DeletedBlobs = 0,
+            DeletedEntities = 0,
+            CopiedBlobs = 0,
+            CopiedBytes = 0,
+            CopiedEntities = 0,
+            Failure = null,
+            CopiedAt = null,
+            Clear = null,
+        };
+
+        if (!string.Equals(inventory.Result.PlanHash, request.PlanHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return nothing;
+        }
+
+        if (!inventory.Result.ReadyToApply)
+        {
+            return nothing with { Outcome = "blocked" };
+        }
+
+        StorageCopyApplyResult progress = nothing with
+        {
+            Outcome = refresh ? "applied" : "cleared",
+            Clear = refresh ? new StorageCopyClearCall("storage_copy_apply", request.Spec, request.Pair, "clear") : null,
+        };
+
+        foreach (StorageCopyOp op in inventory.Operations)
+        {
+            bool copying = op.Kind is StorageCopyOpKind.CopyBlob or StorageCopyOpKind.CopyEntity;
+            if (copying && progress.CopiedAt is null)
+            {
+                progress = progress with { CopiedAt = DateTime.UtcNow.ToString("o") };
+            }
+
+            AzureError? error = Perform(inventory, op, retry: copying);
+            if (error is not null)
+            {
+                return progress with { Outcome = "failed", Failure = new StorageCopyFailure(op.Container + "/" + op.Name, OperationName(op.Kind), error) };
+            }
+
+            progress = op.Kind switch
+            {
+                StorageCopyOpKind.DeleteBlob => progress with { DeletedBlobs = progress.DeletedBlobs + 1 },
+                StorageCopyOpKind.DeleteEntity => progress with { DeletedEntities = progress.DeletedEntities + 1 },
+                StorageCopyOpKind.CopyBlob => progress with { CopiedBlobs = progress.CopiedBlobs + 1, CopiedBytes = progress.CopiedBytes + op.Length },
+                _ => progress with { CopiedEntities = progress.CopiedEntities + 1 },
+            };
+        }
+
+        // A refresh with nothing to copy still began its copy phase, after the last delete.
+        return refresh && progress.CopiedAt is null ? progress with { CopiedAt = DateTime.UtcNow.ToString("o") } : progress;
+    }
+
+    /// <summary>Sends one operation; null when it is done. Only a copy is retried, and a delete that finds nothing is done.</summary>
+    private AzureError? Perform(StorageCopyInventory inventory, StorageCopyOp op, bool retry)
+    {
+        const int attempts = 3;
+        try
+        {
+            for (int attempt = 1; ; attempt++)
+            {
+                AzureResponse response = Send(inventory, op);
+                if (response.IsSuccess || (response.Status == 404 && !retry))
+                {
+                    return null;
+                }
+
+                if (retry && (response.Status is 429 or 503) && attempt < attempts)
+                {
+                    http.Sleep(RetryDelay(response));
+                    continue;
+                }
+
+                return response.Error();
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return new AzureError("unreachable", ex.Message, null, []);
+        }
+    }
+
+    private AzureResponse Send(StorageCopyInventory inventory, StorageCopyOp op) => op.Kind switch
+    {
+        StorageCopyOpKind.DeleteBlob => _plane.DeleteBlob(inventory.TargetBlobEndpoint, op.Container, op.Name),
+        StorageCopyOpKind.DeleteEntity => _plane.DeleteEntity(inventory.TargetTableEndpoint, op.Container, op.PartitionKey!, op.RowKey!),
+        StorageCopyOpKind.CopyBlob => _plane.PutBlobFromUrl(
+            inventory.TargetBlobEndpoint,
+            op.Container,
+            op.Name,
+            op.SourceUrl!,
+            op.ContentType,
+            op.Metadata ?? new Dictionary<string, string>()),
+        _ => _plane.UpsertEntity(inventory.TargetTableEndpoint, op.Container, StorageDataPlane.ForTarget(op.Entity!, op.PartitionKey!)),
+    };
+
+    private static TimeSpan RetryDelay(AzureResponse response)
+    {
+        int seconds = int.TryParse(response.Header("Retry-After"), out int asked) ? asked : 1;
+        return TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 30));
+    }
+
+    private static string OperationName(StorageCopyOpKind kind) => kind switch
+    {
+        StorageCopyOpKind.DeleteBlob => "deleteBlob",
+        StorageCopyOpKind.DeleteEntity => "deleteEntity",
+        StorageCopyOpKind.CopyBlob => "copyBlob",
+        _ => "copyEntity",
+    };
+
     internal StorageCopyInventory Inventory(StorageCopyRequest request)
     {
         bool refresh = request.Mode switch

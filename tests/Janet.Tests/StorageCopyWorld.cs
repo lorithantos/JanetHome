@@ -149,6 +149,24 @@ internal sealed class StorageCopyWorld
         return this;
     }
 
+    /// <summary>
+    /// Every write not scripted by <see cref="OnWrite"/> succeeds, on BOTH accounts, so a write sent to
+    /// the source is recorded for the test to catch rather than blowing up the stub. Call it AFTER the
+    /// scripted answers: the first matching route wins.
+    /// </summary>
+    public StorageCopyWorld AcceptWrites()
+    {
+        foreach (string account in new[] { "tgt", "src" })
+        {
+            Stub.On(HttpMethod.Put, $"{account}.blob.", StubAzure.Empty(201))
+                .On(HttpMethod.Put, $"{account}.table.", StubAzure.Empty(204))
+                .On(HttpMethod.Delete, $"{account}.blob.", StubAzure.Empty(202))
+                .On(HttpMethod.Delete, $"{account}.table.", StubAzure.Empty(204));
+        }
+
+        return this;
+    }
+
     public StorageCopy Copier() => new(Stub.Http());
 
     private string NextETag() => $"\"0x{++_etag}\"";
