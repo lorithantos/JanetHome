@@ -117,7 +117,7 @@ public sealed class StorageProbe(AzureHttp http)
     public StorageProbeResult Probe(StorageProbeRequest request)
     {
         AzureSubscription subscription = AzureSubscription.Resolve(request.Subscription);
-        JsonObject account = FindAccount(request, subscription);
+        JsonObject account = FindAccount(http, request.Account, request.ResourceGroup, subscription);
         StorageAccountSettings settings = Settings(account);
 
         IReadOnlyList<string> containers = request.Containers.Count > 0
@@ -143,13 +143,14 @@ public sealed class StorageProbe(AzureHttp http)
         };
     }
 
-    private JsonObject FindAccount(StorageProbeRequest request, AzureSubscription subscription)
+    /// <summary>The account's management-plane document: one GET inside a resource group, else a search of the subscription.</summary>
+    internal static JsonObject FindAccount(AzureHttp http, string account, string? resourceGroup, AzureSubscription subscription)
     {
-        if (!string.IsNullOrWhiteSpace(request.ResourceGroup))
+        if (!string.IsNullOrWhiteSpace(resourceGroup))
         {
             AzureResponse response = http.Arm(
                 HttpMethod.Get,
-                $"/subscriptions/{subscription.Id}/resourceGroups/{Uri.EscapeDataString(request.ResourceGroup)}/providers/Microsoft.Storage/storageAccounts/{Uri.EscapeDataString(request.Account)}?api-version={AzureHttp.StorageApi}");
+                $"/subscriptions/{subscription.Id}/resourceGroups/{Uri.EscapeDataString(resourceGroup)}/providers/Microsoft.Storage/storageAccounts/{Uri.EscapeDataString(account)}?api-version={AzureHttp.StorageApi}");
 
             if (response.IsSuccess)
             {
@@ -157,15 +158,15 @@ public sealed class StorageProbe(AzureHttp http)
             }
 
             throw new GraphException(response.Status == 404
-                ? $"No storage account '{request.Account}' in resource group '{request.ResourceGroup}' of subscription {subscription.Id}."
-                : $"Azure refused to read storage account '{request.Account}' (HTTP {response.Status}).{Environment.NewLine}{AzureErrors.Describe(response.Error()!)}");
+                ? $"No storage account '{account}' in resource group '{resourceGroup}' of subscription {subscription.Id}."
+                : $"Azure refused to read storage account '{account}' (HTTP {response.Status}).{Environment.NewLine}{AzureErrors.Describe(response.Error()!)}");
         }
 
         return http.ArmList(
                 $"/subscriptions/{subscription.Id}/providers/Microsoft.Storage/storageAccounts?api-version={AzureHttp.StorageApi}",
                 "list storage accounts")
-            .FirstOrDefault(a => string.Equals(a["name"]?.GetValue<string>(), request.Account, StringComparison.OrdinalIgnoreCase))
-            ?? throw new GraphException($"No storage account '{request.Account}' in subscription {subscription.Id} ({subscription.Name ?? subscription.Source}).");
+            .FirstOrDefault(a => string.Equals(a["name"]?.GetValue<string>(), account, StringComparison.OrdinalIgnoreCase))
+            ?? throw new GraphException($"No storage account '{account}' in subscription {subscription.Id} ({subscription.Name ?? subscription.Source}).");
     }
 
     /// <summary>The account's access-relevant settings. Exposed for the tests.</summary>
