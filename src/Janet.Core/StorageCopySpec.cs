@@ -127,7 +127,9 @@ public sealed class StorageCopySpec
             throw new GraphException($"{_source}: account '{pair.Target.Account}' is not listed as a target.");
         }
 
-        if (pair.Source.Account == pair.Target.Account && pair.Source.Client == pair.Target.Client)
+        // Azure resolves account names case-insensitively, so "Acct" and "acct" are the same account.
+        if (string.Equals(pair.Source.Account, pair.Target.Account, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pair.Source.Client, pair.Target.Client, StringComparison.OrdinalIgnoreCase))
         {
             throw new GraphException(
                 $"{_source}: pair '{pair.Name}' has the same account '{pair.Source.Account}' and client '{pair.Source.Client}' as source and target.");
@@ -135,7 +137,8 @@ public sealed class StorageCopySpec
 
         foreach (var asSource in Pairs)
         {
-            var asTarget = Pairs.FirstOrDefault(p => p.Target.Account == asSource.Source.Account);
+            var asTarget = Pairs.FirstOrDefault(
+                p => string.Equals(p.Target.Account, asSource.Source.Account, StringComparison.OrdinalIgnoreCase));
             if (asTarget is not null)
             {
                 throw new GraphException(

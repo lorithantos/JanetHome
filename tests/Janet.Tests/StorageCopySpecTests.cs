@@ -118,6 +118,24 @@ public class StorageCopySpecTests
     }
 
     [Fact]
+    public void GuardRefusesACaseDifferingSelfPair()
+    {
+        var spec = StorageCopySpec.Parse(SpecWithPairs(Pair("self", "Acct", "Salon", "acct", "salon")), "x.json");
+        var ex = Assert.Throws<GraphException>(() => spec.Guard("self"));
+        Assert.Contains("same", ex.Message);
+    }
+
+    [Fact]
+    public void GuardRefusesACaseDifferingReversePair()
+    {
+        var spec = StorageCopySpec.Parse(SpecWithPairs(
+            Pair("fwd", "Acct", "a", "tgt", "b"),
+            Pair("back", "other", "c", "acct", "d")), "x.json");
+        var ex = Assert.Throws<GraphException>(() => spec.Guard("fwd"));
+        Assert.Contains("Acct", ex.Message);
+    }
+
+    [Fact]
     public void GuardRefusesSourceEqualToTarget()
     {
         var spec = StorageCopySpec.Parse(SpecWithPairs(Pair("self", Src, "a", Src, "a")), "x.json");
