@@ -1,6 +1,7 @@
 # Storage copy: refresh and clear a temporary staging copy of one client's live data
 
-Status: design approved in conversation 2026-10-31; this document awaits owner review.
+Status: design approved in conversation 2026-10-31; written spec approved by the owner the
+same day. Plan: `docs\superpowers\plans\2026-10-31-storage-copy.md`.
 Thread item: "Janet tool to refresh and clear a staging copy of a client's live data across
 storage accounts" (area JanetHome).
 
@@ -243,8 +244,14 @@ Live proof, each step with the owner's go-ahead: plan against the real pair (rea
 owner reviews counts; apply with that hash (prompted); staging smoke check; clear when tests
 are done.
 
-## 8. Open check for planning
+## 8. Open check for planning -- settled 2026-10-31
 
-Whether draft or template JSON embeds the client name (survey could not tell). If it does,
-staging content would carry `test-salon-one`. Priya never sees staging, so this matters only
-if staging BEHAVES differently; settle it with one graph query in neelam before planning.
+Question: does draft or template JSON embed the client name? If it did, staging content would
+carry `test-salon-one`.
+
+Answer: no. `CampaignStore.SaveDraftAsync` serializes through
+`CampaignJson.SerializeDraft(CampaignDraft)`, which takes only the draft, and `CampaignDraft`
+carries Blocks, Label, Preheader, Subject, TemplateId, TemplateName and TemplateVersion;
+`CampaignTemplate` carries Name and Blocks (graph `neelam`, built 2026-10-31 20:40Z). The
+client exists only as the container name, so the rename in section 4 is complete. A salon name
+typed into a block's text is her content and is copied as written.
