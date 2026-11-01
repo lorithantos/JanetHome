@@ -275,6 +275,12 @@ public sealed class StorageCopy(AzureHttp http)
         {
             return new AzureError("unreachable", ex.Message, null, []);
         }
+        catch (GraphException ex)
+        {
+            // Every write asks for a token, and a refresh can outlive the cached one: the az CLI
+            // re-fetch failing is a stop with the counts so far, not an exception after the wipe.
+            return new AzureError("token", ex.Message, null, []);
+        }
     }
 
     private AzureResponse Send(StorageCopyInventory inventory, StorageCopyOp op) => op.Kind switch

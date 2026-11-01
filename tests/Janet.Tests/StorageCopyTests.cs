@@ -486,6 +486,37 @@ public sealed class StorageCopyTests : IDisposable
     }
 
     [Fact]
+    public void ATokenThatFailsMidRunIsAFailureField()
+    {
+        StorageCopyWorld world = Populated().AcceptWrites();
+        string hash = Plan(world).PlanHash;
+        int before = world.Stub.Requests.Count;
+        AzureHttp http = new(
+            world.Stub,
+            _ => world.Stub.Requests.Any(r => r.Method == HttpMethod.Delete)
+                ? throw new GraphException("az token refresh failed")
+                : StubAzure.Jwt(StubAzure.ObjectId, StubAzure.Upn),
+            world.Stub.Slept.Add);
+
+        StorageCopyApplyResult result = new StorageCopy(http).Apply(new StorageCopyRequest
+        {
+            Spec = _spec,
+            Pair = "priya-to-staging",
+            Mode = "refresh",
+            Subscription = StubAzure.Sub,
+            PlanHash = hash,
+        });
+
+        Assert.True(world.Stub.Requests.Count > before);
+        Assert.Equal("failed", result.Outcome);
+        Assert.Equal("token", result.Failure!.Error.Code);
+        Assert.Equal("deleteEntity", result.Failure.Operation);
+        Assert.Equal((1, 0, 0), (result.DeletedBlobs, result.DeletedEntities, result.CopiedBlobs));
+        Assert.NotNull(result.Clear);
+        Assert.Single(Writes(world));
+    }
+
+    [Fact]
     public void AnUnreachableTargetIsAFailureField()
     {
         StorageCopyWorld world = Populated()
