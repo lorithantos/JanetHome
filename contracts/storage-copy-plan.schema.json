@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/storage-copy-plan.schema.json",
+  "title": "storage_copy_plan envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "storage_copy_plan (MCP only; no CLI verb)",
+    "surface": [
+      "src/Janet.Core/StorageCopy.cs",
+      "src/Janet.Core/StorageCopySpec.cs",
+      "src/Janet.Core/StoragePattern.cs",
+      "src/Janet.Core/StorageDataPlane.cs",
+      "src/Janet.Core/AzureJson.cs",
+      "src/Janet.Mcp/AzureTools.cs"
+    ],
+    "node": "file.azure-tools",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.metadataValues": "No field carries a blob's metadata value. Metadata keys decide what is dropped, but the values (a campaign title, for one) are never copied into this envelope.",
+    "$comment.everyKey": "Every key is always present; a value that does not apply is null rather than absent."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "mode", "pair", "spec", "source", "target", "delete", "copy", "dropped", "unmatched", "names", "readyToApply", "blockers", "planHash"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["refresh", "clear"],
+      "description": "'refresh': delete the target client's in-scope data, then copy the source's live data over. 'clear': delete only; the source is not read."
+    },
+    "pair": {
+      "type": "string",
+      "description": "The name of the spec's source/target pair this plan is for."
+    },
+    "spec": {
+      "type": "string",
+      "description": "The path of the spec file, as the caller passed it."
+    },
+    "source": {
+      "$ref": "#/definitions/end",
+      "description": "Where a refresh reads from. Never written."
+    },
+    "target": {
+      "$ref": "#/definitions/end",
+      "description": "Where the plan deletes and writes: the staging copy."
+    },
+    "delete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blobs", "entities", "byRule"],
+      "description": "What apply would remove from the target before copying: the target client's in-scope blobs that a copying rule matches, and its entities in each listed table.",
+      "properties": {
+        "blobs": { "type": "integer", "minimum": 0, "description": "Target blobs to delete." },
+        "entities": { "type": "integer", "minimum": 0, "description": "Target table entities to delete." },
+        "byRule": {
+          "type": "array",
+          "description": "The same deletions counted per rule (a blob rule's match text or a table's name), sorted by rule.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule", "count"],
+            "properties": {
+              "rule": { "type": "string", "description": "A blob rule's match text, or a table name." },
+              "count": { "type": "integer", "minimum": 1, "description": "How many deletions that rule accounts for." }
+            }
+          }
+        }
+      }
+    },
+    "copy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blobs", "entities", "bytes", "byRule"],
+      "description": "What apply would copy from the source to the target. Zero everywhere in clear mode.",
+      "properties": {
+        "blobs": { "type": "integer", "minimum": 0, "description": "Source blobs to copy." },
+        "bytes": { "type": "integer", "minimum": 0, "description": "Total length of those blobs in bytes." },
+        "entities": { "type": "integer", "minimum": 0, "description": "Source table entities to copy." },
+        "byRule": {
+          "type": "array",
+          "description": "The same copies counted per rule, sorted by rule.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule", "count", "bytes"],
+            "properties": {
+              "rule": { "type": "string", "description": "A blob rule's match text, or a table name." },
+              "count": { "type": "integer", "minimum": 1, "description": "How many copies that rule accounts for." },
+              "bytes": { "type": "integer", "minimum": 0, "description": "Bytes those copies carry; zero for a table." }
+            }
+          }
+        }
+      }
+    },
+    "dropped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "byReason"],
+      "description": "Source items a refresh leaves out as dead, so they are neither copied nor a reason to block.",
+      "properties": {
+        "count": { "type": "integer", "minimum": 0, "description": "All dropped items." },
+        "byReason": {
+          "type": "array",
+          "description": "The same drops counted per reason, sorted by reason.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reason", "count"],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "Why it was dropped: the metadata key a rule's dropIfMetadata names (e.g. 'undone', a deleted save), or 'noLiveSave' when the save it belongs to is missing or itself dropped (keepIfLive)."
+              },
+              "count": { "type": "integer", "minimum": 1, "description": "How many items were dropped for that reason." }
+            }
+          }
+        }
+      }
+    },
+    "unmatched": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "names"],
+      "description": "Source blobs in scope that no rule matches. Any of them blocks apply: add a rule, or a rule with copy false.",
+      "properties": {
+        "count": { "type": "integer", "minimum": 0, "description": "How many source blobs match no rule." },
+        "names": {
+          "type": "array",
+          "description": "Their names, sorted, at most the first 100.",
+          "items": { "type": "string", "description": "A blob name." }
+        }
+      }
+    },
+    "names": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/names" }],
+      "description": "Null unless the caller passed rule. Then the names that one rule would delete and copy: blob names, or 'partitionKey/rowKey' for an entity. Never a metadata value."
+    },
+    "readyToApply": {
+      "type": "boolean",
+      "description": "True when blockers is empty. Apply writes nothing while this is false."
+    },
+    "blockers": {
+      "type": "array",
+      "description": "Why apply would refuse: unmatched source blobs, and a container or table that does not exist (Janet never creates them; they belong to Bicep and its role scopes).",
+      "items": { "type": "string", "description": "One blocker, in words." }
+    },
+    "planHash": {
+      "type": "string",
+      "description": "SHA-256 (lower-case hex) over the sorted operation list plus every item's ETag on both sides. storage_copy_apply must be given this value and recomputes it; any change in between makes apply stale."
+    }
+  },
+
+  "definitions": {
+    "end": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["account", "client"],
+      "properties": {
+        "account": { "type": "string", "description": "The storage account name." },
+        "client": { "type": "string", "description": "The client whose data this end holds: it fills {client} in container names, prefixes and partition keys." }
+      }
+    },
+    "names": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delete", "copy"],
+      "properties": {
+        "delete": {
+          "type": "array",
+          "description": "Names that rule would delete from the target, sorted.",
+          "items": { "type": "string", "description": "A blob name, or 'partitionKey/rowKey' for an entity." }
+        },
+        "copy": {
+          "type": "array",
+          "description": "Names that rule would write to the target, sorted; blobs under their target names.",
+          "items": { "type": "string", "description": "A blob name, or 'partitionKey/rowKey' for an entity." }
+        }
+      }
+    }
+  }
+}

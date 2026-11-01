@@ -298,6 +298,28 @@ $samplers = @{
         return [pscustomobject]@{ samples = @([pscustomobject]@{ label = 'configured account'; json = $sample.json }) }
     }
 
+    'storage-copy-plan' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Janet
+
+        # Reads two live accounts, so which spec and pair is the machine's business. Read-only.
+        if (-not $env:JANET_SAMPLE_COPY_SPEC -or -not $env:JANET_SAMPLE_COPY_PAIR) {
+            return [pscustomobject]@{ samples = @(); skipped = 'set JANET_SAMPLE_COPY_SPEC and JANET_SAMPLE_COPY_PAIR to a storage copy spec and one of its pairs to plan; shape held by AzureSchemaTests' }
+        }
+
+        $sample = Invoke-JanetMcpSample -Root $Root -Tool 'storage_copy_plan' -Arguments @{ spec = $env:JANET_SAMPLE_COPY_SPEC; pair = $env:JANET_SAMPLE_COPY_PAIR; mode = 'refresh' }
+        if ($sample.skipped) { return $sample }
+        return [pscustomobject]@{ samples = @([pscustomobject]@{ label = 'configured pair, refresh'; json = $sample.json }) }
+    }
+
+    'storage-copy-apply' = {
+        param([string]$Janet, [string]$Root)
+        $null = $Janet, $Root
+
+        # Never sampled: the gate that wiped a staging copy on every commit would be a job, not a check.
+        return [pscustomobject]@{ samples = @(); skipped = 'a write tool is never sampled; shape held by AzureSchemaTests' }
+    }
+
     'assembly-api' = {
         param([string]$Janet, [string]$Root)
 

@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://janet.invalid/contracts/storage-copy-apply.schema.json",
+  "title": "storage_copy_apply envelope",
+
+  "$janet": {
+    "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1, which is the point of the file living here rather than being generated from the return type.",
+    "contract": 1,
+    "produces": "storage_copy_apply (MCP only; no CLI verb)",
+    "surface": [
+      "src/Janet.Core/StorageCopy.cs",
+      "src/Janet.Core/StorageCopySpec.cs",
+      "src/Janet.Core/StoragePattern.cs",
+      "src/Janet.Core/StorageDataPlane.cs",
+      "src/Janet.Core/AzureJson.cs",
+      "src/Janet.Mcp/AzureTools.cs"
+    ],
+    "node": "file.azure-tools",
+    "$comment.contractField": "The envelope stamps 'contract' and the gate cross-checks it against the number above, so code and schema cannot drift apart in either direction.",
+    "$comment.metadataValues": "No field carries a blob's metadata value or an entity's content; only counts, the item that failed and the service's error.",
+    "$comment.everyKey": "Every key is always present; a value that does not apply is null rather than absent."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "outcome", "planHash", "deleted", "copied", "failure", "copiedAt", "clear"],
+  "properties": {
+    "contract": {
+      "const": 1,
+      "description": "Bumped only by a format change. An engine change that moves this number is a mistake in one direction; a format change that does not is a mistake in the other."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["applied", "cleared", "stale", "blocked", "failed"],
+      "description": "'applied': a refresh ran to the end. 'cleared': a clear ran to the end. 'stale': the plan recomputed now hashes differently from the planHash passed, so nothing was written. 'blocked': the plan has blockers, so nothing was written. 'failed': a write was refused or unreachable and the run stopped there; the counts show how far it got."
+    },
+    "planHash": {
+      "type": "string",
+      "description": "The plan hash recomputed now. It equals the one passed except when outcome is 'stale', where it is the current one to plan against."
+    },
+    "deleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blobs", "entities"],
+      "description": "What was deleted from the target so far. Zero for 'stale' and 'blocked'.",
+      "properties": {
+        "blobs": { "type": "integer", "minimum": 0, "description": "Target blobs deleted. A blob already gone counts as deleted." },
+        "entities": { "type": "integer", "minimum": 0, "description": "Target table entities deleted." }
+      }
+    },
+    "copied": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blobs", "bytes", "entities"],
+      "description": "What was written to the target so far. Zero for 'cleared', 'stale' and 'blocked'.",
+      "properties": {
+        "blobs": { "type": "integer", "minimum": 0, "description": "Blobs copied." },
+        "bytes": { "type": "integer", "minimum": 0, "description": "Their total length in bytes." },
+        "entities": { "type": "integer", "minimum": 0, "description": "Entities upserted under the target client." }
+      }
+    },
+    "failure": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/failure" }],
+      "description": "Null unless outcome is 'failed': the first operation that did not succeed. Nothing after it was attempted."
+    },
+    "copiedAt": {
+      "type": ["string", "null"],
+      "description": "UTC time (ISO 8601, round-trip format) the copy phase began, i.e. when staging started to hold the source's data. Null when it never began: clear, stale, blocked, or a failure during the deletes of a refresh that had something to copy."
+    },
+    "clear": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/clear" }],
+      "description": "The exact storage_copy_apply call, mode clear, that removes what a refresh wrote; take storage_copy_plan with mode clear first for its planHash. Null in clear mode AND for 'stale' and 'blocked' outcomes: in those nothing was written, so there is nothing to clear."
+    }
+  },
+
+  "definitions": {
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item", "operation", "error"],
+      "properties": {
+        "item": {
+          "type": "string",
+          "description": "What was being operated on: 'container/blobName' for a blob, 'table/partitionKey/rowKey' for an entity."
+        },
+        "operation": {
+          "type": "string",
+          "enum": ["deleteBlob", "deleteEntity", "copyBlob", "copyEntity"],
+          "description": "Which operation failed."
+        },
+        "error": {
+          "$ref": "#/definitions/error",
+          "description": "Why it failed. The code is the service's own error code (or 'HTTP nnn' when it gave none), 'unreachable' when no HTTP answer came back at all, or 'token' when a fresh Entra token could not be obtained mid-run."
+        }
+      }
+    },
+    "clear": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "spec", "pair", "mode"],
+      "properties": {
+        "tool": { "type": "string", "description": "The tool to call: storage_copy_apply." },
+        "spec": { "type": "string", "description": "The spec path to pass." },
+        "pair": { "type": "string", "description": "The pair name to pass." },
+        "mode": { "type": "string", "description": "The mode to pass: clear." }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "target", "details"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "The service's error code; 'HTTP nnn' when the service gave none, 'unreachable' or 'token' for a failure before or outside an HTTP answer."
+        },
+        "message": {
+          "type": "string",
+          "description": "The service's message, verbatim; for 'unreachable' and 'token', the failure's own message."
+        },
+        "target": {
+          "type": ["string", "null"],
+          "description": "What the error is about, when the service said. Null when it did not."
+        },
+        "details": {
+          "type": "array",
+          "description": "The nested errors, in the same shape, as deep as the service sent them.",
+          "items": { "$ref": "#/definitions/error" }
+        }
+      }
+    }
+  }
+}

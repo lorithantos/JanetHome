@@ -191,4 +191,67 @@ public static class AzureTools
             Containers = containers ?? [],
             Tables = tables ?? [],
         }));
+
+    [McpServerTool(Name = "storage_copy_plan")]
+    [Description(
+        "READ-ONLY. What a refresh (or clear) of a staging copy would delete and copy, from a " +
+        "JSON spec of named source/target pairs and per-container rules. Reads both accounts " +
+        "over the data plane; refresh copies only live items (dropIfMetadata, keepIfLive), clear " +
+        "touches only the target. Returns counts by rule, dropped items by reason, unmatched " +
+        "source blobs (which block apply), blockers, and planHash, which storage_copy_apply " +
+        "requires. Blob names appear only with rule=<match text or table name>; metadata values " +
+        "never. A pair whose target is a source anywhere is refused before any request.")]
+    public static string StorageCopyPlan(
+        [Description("Absolute path of the storage copy spec (JSON).")]
+        string spec,
+        [Description("The name of the pair in the spec to plan.")]
+        string pair,
+        [Description("refresh (delete the target's in-scope data, then copy) or clear (delete only).")]
+        string mode,
+        [Description("A blob rule's match text or a table name: list the names for that rule only.")]
+        string? rule = null,
+        [Description("Subscription id or name. Omit for the Azure CLI's default subscription.")]
+        string? subscription = null,
+        [Description("The resource group holding BOTH accounts. Optional; omit when they differ.")]
+        string? resourceGroup = null) =>
+        AzureJson.Serialize(Janet.Core.StorageCopy.Shared.Plan(new StorageCopyRequest
+        {
+            Spec = spec,
+            Pair = pair,
+            Mode = mode,
+            Rule = rule,
+            Subscription = subscription,
+            ResourceGroup = resourceGroup,
+        }));
+
+    [McpServerTool(Name = "storage_copy_apply")]
+    [Description(
+        "CHANGES LIVE AZURE. Performs exactly the plan storage_copy_plan showed: recomputes it, " +
+        "and writes nothing if planHash no longer matches (stale) or the plan is blocked. " +
+        "Refresh deletes the target client's in-scope data, then copies server-side (Put Blob " +
+        "From URL) and upserts entities under the target client; clear only deletes. Stops at " +
+        "the first failure with partial counts. Never writes the source account. Returns " +
+        "copiedAt and the exact clear call.")]
+    public static string StorageCopyApply(
+        [Description("Absolute path of the storage copy spec (JSON), as given to storage_copy_plan.")]
+        string spec,
+        [Description("The name of the pair in the spec.")]
+        string pair,
+        [Description("refresh or clear, the same as the plan.")]
+        string mode,
+        [Description("The planHash storage_copy_plan returned for this spec, pair and mode.")]
+        string planHash,
+        [Description("Subscription id or name. Omit for the Azure CLI's default subscription.")]
+        string? subscription = null,
+        [Description("The resource group holding BOTH accounts. Optional; omit when they differ.")]
+        string? resourceGroup = null) =>
+        AzureJson.Serialize(Janet.Core.StorageCopy.Shared.Apply(new StorageCopyRequest
+        {
+            Spec = spec,
+            Pair = pair,
+            Mode = mode,
+            Subscription = subscription,
+            ResourceGroup = resourceGroup,
+            PlanHash = planHash,
+        }));
 }

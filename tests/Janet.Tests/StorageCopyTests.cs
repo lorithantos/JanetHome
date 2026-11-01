@@ -517,6 +517,23 @@ public sealed class StorageCopyTests : IDisposable
     }
 
     [Fact]
+    public void MetadataValuesNeverAppear()
+    {
+        const string secret = "Spring Campaign Secret Title";
+        StorageCopyWorld world = Populated()
+            .Blob(Side.Source, Src, "drafts/B/s2.json", metadata: new Dictionary<string, string> { ["title"] = secret })
+            .AcceptWrites();
+
+        StorageCopyPlanResult plan = Plan(world, rule: "drafts/{id}/{stamp}.json");
+        StorageCopyApplyResult applied = Apply(world, Plan(world).PlanHash);
+
+        Assert.Contains("drafts/B/s2.json", AzureJson.Serialize(plan), StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, AzureJson.Serialize(plan), StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, AzureJson.Serialize(applied), StringComparison.Ordinal);
+        Assert.DoesNotContain("Spring", AzureJson.Serialize(plan), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AnUnreachableTargetIsAFailureField()
     {
         StorageCopyWorld world = Populated()

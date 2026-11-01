@@ -182,6 +182,114 @@ public static class AzureJson
         return root.ToJsonString(pretty ? BicepJson.Indented : BicepJson.Compact);
     }
 
+    public static string Serialize(StorageCopyPlanResult result, bool pretty = false)
+    {
+        JsonObject root = new()
+        {
+            ["contract"] = result.Contract,
+            ["mode"] = result.Mode,
+            ["pair"] = result.Pair,
+            ["spec"] = result.Spec,
+            ["source"] = CopyEnd(result.Source),
+            ["target"] = CopyEnd(result.Target),
+            ["delete"] = new JsonObject
+            {
+                ["blobs"] = result.DeleteBlobs,
+                ["entities"] = result.DeleteEntities,
+                ["byRule"] = new JsonArray([.. result.DeleteByRule.Select(r => (JsonNode)new JsonObject
+                {
+                    ["rule"] = r.Rule,
+                    ["count"] = r.Count,
+                })]),
+            },
+            ["copy"] = new JsonObject
+            {
+                ["blobs"] = result.CopyBlobs,
+                ["bytes"] = result.CopyBytes,
+                ["entities"] = result.CopyEntities,
+                ["byRule"] = new JsonArray([.. result.CopyByRule.Select(r => (JsonNode)new JsonObject
+                {
+                    ["rule"] = r.Rule,
+                    ["count"] = r.Count,
+                    ["bytes"] = r.Bytes,
+                })]),
+            },
+            ["dropped"] = new JsonObject
+            {
+                ["count"] = result.DroppedCount,
+                ["byReason"] = new JsonArray([.. result.DroppedByReason.Select(r => (JsonNode)new JsonObject
+                {
+                    ["reason"] = r.Reason,
+                    ["count"] = r.Count,
+                })]),
+            },
+            ["unmatched"] = new JsonObject
+            {
+                ["count"] = result.UnmatchedCount,
+                ["names"] = new JsonArray([.. result.UnmatchedNames.Select(n => (JsonNode)JsonValue.Create(n)!)]),
+            },
+            ["names"] = result.Names is null
+                ? null
+                : new JsonObject
+                {
+                    ["delete"] = new JsonArray([.. result.Names.Delete.Select(n => (JsonNode)JsonValue.Create(n)!)]),
+                    ["copy"] = new JsonArray([.. result.Names.Copy.Select(n => (JsonNode)JsonValue.Create(n)!)]),
+                },
+            ["readyToApply"] = result.ReadyToApply,
+            ["blockers"] = new JsonArray([.. result.Blockers.Select(b => (JsonNode)JsonValue.Create(b)!)]),
+            ["planHash"] = result.PlanHash,
+        };
+
+        return root.ToJsonString(pretty ? BicepJson.Indented : BicepJson.Compact);
+    }
+
+    public static string Serialize(StorageCopyApplyResult result, bool pretty = false)
+    {
+        JsonObject root = new()
+        {
+            ["contract"] = result.Contract,
+            ["outcome"] = result.Outcome,
+            ["planHash"] = result.PlanHash,
+            ["deleted"] = new JsonObject
+            {
+                ["blobs"] = result.DeletedBlobs,
+                ["entities"] = result.DeletedEntities,
+            },
+            ["copied"] = new JsonObject
+            {
+                ["blobs"] = result.CopiedBlobs,
+                ["bytes"] = result.CopiedBytes,
+                ["entities"] = result.CopiedEntities,
+            },
+            ["failure"] = result.Failure is null
+                ? null
+                : new JsonObject
+                {
+                    ["item"] = result.Failure.Item,
+                    ["operation"] = result.Failure.Operation,
+                    ["error"] = Error(result.Failure.Error),
+                },
+            ["copiedAt"] = result.CopiedAt,
+            ["clear"] = result.Clear is null
+                ? null
+                : new JsonObject
+                {
+                    ["tool"] = result.Clear.Tool,
+                    ["spec"] = result.Clear.Spec,
+                    ["pair"] = result.Clear.Pair,
+                    ["mode"] = result.Clear.Mode,
+                },
+        };
+
+        return root.ToJsonString(pretty ? BicepJson.Indented : BicepJson.Compact);
+    }
+
+    private static JsonObject CopyEnd(StorageCopyEnd end) => new()
+    {
+        ["account"] = end.Account,
+        ["client"] = end.Client,
+    };
+
     internal static JsonObject Subscription(AzureSubscription subscription) => new()
     {
         ["id"] = subscription.Id,

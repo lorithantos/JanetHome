@@ -28,6 +28,8 @@ public class AzureSchemaTests
         "azure-deployment.schema.json",
         "azure-roles.schema.json",
         "storage-probe.schema.json",
+        "storage-copy-plan.schema.json",
+        "storage-copy-apply.schema.json",
     ];
 
     private static JsonObject Load(string file) =>
@@ -280,6 +282,115 @@ public class AzureSchemaTests
         Matches(Items(root, root, "targets"), emitted["targets"]![0]!, "probe.targets[]");
     }
 
+    // ---- storage copy ----------------------------------------------------------------------
+
+    private static string WriteSpec()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"janet-storage-copy-schema-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, StorageCopyFixtures.Neelam);
+        return path;
+    }
+
+    private static StorageCopyRequest CopyRequest(string spec, string? rule = null, string? hash = null) => new()
+    {
+        Spec = spec,
+        Pair = "priya-to-staging",
+        Mode = "refresh",
+        Rule = rule,
+        Subscription = StubAzure.Sub,
+        PlanHash = hash,
+    };
+
+    [Fact]
+    public void TheStorageCopyPlanEnvelopeEmitsExactlyWhatItsSchemaDeclares()
+    {
+        const string src = "test-salon-one";
+        const string tgt = "staging-salon";
+        string spec = WriteSpec();
+        try
+        {
+            StorageCopyWorld world = StorageCopyWorld.Neelam()
+                .Blob(StorageCopyWorld.Side.Source, src, "drafts/A/s1.json")
+                .Blob(StorageCopyWorld.Side.Source, src, "proofread/A/s1.json")
+                .Blob(StorageCopyWorld.Side.Source, src, "proofread/B/s2.json")
+                .UndoneBlob(StorageCopyWorld.Side.Source, src, "drafts/C/s3.json")
+                .Blob(StorageCopyWorld.Side.Source, src, "stray/x.json")
+                .Blob(StorageCopyWorld.Side.Target, tgt, "proofread/old/s0.json");
+
+            StorageCopyPlanResult plan = world.Copier().Plan(CopyRequest(spec, rule: "proofread/{id}/{stamp}.json"));
+            JsonObject root = Load("storage-copy-plan.schema.json");
+            JsonObject emitted = JsonNode.Parse(AzureJson.Serialize(plan))!.AsObject();
+
+            Assert.NotEmpty(plan.DeleteByRule);
+            Assert.NotEmpty(plan.CopyByRule);
+            Assert.Contains(plan.DroppedByReason, r => r.Reason == "undone");
+            Assert.Contains(plan.DroppedByReason, r => r.Reason == "noLiveSave");
+            Assert.Equal(1, plan.UnmatchedCount);
+
+            Matches(root, emitted, "copy-plan");
+            Matches(Property(root, root, "source"), emitted["source"]!, "copy-plan.source");
+            Matches(Property(root, root, "target"), emitted["target"]!, "copy-plan.target");
+            JsonObject delete = Property(root, root, "delete");
+            Matches(delete, emitted["delete"]!, "copy-plan.delete");
+            Matches(Items(root, delete, "byRule"), emitted["delete"]!["byRule"]![0]!, "copy-plan.delete.byRule[]");
+            JsonObject copy = Property(root, root, "copy");
+            Matches(copy, emitted["copy"]!, "copy-plan.copy");
+            Matches(Items(root, copy, "byRule"), emitted["copy"]!["byRule"]![0]!, "copy-plan.copy.byRule[]");
+            JsonObject dropped = Property(root, root, "dropped");
+            Matches(dropped, emitted["dropped"]!, "copy-plan.dropped");
+            Matches(Items(root, dropped, "byReason"), emitted["dropped"]!["byReason"]![0]!, "copy-plan.dropped.byReason[]");
+            Matches(Property(root, root, "unmatched"), emitted["unmatched"]!, "copy-plan.unmatched");
+            Matches(Property(root, root, "names"), emitted["names"]!, "copy-plan.names");
+        }
+        finally
+        {
+            File.Delete(spec);
+        }
+    }
+
+    [Fact]
+    public void TheStorageCopyApplyEnvelopeEmitsExactlyWhatItsSchemaDeclares()
+    {
+        const string src = "test-salon-one";
+        const string tgt = "staging-salon";
+        string spec = WriteSpec();
+        try
+        {
+            StorageCopyWorld world = StorageCopyWorld.Neelam()
+                .Blob(StorageCopyWorld.Side.Source, src, "images/logo.png", length: 7)
+                .Blob(StorageCopyWorld.Side.Source, src, "images/z.png", length: 11)
+                .Blob(StorageCopyWorld.Side.Target, tgt, "images/old.png")
+                .OnWrite(HttpMethod.Put, "/staging-salon/images/z.png", StubAzure.Xml(403, "<Error><Code>AuthorizationPermissionMismatch</Code><Message>no</Message></Error>"))
+                .AcceptWrites();
+            string hash = world.Copier().Plan(CopyRequest(spec)).PlanHash;
+
+            StorageCopyApplyResult result = world.Copier().Apply(CopyRequest(spec, hash: hash));
+
+            Assert.Equal("failed", result.Outcome);
+            Assert.NotNull(result.Failure);
+            Assert.NotNull(result.CopiedAt);
+            Assert.NotNull(result.Clear);
+
+            // The service's own error has no nested details; give it some so details[] is emitted.
+            result = result with { Failure = result.Failure with { Error = Error } };
+
+            JsonObject root = Load("storage-copy-apply.schema.json");
+            JsonObject emitted = JsonNode.Parse(AzureJson.Serialize(result))!.AsObject();
+
+            Matches(root, emitted, "copy-apply");
+            Matches(Property(root, root, "deleted"), emitted["deleted"]!, "copy-apply.deleted");
+            Matches(Property(root, root, "copied"), emitted["copied"]!, "copy-apply.copied");
+            JsonObject failure = Property(root, root, "failure");
+            Matches(failure, emitted["failure"]!, "copy-apply.failure");
+            SharedShapes(root, failure, emitted["failure"]!.AsObject(), "copy-apply.failure");
+            Matches(Property(root, root, "clear"), emitted["clear"]!, "copy-apply.clear");
+        }
+        finally
+        {
+            File.Delete(spec);
+        }
+    }
+
     // ---- every schema ----------------------------------------------------------------------
 
     [Theory]
@@ -306,6 +417,8 @@ public class AzureSchemaTests
     [InlineData("azure-deployment.schema.json", DeploymentResult.ContractVersion)]
     [InlineData("azure-roles.schema.json", RoleAssignmentsResult.ContractVersion)]
     [InlineData("storage-probe.schema.json", StorageProbeResult.ContractVersion)]
+    [InlineData("storage-copy-plan.schema.json", StorageCopyPlanResult.ContractVersion)]
+    [InlineData("storage-copy-apply.schema.json", StorageCopyApplyResult.ContractVersion)]
     public void TheSchemaStampsTheContractTheCodeEmits(string file, int contract)
     {
         JsonObject root = Load(file);
