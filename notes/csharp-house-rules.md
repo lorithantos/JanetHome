@@ -121,6 +121,23 @@ file and to stay silent on a compliant one. Existing repos adopt it deliberately
 by sweep: ImageSelectorV2 had 4 `var`, about 12 braceless statements and 18 tuple
 signatures at HEAD.
 
+### 7. Tests never rely on the system clock
+
+Decided 2026-11-03: "For coding standards tests must not rely on the system clock", and,
+on the setting that prompted it, "the tests shouldn't need any smaller limits as they
+should not be using a real clock". Code that reads the time takes a `TimeProvider` (or
+the repo's clock seam); tests give it a fake one (`FakeTimeProvider`, or a stepping or
+manual clock) and move it. No test reads `DateTime.Now`/`UtcNow`, `DateTimeOffset.Now`/
+`UtcNow` or `TimeProvider.System`, and none waits for time to pass with `Task.Delay`,
+`Thread.Sleep` or a real timer. A setting that bounds a period (a grace period, an
+interval) keeps its real limits in tests: a test that needs a period to elapse moves the
+clock past it rather than shrinking the period below the limit.
+
+Why it bit: Neelam's `Undo:GracePeriod` was about to gain a one-hour minimum, and the
+first plan let tests lower it so short periods could elapse -- which only matters if a
+test waits on real time, the same root as rule 1's flaky tests. Enforcement idea: a test
+(or RazorGraph query) over the test assemblies for references to the members above.
+
 ---
 
 ## Part 2 -- Candidates (the owner decides)
