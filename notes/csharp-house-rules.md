@@ -135,9 +135,10 @@ clock past it rather than shrinking the period below the limit.
 
 The seam is .NET's `TimeProvider` as a REQUIRED constructor parameter, registered once in
 DI (`AddSingleton(TimeProvider.System)`); Razor components `@inject` it. Considered the
-same day and not adopted (owner: "Let's keep the existing pattern"): an optional
-`TimeProvider? clock = null` filled with `TimeProvider.System` in the constructor --
-convenient, but a test that forgets its fake then silently runs on the real clock.
+same day and not adopted (owner: "Let's keep the existing pattern ... This was based on
+an older pattern superseded by time provider"): a clock interface defaulting to null and
+filled with the system clock in the constructor. Besides being the older idiom, it lets a
+test that forgets its fake silently run on the real clock.
 
 Why it bit: Neelam's `Undo:GracePeriod` was about to gain a one-hour minimum, and the
 first plan let tests lower it so short periods could elapse -- which only matters if a
