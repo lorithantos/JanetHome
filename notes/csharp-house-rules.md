@@ -133,6 +133,12 @@ manual clock) and move it. No test reads `DateTime.Now`/`UtcNow`, `DateTimeOffse
 interval) keeps its real limits in tests: a test that needs a period to elapse moves the
 clock past it rather than shrinking the period below the limit.
 
+The seam is .NET's `TimeProvider` as a REQUIRED constructor parameter, registered once in
+DI (`AddSingleton(TimeProvider.System)`); Razor components `@inject` it. Considered the
+same day and not adopted (owner: "Let's keep the existing pattern"): an optional
+`TimeProvider? clock = null` filled with `TimeProvider.System` in the constructor --
+convenient, but a test that forgets its fake then silently runs on the real clock.
+
 Why it bit: Neelam's `Undo:GracePeriod` was about to gain a one-hour minimum, and the
 first plan let tests lower it so short periods could elapse -- which only matters if a
 test waits on real time, the same root as rule 1's flaky tests. Enforcement idea: a test
