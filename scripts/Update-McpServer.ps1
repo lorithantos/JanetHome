@@ -82,6 +82,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'GraphCarryOver.Common.ps1')
+. (Join-Path $PSScriptRoot 'RotationLock.Common.ps1')
 if (-not $Root) { $Root = Join-Path $repoRoot '.janet-bin' }
 if (-not (Test-Path -LiteralPath $Project)) { throw "Project not found: $Project" }
 if (-not (Test-Path -LiteralPath $Root)) { New-Item -ItemType Directory -Path $Root | Out-Null }
@@ -278,6 +279,33 @@ function Restore-GraphCarryOver {
     $State.Stage = 'loaded'
 }
 
+function Invoke-GraphCarryOverRestore {
+    # Restore-GraphCarryOver, never thrown out of: the swap has already happened, so a load
+    # failure belongs in the report at the end, not in the rotation's result. A function
+    # rather than an inline try because the rotation lock's try made that one depth 6.
+    param([Parameter(Mandatory)][object]$State)
+
+    try { Restore-GraphCarryOver -State $State }
+    catch {
+        $State.Failures = @($State.Failures) + "carry-over aborted during the loads: $($_.Exception.Message)"
+        $State.Stage = 'loaded'
+    }
+}
+
+# ---- One rotation at a time, across servers --------------------------------
+
+# Held from here to the end, released in the finally at the bottom: publish, junction swap,
+# restart, carry-over and CLI reinstall all run under it. A razorgraph carry-over calls the
+# janet CLI that a janet rotation reinstalls, and on 2026-11-24 the two overlapped and the
+# carry-over's token call failed. Waits up to 5 minutes for another rotation, logging one line
+# that names it; a process that dies releases the lock with it. RotationLock.Common.ps1.
+# The body below is deliberately NOT re-indented under the try, so this change's diff shows
+# the lock and not 240 lines of whitespace.
+$rotationName = if ($ProcessName) { $ProcessName } else { [System.IO.Path]::GetFileNameWithoutExtension($Project) }
+$rotationHolder = "$rotationName rotation (pid $PID, since $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')))"
+$rotationLock = Enter-RotationLock -Path (Get-RotationLockPath) -Holder $rotationHolder
+try {
+
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $buildDir = Join-Path $Root "build-$stamp"
 $currentLink = Join-Path $Root 'current'
@@ -434,13 +462,7 @@ if ($ProcessName) {
 
         if ($listening) {
             Write-Host "  started pid $($started.Id) from current, listening on $port" -ForegroundColor Green
-            if ($null -ne $carry -and $carry.Stage -eq 'saved') {
-                try { Restore-GraphCarryOver -State $carry }
-                catch {
-                    $carry.Failures = @($carry.Failures) + "carry-over aborted during the loads: $($_.Exception.Message)"
-                    $carry.Stage = 'loaded'
-                }
-            }
+            if ($null -ne $carry -and $carry.Stage -eq 'saved') { Invoke-GraphCarryOverRestore -State $carry }
         }
         elseif ($started.HasExited) {
             if ($null -ne $carry -and $carry.Stage -eq 'saved') {
@@ -523,4 +545,10 @@ Write-Host ''
 if ($null -ne $carry) {
     $color = if (@($carry.Failures).Count -gt 0 -or $carry.Stage -eq 'not-loaded') { 'Yellow' } else { 'Cyan' }
     foreach ($line in (Format-GraphCarryOverReport -State $carry)) { Write-Host $line -ForegroundColor $color }
+}
+
+}
+finally {
+    # Success, throw or Ctrl+C alike. Process death needs no finally: the OS closes the handle.
+    Exit-RotationLock -Lock $rotationLock
 }
