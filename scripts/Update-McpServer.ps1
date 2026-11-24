@@ -365,6 +365,10 @@ Write-Host "  current -> $(Split-Path $buildDir -Leaf)" -ForegroundColor Green
 
 # ---- Restart, when we own the process --------------------------------------
 
+# Set here, outside the branch, because the report at the end reads it on every path. Inside
+# 'if ($ProcessName)' it left a run without -ProcessName to throw under StrictMode at its very
+# last step, after all the work was done. tests\Update-McpServer.Tests.ps1 holds this.
+$carry = $null
 if ($ProcessName) {
     # Scoped to servers running from under $Root, and to HTTP ones. Stop-Process by NAME alone
     # would also kill stdio servers belonging to other sessions -- and stdio is never
@@ -397,7 +401,6 @@ if ($ProcessName) {
     # this script a fixed argument list per server, and a server that serves list_graphs is
     # exactly the case where there is something to lose. Only when we are about to stop
     # something -- no HTTP server of ours, no drop.
-    $carry = $null
     if ($ours.Count -gt 0 -and $null -ne $port) {
         try { $carry = Save-GraphCarryOver -Port $port }
         catch {
