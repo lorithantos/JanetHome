@@ -149,24 +149,25 @@ public sealed class BearerPipelineTests
     }
 
     [Fact]
-    public void RequireWithNoTokenRefusesToStartAndSaysToEnsureOne()
+    public async Task RequireWithNoTokenRefusesToStartAndSaysToEnsureOne()
     {
-        using BearerAuthenticator bearer = new(BearerMode.Require, () => null);
-        GraphContext context = new(PipelineServer.GraphPath());
+        using StartupGate gate = new();
 
-        StartupRefusedException refused = Assert.Throws<StartupRefusedException>(() => HttpServer.Build(context, 0, bearer));
+        StartupRefusedException refused = await Assert.ThrowsAsync<StartupRefusedException>(
+            () => gate.FinishAsync(BearerMode.Require, () => null));
 
         Assert.Contains("janet mcp-token --ensure", refused.Message);
+        Assert.False(gate.IsReady);
     }
 
     [Fact]
-    public void RequireNamesTheProviderErrorWhenTheTokenCannotBeRead()
+    public async Task RequireNamesTheProviderErrorWhenTheTokenCannotBeRead()
     {
-        using BearerAuthenticator bearer = new(
-            BearerMode.Require, () => throw new InvalidOperationException("HKCU\\Software\\Janet.Tests\\x\\McpToken holds an MCP token that cannot be read"));
+        using StartupGate gate = new();
 
-        StartupRefusedException refused = Assert.Throws<StartupRefusedException>(
-            () => HttpServer.Build(new GraphContext(PipelineServer.GraphPath()), 0, bearer));
+        StartupRefusedException refused = await Assert.ThrowsAsync<StartupRefusedException>(
+            () => gate.FinishAsync(
+                BearerMode.Require, () => throw new InvalidOperationException("HKCU\\Software\\Janet.Tests\\x\\McpToken holds an MCP token that cannot be read")));
 
         Assert.Contains("cannot be read", refused.Message);
     }
@@ -240,7 +241,10 @@ public sealed class BearerPipelineTests
     }
 }
 
-/// <summary>One janet-mcp HTTP application on an OS-chosen port, over a test-owned token.</summary>
+/// <summary>
+/// One janet-mcp HTTP application on an OS-chosen port, over a test-owned token. Started the way
+/// Program.cs starts it: bind, then finish startup through the <see cref="StartupGate"/>.
+/// </summary>
 internal sealed class PipelineServer : IAsyncDisposable
 {
     /// <summary>A token no real store holds, distinctive enough that finding it in a body means a leak.</summary>
@@ -249,29 +253,54 @@ internal sealed class PipelineServer : IAsyncDisposable
     internal const string InitializeBody =
         """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"PipelineServer","version":"1"}}}""";
 
-    private readonly BearerAuthenticator _bearer;
-    private readonly string _graphPath;
+    private readonly BearerMode _mode;
+    private readonly Func<string?> _provider;
+    private readonly StartupGate _gate = new();
     private WebApplication? _app;
 
     internal PipelineServer(BearerMode mode, string? token, string? graphPath = null)
+        : this(mode, () => token, graphPath)
     {
-        _bearer = new BearerAuthenticator(mode, () => token, headerHint: McpAuth.HeaderHint);
-        _graphPath = graphPath ?? GraphPath();
+    }
+
+    /// <param name="provider">
+    /// The token read startup does. A provider that blocks holds the server in "starting", the
+    /// window the startup tests look at.
+    /// </param>
+    internal PipelineServer(BearerMode mode, Func<string?> provider, string? graphPath = null)
+    {
+        _mode = mode;
+        _provider = provider;
+        GraphFile = graphPath ?? GraphPath();
     }
 
     internal HttpClient Client { get; } = new();
 
     internal Uri Base { get; private set; } = null!;
 
+    internal string GraphFile { get; }
+
+    internal StartupGate Gate => _gate;
+
     internal static string GraphPath() =>
         Path.Combine(Path.GetTempPath(), "janet-guard-" + Guid.NewGuid().ToString("n")[..8] + ".json");
 
     internal async Task StartAsync()
     {
-        _app = HttpServer.Build(new GraphContext(_graphPath), 0, _bearer);
+        await BindAsync();
+        await FinishStartingAsync();
+    }
+
+    /// <summary>Builds and binds, as Program.cs does before its startup work. Answers 503 until finished.</summary>
+    internal async Task BindAsync()
+    {
+        _app = HttpServer.Build(new GraphContext(GraphFile), 0, _gate);
         await _app.StartAsync();
         Base = new Uri(Assert.Single(_app.Urls).TrimEnd('/') + "/");
     }
+
+    /// <summary>The startup work Program.cs runs after the bind, over this server's provider.</summary>
+    internal Task<BearerAuthenticator> FinishStartingAsync() => _gate.FinishAsync(_mode, _provider);
 
     internal Task<HttpResponseMessage> InitializeAsync(string? token)
     {
@@ -301,7 +330,7 @@ internal sealed class PipelineServer : IAsyncDisposable
             await _app.DisposeAsync();
         }
 
-        _bearer.Dispose();
+        _gate.Dispose();
     }
 
     private static void Authorize(HttpRequestMessage request, string? token)

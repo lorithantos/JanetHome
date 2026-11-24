@@ -7,13 +7,20 @@ namespace Janet.Core;
 /// <summary>What a janet-mcp reports about itself at /health.</summary>
 /// <param name="Auth">
 /// The bearer check's snapshot: mode, whether a token is configured, outcome counters and any
-/// provider error -- never a token. Null from a server older than the check.
+/// provider error -- never a token. Null from a server older than the check, and while a server
+/// is starting, since the token has not been read yet.
+/// </param>
+/// <param name="State">
+/// <see cref="Health.Starting"/> (answered 503) between the bind and the end of startup, then
+/// <see cref="Health.Ready"/> (answered 200). Null from a server older than the field, which
+/// answered only once it was ready.
 /// </param>
 public sealed record HealthReport(
     [property: JsonPropertyName("server")] string Server,
     [property: JsonPropertyName("graph")] string Graph,
     [property: JsonPropertyName("version")] string Version,
-    [property: JsonPropertyName("auth")] BearerAuthSnapshot? Auth = null);
+    [property: JsonPropertyName("auth")] BearerAuthSnapshot? Auth = null,
+    [property: JsonPropertyName("state")] string? State = null);
 
 /// <summary>
 /// Decides whether starting an HTTP server on a port is necessary, redundant, or a conflict.
@@ -33,6 +40,15 @@ public sealed record HealthReport(
 public static class Health
 {
     public const string Name = "janet-mcp";
+
+    /// <summary>
+    /// /health's state from the bind until startup resolves, answered 503. Every other route
+    /// answers 503 with Retry-After meanwhile.
+    /// </summary>
+    public const string Starting = "starting";
+
+    /// <summary>/health's state once startup has resolved, answered 200.</summary>
+    public const string Ready = "ready";
 
     public enum PortState
     {
@@ -65,26 +81,44 @@ public static class Health
     /// </remarks>
     public static async Task<(PortState State, string? Detail)> ProbeAsync(int port, string graphPath)
     {
+        (PortState state, string? detail, _) = await ProbeReadinessAsync(port, graphPath);
+        return (state, detail);
+    }
+
+    /// <summary>
+    /// <see cref="ProbeAsync"/>'s answer, plus whether that janet-mcp is still starting.
+    /// </summary>
+    /// <remarks>
+    /// The body is read WHATEVER THE STATUS. A janet-mcp binds first and answers /health 503 with
+    /// the normal body and state "starting" until its startup work resolves, so for the question
+    /// "may I bind this port" a starting janet-mcp is as much the owner as a ready one: reading
+    /// only a 200 would call it Free, and a second instance would race it for the bind. A caller
+    /// that wants to USE the server, rather than leave its port alone, waits for Starting to
+    /// clear. Every non-answer still reports Free, as above.
+    /// </remarks>
+    public static async Task<(PortState State, string? Detail, bool Starting)> ProbeReadinessAsync(int port, string graphPath)
+    {
         using HttpClient client = new() { Timeout = TimeSpan.FromMilliseconds(500) };
 
         HealthReport? report;
         try
         {
-            report = await client.GetFromJsonAsync<HealthReport>($"http://127.0.0.1:{port}/health");
+            using HttpResponseMessage response = await client.GetAsync($"http://127.0.0.1:{port}/health");            report = await response.Content.ReadFromJsonAsync<HealthReport>();
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
             or NotSupportedException or System.Text.Json.JsonException or UriFormatException)
         {
-            return (PortState.Free, null);
+            return (PortState.Free, null, false);
         }
 
         if (report is null || report.Server != Name)
         {
-            return (PortState.Free, null);
+            return (PortState.Free, null, false);
         }
 
+        bool starting = string.Equals(report.State, Starting, StringComparison.Ordinal);
         return string.Equals(report.Graph, graphPath, StringComparison.OrdinalIgnoreCase)
-            ? (PortState.AlreadyServing, report.Version)
-            : (PortState.ServingAnotherGraph, report.Graph);
+            ? (PortState.AlreadyServing, report.Version, starting)
+            : (PortState.ServingAnotherGraph, report.Graph, starting);
     }
 }

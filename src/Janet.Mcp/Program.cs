@@ -155,23 +155,13 @@ if (http)
             break; // Nothing answered as a janet-mcp. The bind below decides.
     }
 
-    // The bearer check asks its provider once now and again (throttled) when a token does not
-    // match, so a rotated token is picked up without a restart. Owned here and disposed when
-    // this block ends -- after shutdown, or on any early return below.
-    using BearerAuthenticator bearer = new(authMode, ReadToken, headerHint: McpAuth.HeaderHint);
+    // Whether startup has finished, and the bearer check once it has. Owned here and disposed
+    // when this block ends -- after shutdown, or on any early return below.
+    using StartupGate gate = new();
 
-    // Services, the loopback guard (Host, Origin, JSON-only POST), the bearer check and every
-    // endpoint live in HttpServer, so a test can host exactly this application.
-    WebApplication app;
-    try
-    {
-        app = HttpServer.Build(context, port, bearer);
-    }
-    catch (StartupRefusedException ex)
-    {
-        Console.Error.WriteLine(ex.Message);
-        return 4;
-    }
+    // Services, the loopback guard (Host, Origin, JSON-only POST), the starting gate, the bearer
+    // check and every endpoint live in HttpServer, so a test can host exactly this application.
+    WebApplication app = HttpServer.Build(context, port, gate);
 
     try
     {
@@ -195,8 +185,26 @@ if (http)
         return 3;
     }
 
-    // Printed AFTER binding. The previous order announced it was listening and then died of
-    // AddressInUseException, which is the tool asserting something it had not established.
+    // Bound, so a client dialling now is answered -- 503, "starting" -- rather than refused at the
+    // socket. The work that used to run BEFORE the bind runs here, off the request path, and is
+    // otherwise unchanged: the bearer check asks its provider once now and again (throttled)
+    // when a token does not match, so a rotated token is picked up without a restart; a provider
+    // that fails is kept for /health and the server starts anyway; Require with no token is
+    // still refused, now after a moment of answering 503 instead of before the bind.
+    try
+    {
+        await gate.FinishAsync(authMode, ReadToken);
+    }
+    catch (StartupRefusedException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        await app.StopAsync();
+        return 4;
+    }
+
+    // Printed AFTER binding and after startup has resolved. An earlier order announced it was
+    // listening and then died of AddressInUseException, which is the tool asserting something it
+    // had not established; printing it before a refused token would be the same mistake.
     // Loopback only: this transport is a local development loop, not a network service.
     Console.Error.WriteLine(
         $"janet-mcp listening on http://127.0.0.1:{port}/ over graph {graphPath} [port from {portSource}] " +

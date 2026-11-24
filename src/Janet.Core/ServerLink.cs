@@ -50,7 +50,7 @@ public delegate string? TokenReader(out string? error);
 public static class ServerLink
 {
     /// <summary>
-    /// How long to wait for a freshly started server to answer /health.
+    /// How long to wait for a freshly started, or still starting, server to answer /health ready.
     /// </summary>
     /// <remarks>
     /// Bounded because the fallback is cheap. Waiting longer than the local work would have
@@ -108,7 +108,7 @@ public static class ServerLink
             return new LinkOutcome(ServedBy.Process, null, $"could not resolve a port: {ex.Message}");
         }
 
-        (Health.PortState state, string? detail) = Health.ProbeAsync(port, graphPath).GetAwaiter().GetResult();
+        (Health.PortState state, string? detail, bool starting) = Health.ProbeReadinessAsync(port, graphPath).GetAwaiter().GetResult();
 
         if (state == Health.PortState.ServingAnotherGraph)
         {
@@ -128,6 +128,14 @@ public static class ServerLink
             {
                 return new LinkOutcome(ServedBy.Process, null, startDetail);
             }
+        }
+        else if (starting && AwaitReady(port, graphPath) is { Ready: false } waited)
+        {
+            // Ours, but bound and not finished starting: every route but /health answers 503 until
+            // it has. Waited for as long as a fresh start would be, then the same cheap fallback.
+            return new LinkOutcome(ServedBy.Process, null, waited.Starting
+                ? $"janet-mcp on port {port} was still starting after {StartTimeout.TotalSeconds:0}s"
+                : $"janet-mcp on port {port} stopped answering while it was starting");
         }
 
         string? body = Get(port, relativeUrl, readToken ?? McpAuth.TryReadToken);
@@ -244,27 +252,51 @@ public static class ServerLink
             return false;
         }
 
-        // Poll rather than sleep a fixed amount: a server that is ready in 300ms should not cost
-        // the caller the whole timeout, and one that never comes up should not cost more.
         int port = ResolvePort(graphPath);
-        DateTime deadline = DateTime.UtcNow + StartTimeout;
-
-        while (DateTime.UtcNow < deadline)
+        (bool ready, bool starting) = AwaitReady(port, graphPath);
+        if (ready)
         {
-            if (Health.ProbeAsync(port, graphPath).GetAwaiter().GetResult().State == Health.PortState.AlreadyServing)
-            {
-                detail = $"started janet-mcp on port {port}";
-                return true;
-            }
-
-            Thread.Sleep(150);
+            detail = $"started janet-mcp on port {port}";
+            return true;
         }
 
         // It may yet come up and serve the NEXT call, which is why this is worded as a timeout
         // rather than a failure to start. Nothing is killed here: a server that is slow today is
         // still the server this machine wants.
-        detail = $"started janet-mcp but it did not answer within {StartTimeout.TotalSeconds:0}s";
+        detail = starting
+            ? $"started janet-mcp but it was still starting after {StartTimeout.TotalSeconds:0}s"
+            : $"started janet-mcp but it did not answer within {StartTimeout.TotalSeconds:0}s";
         return false;
+    }
+
+    /// <summary>
+    /// Polls until the janet-mcp serving this graph answers /health ready, for up to
+    /// <see cref="StartTimeout"/>. Starting says whether the last answer was "starting", as
+    /// against no janet-mcp answering at all.
+    /// </summary>
+    /// <remarks>
+    /// Ready, not merely serving: a janet-mcp binds before its startup work and answers every
+    /// route but /health 503 until that resolves, so "it answers /health" is not "it will answer
+    /// the request". Poll rather than sleep a fixed amount: a server that is ready in 300ms should
+    /// not cost the caller the whole timeout, and one that never comes up should not cost more.
+    /// </remarks>
+    private static (bool Ready, bool Starting) AwaitReady(int port, string graphPath)
+    {
+        DateTime deadline = DateTime.UtcNow + StartTimeout;
+        bool starting = false;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            (Health.PortState state, _, starting) = Health.ProbeReadinessAsync(port, graphPath).GetAwaiter().GetResult();
+            if (state == Health.PortState.AlreadyServing && !starting)
+            {
+                return (true, false);
+            }
+
+            Thread.Sleep(150);
+        }
+
+        return (false, starting);
     }
 
     /// <summary>Where a janet-mcp might be, in the order Ensure-McpServer.ps1 looks.</summary>

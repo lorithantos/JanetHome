@@ -83,6 +83,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'GraphCarryOver.Common.ps1')
 . (Join-Path $PSScriptRoot 'RotationLock.Common.ps1')
+. (Join-Path $PSScriptRoot 'McpReadiness.Common.ps1')
 if (-not $Root) { $Root = Join-Path $repoRoot '.janet-bin' }
 if (-not (Test-Path -LiteralPath $Project)) { throw "Project not found: $Project" }
 if (-not (Test-Path -LiteralPath $Root)) { New-Item -ItemType Directory -Path $Root | Out-Null }
@@ -451,6 +452,11 @@ if ($ProcessName) {
     # not -- measured 2026-09-01, the rotated pid was serving 16 s later every time. The port is
     # read from --port in -ServerArgument; without one there is nothing to poll, and that is said
     # rather than guessed at.
+    #
+    # And then until it is READY, inside the same 15 s: since 2026-11-24 janet-mcp binds before
+    # its startup work and answers 503 "starting" until that resolves, and razorgraph-mcp is
+    # being changed to match. A listener pid says the server is there, not that the carry-over's
+    # load_graph will be answered, so "listening" alone is not reported as done.
     if ($null -eq $port) {
         Write-Host "  started pid $($started.Id) from current (no --port in -ServerArgument, so not waiting for it to listen)" -ForegroundColor Green
     }
@@ -463,17 +469,31 @@ if ($ProcessName) {
             if ((Get-ListenerPid -TcpPort $port) -eq $started.Id) { $listening = $true; break }
         }
 
-        if ($listening) {
-            Write-Host "  started pid $($started.Id) from current, listening on $port" -ForegroundColor Green
+        $readiness = $null
+        if ($listening) { $readiness = Wait-McpServerReady -Port $port -Deadline $deadline -Process $started }
+        $ready = $listening -and (Test-McpServerReady -Readiness $readiness)
+
+        if ($ready) {
+            Write-Host "  started pid $($started.Id) from current, $(Format-McpReadiness -Readiness $readiness -Port $port)" -ForegroundColor Green
             if ($null -ne $carry -and $carry.Stage -eq 'saved') { Invoke-GraphCarryOverRestore -State $carry }
         }
         elseif ($started.HasExited) {
             if ($null -ne $carry -and $carry.Stage -eq 'saved') {
                 Write-Host "  graph carry-over: NOT loaded, the new server died; $(@($carry.Saved).Count) saved graphs are in $carryDirectory" -ForegroundColor Yellow
             }
-            throw ("pid $($started.Id) exited (code $($started.ExitCode)) before listening on $port. " +
+            $when = if ($listening) { "after binding $port, before it finished starting" } else { "before listening on $port" }
+            throw ("pid $($started.Id) exited (code $($started.ExitCode)) $when. " +
                 "See $logDir\$ProcessName.err.log. $currentLink already points at the new build; " +
                 'repoint it at the previous build-* directory to roll back.')
+        }
+        elseif ($listening) {
+            Write-Warning ("pid $($started.Id) is listening on $port but is not ready after 15 s " +
+                "(/health: $($readiness.State)). Clients get 503 until it finishes starting; see " +
+                "$logDir\$ProcessName.err.log.")
+            if ($null -ne $carry -and $carry.Stage -eq 'saved') {
+                $carry.Stage = 'not-loaded'
+                $carry.Note = "the server on $port was still $($readiness.State) after 15 s"
+            }
         }
         else {
             Write-Warning ("pid $($started.Id) is alive but nothing owns port $port after 15 s. Clients " +

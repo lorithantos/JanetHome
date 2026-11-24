@@ -30,6 +30,14 @@
     prints, fetched once per run, or none when there is no token; a 401 is reported as
     state 'unauthorized', not as 'not-answering'. /health is never probed with a header.
 
+    STARTING IS NOT READY (2026-11-24). janet-mcp binds its port before its startup work and
+    answers 503 until that resolves (/health: the normal body plus "state": "starting");
+    razorgraph-mcp is being changed to match. The is-anything-listening check is unchanged --
+    a starting server is there, and launching a second would be wrong -- but a tools/list
+    answered 503 waits on /health (McpReadiness.Common.ps1) for up to -TimeoutSeconds and asks
+    again. Still starting at the end is state 'starting', not 'not-answering'; a server that
+    exits while starting is 'start-failed'.
+
 .PARAMETER Port
     TCP port the server listens on. Must match the url in .mcp.json.
 
@@ -107,6 +115,8 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 # Get-McpAuthHeader: the bearer header from `janet mcp-headers`, shared with the other MCP
 # clients so they agree about what "no token" means.
 . (Join-Path $PSScriptRoot 'JanetCli.Common.ps1')
+# Wait-McpServerReady: a listening server's /health, read whatever the status.
+. (Join-Path $PSScriptRoot 'McpReadiness.Common.ps1')
 
 function Test-PortListening {
     # Whether anything accepts a TCP connection on 127.0.0.1:<port>. This, not the connection
@@ -245,13 +255,34 @@ function Get-ServedToolName {
         return , @($parsed.result.tools | ForEach-Object { $_.name })
     }
     catch [Microsoft.PowerShell.Commands.HttpResponseException] {
-        if ([int]$_.Exception.Response.StatusCode -eq 401) {
+        $code = [int]$_.Exception.Response.StatusCode
+        if ($code -eq 401) {
             $body = "$($_.ErrorDetails.Message)".Trim()
             $script:probeRefusal = if ($body) { $body } else { '401 Unauthorized' }
         }
+        elseif ($code -eq 503) { $script:probeStarting = $true }
         return , @()
     }
     catch { return , @() }
+}
+
+function Wait-ServedToolName {
+    # Get-ServedToolName, asked once more after the server has finished starting when the
+    # first answer was a 503: a server that has bound but not finished starting answers every
+    # route but /health 503. Waits on /health for up to $Budget seconds, or until $Process (the
+    # server this run started, if any) exits; the wait's result lands in $script:readiness.
+    # Comma-wrapped like Get-ServedToolName (house rule 1): assign the result.
+    param([int]$TcpPort, [int]$Budget, [hashtable]$AuthHeader, $Process)
+
+    $names = Get-ServedToolName -TcpPort $TcpPort -Budget $Budget -AuthHeader $AuthHeader
+    if ($names.Count -gt 0 -or -not $script:probeStarting) { return , $names }
+
+    $script:readiness = Wait-McpServerReady -Port $TcpPort -Deadline ((Get-Date).AddSeconds($Budget)) -Process $Process
+    if (-not (Test-McpServerReady -Readiness $script:readiness)) { return , $names }
+
+    $script:probeStarting = $false
+    $names = Get-ServedToolName -TcpPort $TcpPort -Budget $Budget -AuthHeader $AuthHeader
+    return , $names
 }
 
 function Get-DeclaredToolCount {
@@ -288,6 +319,9 @@ $result = [ordered]@{
 }
 
 $script:probeRefusal = $null
+$script:probeStarting = $false
+$script:readiness = $null
+$started = $null
 
 try {
     if (-not $Base) { $Base = $repoRoot }
@@ -410,7 +444,7 @@ try {
         # requires one answers 401, reported below.
         $auth = Get-McpAuthHeader
         $authHeader = $auth.Header
-        $servedNames = Get-ServedToolName -TcpPort $Port -Budget $TimeoutSeconds -AuthHeader $authHeader
+        $servedNames = Wait-ServedToolName -TcpPort $Port -Budget $TimeoutSeconds -AuthHeader $authHeader -Process $started
         $declared = Get-DeclaredToolCount -SourceDir $SourceDir
 
         $result.toolsDeclared = $declared
@@ -429,6 +463,26 @@ try {
                                'The header from `janet mcp-headers` was sent and refused: the server holds a ' +
                                'different token or none. Check its /health ''auth''.'
                              })
+        }
+        elseif ($servedNames.Count -eq 0 -and $script:probeStarting -and $null -ne $started -and $started.HasExited) {
+            # Bound, answered 503 while starting, then died: a start that failed late. The
+            # usual cause is janet-mcp's --auth require with no token, which it now refuses
+            # after the bind rather than before it.
+            $result.ok = $false
+            $result.state = 'start-failed'
+            $result.toolsServed = 0
+            $result.note = "Started $ServerPath; it bound $Port and then exited (code $($started.ExitCode)) " +
+                           "before it finished starting. See $logDir\$Name.err.log"
+        }
+        elseif ($servedNames.Count -eq 0 -and $script:probeStarting) {
+            # Up, and saying it is not ready yet: neither down nor broken, so not the
+            # not-answering below.
+            $result.ok = $false
+            $result.state = 'starting'
+            $result.toolsServed = 0
+            $result.note = "Port $Port ($holder) answers 503: $Name has bound but was still starting " +
+                           "after $TimeoutSeconds s (/health: $($script:readiness.State)), so its tools " +
+                           'were not listed. Run this again in a moment.'
         }
         elseif ($servedNames.Count -eq 0) {
             # Listening but not answering MCP is its own failure, and a worse one than being
