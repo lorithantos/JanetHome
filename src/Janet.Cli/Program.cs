@@ -910,7 +910,8 @@ static int Usage()
         --full rebuilds everything without the baseline machinery, which is the question "does
         the whole thing still build" -- reach for it whenever the SHAPE of the build changed,
         because an incremental run that skipped a project entirely and one that had nothing to
-        say about it produce the identical green.
+        say about it produce the identical green. dotnet runs in the target's directory, so
+        the target's own global.json picks the SDK, and 'sdk' reports the version it resolved.
 
         Each test assembly reports status complete, empty or aborted, and only aborted is
         bad news: empty is an assembly --test-filter matched nothing in and does not fail

@@ -220,7 +220,8 @@ public class DotnetCheckSchemaTests
                 NewestSourceAt = "2026-10-21T08:00:00Z",
                 Status = "current",
                 CanRefresh = true,
-            });
+            },
+            "11.0.100");
 
         yield return ("complete", JsonNode.Parse(DotnetCheckJson.Serialize(complete))!.AsObject());
 

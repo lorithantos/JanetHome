@@ -44,13 +44,21 @@ public sealed record BuildReport(
     string? Diagnosis);
 
 /// <summary>A finished check.</summary>
+/// <param name="Sdk">
+/// The SDK version `dotnet --version` resolved in the target's own directory -- the one the build
+/// and the tests ran under -- or null when that directory resolves none (a global.json pinning an
+/// SDK that is not installed). Added at contract 11, after a .NET 11 repository pinning 11.0.100
+/// failed NETSDK1045 out of SDK 10.0.404: dotnet was started from janet's own working directory,
+/// so JanetHome's global.json chose the SDK for every target.
+/// </param>
 public sealed record CheckResult(
     string Target,
     string Configuration,
     bool Succeeded,
     BuildReport Build,
     TestRun? Tests,
-    GraphState? Graph);
+    GraphState? Graph,
+    string? Sdk = null);
 
 /// <summary>A check still running, and the handle to poll it with.</summary>
 public sealed record CheckPending(
@@ -117,6 +125,15 @@ public static class DotnetCheck
     {
         string target = ResolveTarget(request.Target);
 
+        // The dotnet host picks its SDK from the global.json found from the WORKING DIRECTORY
+        // upward, not from the project path. So every dotnet this check starts runs in the
+        // target's own directory; started from janet's directory instead, JanetHome's SDK pin
+        // chose the SDK for every repository on the machine (2026-11-24, NETSDK1045 on a .NET 11
+        // repo whose global.json pinned an installed 11.0.100). ResolveTarget always returns a
+        // file, so its directory is the folder holding it -- the directory given, when one was.
+        string workingDirectory = Path.GetDirectoryName(target)!;
+        string? sdk = ResolveSdk(workingDirectory, cancellation);
+
         List<string> arguments = [target, "--configuration", request.Configuration, "-nologo"];
 
         // A diff is only meaningful against a complete census. --no-incremental recompiles
@@ -133,7 +150,7 @@ public static class DotnetCheck
         }
 
         Stopwatch stopwatch = Stopwatch.StartNew();
-        (int exitCode, IReadOnlyList<string> lines) = RunDotnet("build", arguments, cancellation);
+        (int exitCode, IReadOnlyList<string> lines) = RunDotnet("build", arguments, workingDirectory, cancellation);
         stopwatch.Stop();
 
         bool buildSucceeded = exitCode == 0;
@@ -199,7 +216,7 @@ public static class DotnetCheck
         TestRun? tests = null;
         if (buildSucceeded && !request.NoTests)
         {
-            tests = RunTests(target, request, cancellation);
+            tests = RunTests(target, workingDirectory, request, cancellation);
         }
 
         // The graph describes source structure, so a failed build is the one state worth
@@ -222,7 +239,26 @@ public static class DotnetCheck
 
         bool succeeded = buildSucceeded && (request.NoTests || (tests is not null && tests.Succeeded));
 
-        return new CheckResult(target, request.Configuration, succeeded, build, tests, graph);
+        return new CheckResult(target, request.Configuration, succeeded, build, tests, graph, sdk);
+    }
+
+    /// <summary>
+    /// The SDK version `dotnet --version` reports when started in <paramref name="workingDirectory"/>,
+    /// or null when it reports none.
+    /// </summary>
+    /// <remarks>
+    /// Asked in the same directory, through the same <see cref="StartInfo"/>, as the build and
+    /// the tests, so it names the SDK they ran under rather than one resolved somewhere else. A
+    /// global.json pinning an SDK that is not installed makes the host exit non-zero with its
+    /// own message on stdout; that reads as null, and the build then fails with the same
+    /// complaint in errors[], which is where it belongs.
+    /// </remarks>
+    public static string? ResolveSdk(string workingDirectory, CancellationToken cancellation)
+    {
+        ProcessCapture captured = ProcessOutput.Capture(StartInfo("--version", [], workingDirectory), cancellation);
+        string version = captured.StandardOutput.Trim();
+
+        return captured.ExitCode == 0 && version.Length > 0 && !version.Contains('\n') ? version : null;
     }
 
     /// <summary>How many run directories to keep, and how long one is protected from pruning
@@ -233,7 +269,8 @@ public static class DotnetCheck
 
     private static readonly TimeSpan PruneGrace = TimeSpan.FromMinutes(30);
 
-    private static TestRun RunTests(string target, CheckRequest request, CancellationToken cancellation)
+    private static TestRun RunTests(
+        string target, string workingDirectory, CheckRequest request, CancellationToken cancellation)
     {
         // The TRX files OUTLIVE the call now. They used to be deleted in a finally, which made
         // the envelope the only account of a run that ever existed: a session wanting anything
@@ -268,7 +305,7 @@ public static class DotnetCheck
             arguments.Add(request.TestFilter);
         }
 
-        (int exitCode, IReadOnlyList<string> lines) = RunDotnet("test", arguments, cancellation);
+        (int exitCode, IReadOnlyList<string> lines) = RunDotnet("test", arguments, workingDirectory, cancellation);
 
         // The runner's verdict travels with the counters. Discarding it here is how a
         // crashed test host once summed to 423/423 passing and exit 0 -- the TRX files
@@ -322,6 +359,22 @@ public static class DotnetCheck
     public const string ScrubbedVariable = "Platform";
 
     /// <summary>
+    /// Variables that point MSBuild at one particular SDK's files, removed from dotnet's
+    /// environment for the same reason the working directory is set: the target's global.json
+    /// picks the SDK, and nothing this process inherited may pick it instead.
+    /// </summary>
+    /// <remarks>
+    /// The dotnet CLI exports both to every child of an MSBuild-based command, and a child
+    /// `dotnet build` HONOURS inherited values rather than setting its own. So a janet started
+    /// under any dotnet CLI process -- a test host under `dotnet test`, a tool run from an Exec
+    /// task -- handed its parent's SDK to every build: measured 2026-11-24, a project whose
+    /// global.json pinned 11.0.100 ran under SDK 11's host and MSBuild but resolved
+    /// Microsoft.NET.Sdk from 10.0.404\Sdks, so `dotnet --version` said 11.0.100 while
+    /// $(NETCoreSdkVersion) said 10.0.404. With these gone the child sets its own.
+    /// </remarks>
+    public static readonly IReadOnlyList<string> SdkPinningVariables = ["MSBuildSDKsPath", "MSBuildExtensionsPath"];
+
+    /// <summary>
     /// Builds the ProcessStartInfo for one dotnet invocation, with the inherited
     /// <see cref="ScrubbedVariable"/> removed from the child's environment.
     /// </summary>
@@ -336,7 +389,8 @@ public static class DotnetCheck
     /// build any solution on the machine except the one that happened to declare x64, and the
     /// envelope reported each refusal as though the repository were at fault.
     /// <para>
-    /// ONLY Platform, and only dotnet's children. Configuration travels on the command line
+    /// ONLY Platform -- plus <see cref="SdkPinningVariables"/>, which pick the SDK rather than
+    /// a property -- and only dotnet's children. Configuration travels on the command line
     /// (--configuration), and a global property from the command line beats the environment, so
     /// it cannot be hijacked the same way. ProcessOutput.Capture also launches scripts\graph.ps1
     /// and the server itself, where a repository's own shell is legitimately its own business;
@@ -345,9 +399,14 @@ public static class DotnetCheck
     /// </remarks>
     /// <param name="verb">The dotnet verb, e.g. "build" or "test".</param>
     /// <param name="arguments">Everything after the verb, in order.</param>
-    public static ProcessStartInfo StartInfo(string verb, IReadOnlyList<string> arguments)
+    /// <param name="workingDirectory">
+    /// The target's directory. Required, not defaulted: the host resolves global.json -- and so
+    /// the SDK -- from here upward, and a dotnet started without one inherits this process's
+    /// directory and its SDK pin.
+    /// </param>
+    public static ProcessStartInfo StartInfo(string verb, IReadOnlyList<string> arguments, string workingDirectory)
     {
-        ProcessStartInfo info = new() { FileName = "dotnet" };
+        ProcessStartInfo info = new() { FileName = "dotnet", WorkingDirectory = workingDirectory };
 
         info.ArgumentList.Add(verb);
         foreach (string argument in arguments)
@@ -359,6 +418,11 @@ public static class DotnetCheck
         // dictionary the child will be given, so removing the key here removes it from the
         // child and from nothing else.
         info.Environment.Remove(ScrubbedVariable);
+
+        foreach (string variable in SdkPinningVariables)
+        {
+            info.Environment.Remove(variable);
+        }
 
         return info;
     }
@@ -372,9 +436,9 @@ public static class DotnetCheck
         Environment.GetEnvironmentVariable(ScrubbedVariable) is { Length: > 0 } value ? value : null;
 
     private static (int ExitCode, IReadOnlyList<string> Lines) RunDotnet(
-        string verb, IReadOnlyList<string> arguments, CancellationToken cancellation)
+        string verb, IReadOnlyList<string> arguments, string workingDirectory, CancellationToken cancellation)
     {
-        ProcessStartInfo info = StartInfo(verb, arguments);
+        ProcessStartInfo info = StartInfo(verb, arguments, workingDirectory);
 
         // Both streams, because MSBuild writes diagnostics to stdout and the driver writes its
         // own failures to stderr; reading one is how a build failure comes back with no errors

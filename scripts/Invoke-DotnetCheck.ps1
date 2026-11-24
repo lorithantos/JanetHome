@@ -18,7 +18,7 @@
     failures carry their payload up front and are read from TRX files rather than scraped.
     The exit code means exactly one thing: 0 when the build succeeded and every test passed.
 
-    THE CONTRACT IS NOW 10. Contract 4 added the 'status' discriminator, because the MCP tool
+    THE CONTRACT IS NOW 11. Contract 4 added the 'status' discriminator, because the MCP tool
     can answer "running" with a handle when a rebuild outlasts the client's call timeout;
     this script only ever produces "complete" -- every invocation is a fresh process, so
     there is nobody to poll -- but the field is present. Contract 5 makes 'tests' carry the
@@ -71,6 +71,15 @@
     test in ANY assembly used to come back succeeded, every assembly "empty", exit 0 -- so a
     typo in a test name read exactly like that test passing. It now fails the run and names the
     filter. An assembly that is empty while another matched still does not fail (contract 7).
+
+    Contract 11 adds the top-level 'sdk' (string or null): the SDK version `dotnet --version`
+    resolves in the target's directory. Every dotnet the check starts now runs THERE, because
+    the host picks the SDK from the global.json found from the working directory upward; it
+    used to run in janet's own directory, so JanetHome's SDK pin built every repository, and a
+    .NET 11 repo pinning an installed 11.0.100 failed NETSDK1045 out of SDK 10. Null means the
+    target's directory resolves no SDK (a pin to one that is not installed). MSBuildSDKsPath and
+    MSBuildExtensionsPath are scrubbed from dotnet's environment too, for the same reason: the
+    dotnet CLI exports both to its children, and an inherited pair overrides the target's pin.
     The declared format is contracts\dotnet-check.schema.json.
 
     Baselines written under contract 3 are still read. The baseline file's format did not

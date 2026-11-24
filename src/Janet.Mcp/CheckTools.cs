@@ -44,6 +44,9 @@ public static class CheckTools
         "that skipped a project entirely and one that had nothing to say about it produce the " +
         "identical green. 'succeeded' means exactly one thing: the build succeeded and every " +
         "test passed.\n\n" +
+        "THE TARGET'S global.json PICKS THE SDK: dotnet runs in the target's directory, and 'sdk' " +
+        "names the version it resolved there (null when that directory resolves none, e.g. a pin " +
+        "to an SDK that is not installed).\n\n" +
         "PER-ASSEMBLY 'status' IS THREE-VALUED and only one of them is bad news. \"complete\" " +
         "ran. \"empty\" ran nothing -- a testFilter that matched nothing in that assembly -- and " +
         "does NOT fail the run while another assembly matched; a testFilter that matched no test " +

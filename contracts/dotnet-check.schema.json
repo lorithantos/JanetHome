@@ -5,7 +5,7 @@
 
   "$janet": {
     "$comment": "Not JSON Schema. Read by scripts/Test-OutputContracts.ps1.",
-    "contract": 10,
+    "contract": 11,
     "produces": "dotnet_check / janet check / scripts\\Invoke-DotnetCheck.ps1",
     "script": "scripts\\Invoke-DotnetCheck.ps1",
     "node": "script.invoke-dotnet-check",
@@ -19,12 +19,16 @@
       "title": "complete",
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "contract", "target", "configuration", "succeeded", "build", "tests", "graph"],
+      "required": ["status", "contract", "target", "configuration", "sdk", "succeeded", "build", "tests", "graph"],
       "properties": {
         "status": { "const": "complete" },
-        "contract": { "const": 10 },
+        "contract": { "const": 11 },
         "target": { "type": "string", "description": "The resolved .sln/.slnx/.csproj that was built." },
         "configuration": { "type": "string" },
+        "sdk": {
+          "type": ["string", "null"],
+          "description": "The SDK version `dotnet --version` resolves in the target's directory (contract 11), which is where the build and the tests run: the host reads global.json from the working directory upward, so the target's own pin decides. NULL MEANS THAT DIRECTORY RESOLVES NO SDK -- typically a global.json pinning one that is not installed, and the build then fails saying so -- not that the field is unsupported."
+        },
         "succeeded": {
           "type": "boolean",
           "description": "Exactly one thing: the build succeeded AND every test passed. Mirrors the exit code."
@@ -265,7 +269,7 @@
       "required": ["status", "contract", "target", "configuration", "handle", "startedAt", "elapsedSeconds"],
       "properties": {
         "status": { "const": "running" },
-        "contract": { "const": 10 },
+        "contract": { "const": 11 },
         "target": { "type": "string" },
         "configuration": { "type": "string" },
         "handle": {

@@ -99,8 +99,15 @@ public static class DotnetDiagnostics
     /// -- a typo in a test name read as that test passing. It now fails the run and names the
     /// filter. An assembly empty while another matched still does not fail (contract 7's rule).
     /// </para>
+    /// <para>
+    /// 11 adds the top-level 'sdk' (2026-11-24): the SDK version `dotnet --version` resolves in
+    /// the target's directory, which is now where every dotnet the check starts runs. Before,
+    /// dotnet ran in janet's own directory, so JanetHome's global.json chose the SDK for every
+    /// target, and a .NET 11 repository pinning an installed 11.0.100 failed NETSDK1045 out of
+    /// SDK 10. Null when that directory resolves no SDK.
+    /// </para>
     /// </summary>
-    public const int Contract = 10;
+    public const int Contract = 11;
 
     /// <summary>
     /// The baseline file's own format, deliberately NOT the envelope's.

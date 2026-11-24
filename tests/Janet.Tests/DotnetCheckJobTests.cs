@@ -27,7 +27,7 @@ public class DotnetCheckJobTests
         JsonObject envelope = JsonNode.Parse(DotnetCheckJson.Serialize(pending))!.AsObject();
 
         Assert.Equal("running", envelope["status"]!.GetValue<string>());
-        Assert.Equal(10, envelope["contract"]!.GetValue<int>());
+        Assert.Equal(11, envelope["contract"]!.GetValue<int>());
         Assert.Equal(@"D:\Repos\Sample\App.slnx", envelope["target"]!.GetValue<string>());
         Assert.Equal("Debug", envelope["configuration"]!.GetValue<string>());
         Assert.Equal("abc123def456", envelope["handle"]!.GetValue<string>());
@@ -55,7 +55,12 @@ public class DotnetCheckJobTests
         JsonObject envelope = JsonNode.Parse(DotnetCheckJson.Serialize(result))!.AsObject();
 
         Assert.Equal("complete", envelope["status"]!.GetValue<string>());
-        Assert.Equal(10, envelope["contract"]!.GetValue<int>());
+        Assert.Equal(11, envelope["contract"]!.GetValue<int>());
+
+        // Present and null when no SDK was resolved, like the rest: absent would read as a
+        // tool too old to report one.
+        Assert.True(envelope.ContainsKey("sdk"));
+        Assert.Null(envelope["sdk"]);
 
         // The four fields whose null is a statement rather than an absence. They are present
         // and null, not missing: a reader has to be able to tell "not applicable" from "this
