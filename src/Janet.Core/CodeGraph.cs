@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Enumeration;
 
 namespace Janet.Core;
 
@@ -238,38 +239,51 @@ public static class CodeGraph
             .OrderByDescending(f => f.Length)
             .FirstOrDefault();
 
+    private static readonly HashSet<string> SourceExtensions =
+        new([".cs", ".xaml", ".razor", ".cshtml"], StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> ExcludedDirectories =
+        new(["bin", "obj", ".git", ".graph"], StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Newest write across the sources a code graph would analyze. Build output is excluded:
     /// obj\ regenerates on every build and would make every graph look stale the moment it was
     /// written.
     /// </summary>
-    private static DateTime? NewestSourceWrite(string repositoryRoot)
+    /// <remarks>
+    /// So is every nested checkout: a directory below the root that carries its own .git -- a
+    /// directory for a nested clone, a FILE for a linked worktree -- holds another checkout's
+    /// source, not this one's. On 2026-11-24 a `git worktree add` under .claude\worktrees made
+    /// the main checkout's graph read stale at the worktree's creation time, and two agents
+    /// writing worktrees kept pushing newestSourceAt forward through a test run. Honouring
+    /// .gitignore would not have caught it: .claude\ was untracked there, not ignored. Nor is
+    /// the folder name the rule; any checkout nested anywhere is excluded, and nothing else is.
+    /// </remarks>
+    internal static DateTime? NewestSourceWrite(string repositoryRoot)
     {
-        string[] extensions = [".cs", ".xaml", ".razor", ".cshtml"];
         DateTime? newest = null;
 
-        IEnumerable<string> files;
-        try
-        {
-            files = Directory.EnumerateFiles(repositoryRoot, "*", SearchOption.AllDirectories);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        if (!Directory.Exists(repositoryRoot))
         {
             return null;
         }
 
+        // Pruned, not filtered: a nested checkout or bin\ is never descended into, rather than
+        // walked and then discarded file by file. The predicates run on subdirectories only, so
+        // the root's own .git does not exclude the root.
+        FileSystemEnumerable<string> files = new(
+            repositoryRoot,
+            (ref FileSystemEntry entry) => entry.ToFullPath(),
+            new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
+        {
+            ShouldIncludePredicate = (ref FileSystemEntry entry) =>
+                !entry.IsDirectory && SourceExtensions.Contains(System.IO.Path.GetExtension(entry.FileName).ToString()),
+            ShouldRecursePredicate = (ref FileSystemEntry entry) =>
+                !ExcludedDirectories.Contains(entry.FileName.ToString()) && !IsNestedCheckout(entry.ToFullPath()),
+        };
+
         foreach (string file in files)
         {
-            if (!extensions.Contains(System.IO.Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (IsExcluded(file))
-            {
-                continue;
-            }
-
             DateTime written;
             try
             {
@@ -289,19 +303,15 @@ public static class CodeGraph
         return newest;
     }
 
-    private static bool IsExcluded(string file)
+    /// <summary>
+    /// A directory that is its own git checkout: a nested clone (.git directory) or a linked
+    /// worktree or submodule (.git file).
+    /// </summary>
+    private static bool IsNestedCheckout(string directory)
     {
-        string separated = $"{System.IO.Path.DirectorySeparatorChar}";
+        string marker = System.IO.Path.Combine(directory, ".git");
 
-        foreach (string directory in (string[])["bin", "obj", ".git", ".graph"])
-        {
-            if (file.Contains($"{separated}{directory}{separated}", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return File.Exists(marker) || Directory.Exists(marker);
     }
 
     /// <summary>
