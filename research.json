@@ -433,7 +433,7 @@
       "path": "notes\\powershell-house-rules.md",
       "summary": "PowerShell rules for this repo, each written because it broke something: array unrolling on return, StrictMode property probing, $null comparison order, parameter/local name collisions, plus a 5.1 backward-compatibility section.",
       "tags": ["powershell", "rules", "strictmode", "encoding", "quality", "parameters"],
-      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget", "script.invoke-dotnet-check", "note.csharp-house-rules", "file.skill-powershell-authoring"]
+      "links": ["script.test-powershell-rules", "pattern.manifest-startup", "note.startup-brief-budget", "script.invoke-dotnet-check", "note.csharp-house-rules", "file.skill-powershell-authoring", "note.wording-house-rules"]
     },
     {
       "id": "note.insertion-mergesort-hybrid",
@@ -2066,7 +2066,7 @@
         "Rules 1-5 are ADVISORY until a test or analyzer enforces them in a given repo; rule 6 ships with its enforcement (.editorconfig + Directory.Build.props) but only in repos that copy it. Existing repos (ImageSelectorV2, Neelam, RetirementCore) are NOT yet converted -- adopt deliberately, not by sweep."
       ],
       "tags": ["csharp", "blazor", "style", "rules", "testing", "quality"],
-      "links": ["note.powershell-house-rules", "note.tuples-do-not-cross-boundaries", "script.compare-il-binding-snapshot", "script.get-il-binding-snapshot", "script.test-namespace-folders", "pattern.single-consumer-queue"]
+      "links": ["note.powershell-house-rules", "note.tuples-do-not-cross-boundaries", "script.compare-il-binding-snapshot", "script.get-il-binding-snapshot", "script.test-namespace-folders", "pattern.single-consumer-queue", "note.wording-house-rules"]
     },
 
     {
@@ -2278,6 +2278,19 @@
       ],
       "tags": ["hooks", "session", "powershell", "time"],
       "links": ["script.work-boundary", "script.get-work-boundary", "script.set-work-boundary"]
+    },
+
+    {
+      "id": "note.wording-house-rules",
+      "kind": "note",
+      "path": "notes\\wording-house-rules.md",
+      "summary": "Wording house rules for every repo and artifact: name lists by what they do -- allow-list/denylist, primary/replica, main -- never whitelist/blacklist or master/slave; a third-party name we do not own is quoted as it is and flagged.",
+      "caveats": [
+        "ADVISORY: nothing enforces it yet. The enforcement idea in the note is a pre-commit check over staged text for the old terms, with an inline marker for a quoted third-party name.",
+        "Records existing practice rather than changing it: on 2026-11-25 TodoConnector and JanetHome's notes already used allow-list/denylist and carried none of the old terms."
+      ],
+      "tags": ["rules", "style", "quality"],
+      "links": ["note.csharp-house-rules", "note.powershell-house-rules"]
     }
   ]
 }
